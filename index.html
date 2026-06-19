@@ -554,6 +554,8 @@ window.removeUser = async (uid) => {
 window.openImport = () => {
   document.getElementById('importStatus').textContent = '';
   document.getElementById('importPreview').innerHTML = '';
+  document.getElementById('pasteArea').value = '';
+  document.getElementById('pasteStatus').textContent = '';
   document.getElementById('manualStatus').textContent = '';
   document.getElementById('manualEmpId').value = '';
   document.getElementById('manualDate').value = new Date().toISOString().split('T')[0];
@@ -562,6 +564,90 @@ window.openImport = () => {
   document.getElementById('manualRole').value = '';
   document.getElementById('manualOnPace').value = '';
   new bootstrap.Modal(document.getElementById('importModal')).show();
+};
+
+window.parsePastedSnapshot = async () => {
+  const text = document.getElementById('pasteArea').value;
+  const statusEl = document.getElementById('pasteStatus');
+  statusEl.style.color = '';
+  statusEl.textContent = 'Reading…';
+
+  // Parse tab-separated key-value pairs
+  const kv = {};
+  for (const line of text.split('\n')) {
+    const parts = line.split('\t');
+    if (parts.length >= 2) {
+      const key = parts[0].trim().toLowerCase();
+      const val = parts.slice(1).join(' ').trim();
+      if (key && val) kv[key] = val;
+    }
+  }
+
+  const empId = (kv['employee id'] || kv['employee'] || '').toUpperCase();
+  const shiftDateRaw = kv['shift date'] || kv['date'] || '';
+  const avgUph = parseFloat(kv['individual avg uph'] || kv['avg uph'] || kv['uph'] || '');
+  const units = parseInt(kv['units completed'] || '') || null;
+  const role = kv['role'] || null;
+  const onPace = kv['on pace?'] || kv['on pace'] || null;
+  const uphTarget = kv['uph target'] || null;
+  const variance = kv['variance vs target'] || null;
+
+  if (!empId || !shiftDateRaw || isNaN(avgUph)) {
+    statusEl.textContent = 'Could not find Employee Id, Shift Date, or Individual Avg UPH. Check your paste.';
+    statusEl.style.color = 'red';
+    return;
+  }
+
+  // Convert date
+  let isoDate = shiftDateRaw;
+  const dParts = shiftDateRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (dParts) isoDate = `${dParts[3]}-${dParts[1].padStart(2,'0')}-${dParts[2].padStart(2,'0')}`;
+
+  // Match associate
+  const assocSnap = await get(ref(db, 'associates'));
+  if (!assocSnap.exists()) {
+    statusEl.textContent = 'No associates yet. Add the associate first.';
+    statusEl.style.color = 'red';
+    return;
+  }
+  const associates = assocSnap.val();
+  const matchId = Object.keys(associates).find(id =>
+    (associates[id].employeeId || '').toUpperCase() === empId ||
+    associates[id].name.toUpperCase().replace(/[^A-Z]/g,'').includes(empId.replace(/[^A-Z]/g,''))
+  );
+  if (!matchId) {
+    statusEl.textContent = `No associate found with ID "${empId}". Add them to the tracker first.`;
+    statusEl.style.color = 'orange';
+    return;
+  }
+
+  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+
+  // Log productivity entry
+  await push(ref(db, `productivity/${matchId}`), {
+    date: isoDate, uph: avgUph, unitsCompleted: units,
+    loggedBy: displayName, loggedByUid: currentUser.uid,
+    createdAt: new Date().toISOString()
+  });
+
+  // Build a rich note with all snapshot fields
+  const noteParts = [`Shift snapshot for ${shiftDateRaw}:`];
+  if (role) noteParts.push(`Role: ${role}`);
+  if (uphTarget) noteParts.push(`UPH Target: ${uphTarget}`);
+  if (variance) noteParts.push(`Variance vs Target: ${variance}`);
+  if (onPace) noteParts.push(`On Pace: ${onPace}`);
+  await push(ref(db, `notes/${matchId}`), {
+    text: noteParts.join(' | '),
+    type: onPace && onPace.toLowerCase().includes('crush') ? 'Recognition' : 'General',
+    author: displayName, authorUid: currentUser.uid,
+    createdAt: new Date().toISOString()
+  });
+
+  statusEl.textContent = `✓ Imported for ${associates[matchId].name} — UPH ${avgUph}${onPace ? ', ' + onPace : ''}`;
+  statusEl.style.color = 'green';
+  document.getElementById('pasteArea').value = '';
+  setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('importModal')).hide(), 2000);
 };
 
 window.saveManualEntry = async () => {
@@ -1276,13 +1362,25 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     </div>
     <div class="modal-body">
       <ul class="nav nav-tabs mb-3" id="importTabs">
-        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabManual"><i class="fas fa-keyboard me-1"></i>Manual Entry</a></li>
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabPaste"><i class="fas fa-paste me-1"></i>Paste Snapshot</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabManual"><i class="fas fa-keyboard me-1"></i>Manual Entry</a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabOcr"><i class="fas fa-camera me-1"></i>OCR from Image</a></li>
       </ul>
       <div class="tab-content">
 
+        <!-- Paste Tab -->
+        <div class="tab-pane fade show active" id="tabPaste">
+          <p class="text-muted small mb-2">Copy the snapshot from Excel and paste it below — all fields import in one shot.</p>
+          <textarea class="form-control mb-2" id="pasteArea" rows="10"
+            placeholder="Paste here, e.g.:&#10;Employee Id	NVTNEEL&#10;Role	Large Pack&#10;Shift Date	6/18/2026&#10;Individual Avg UPH	30.2&#10;Units Completed	277&#10;On Pace?	Crushing It"></textarea>
+          <div id="pasteStatus" class="small mb-2"></div>
+          <button class="btn btn-orange" onclick="parsePastedSnapshot()">
+            <i class="fas fa-file-import me-1"></i>Import Snapshot
+          </button>
+        </div>
+
         <!-- Manual Entry Tab -->
-        <div class="tab-pane fade show active" id="tabManual">
+        <div class="tab-pane fade" id="tabManual">
           <p class="text-muted small mb-3">Enter the values directly from the Performance Snapshot.</p>
           <div class="row g-3">
             <div class="col-6">
