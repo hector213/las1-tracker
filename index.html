@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LAS1 Associate Performance Tracker</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     STEP 1: PASTE YOUR FIREBASE CONFIG HERE
+     Get it from: Firebase Console → Project Settings → Your Apps → Web App
+     ═══════════════════════════════════════════════════════════════════ -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getDatabase, ref, set, get, push, update, remove, onValue, off } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCMPDpzhZEWZjP9SptREKVSB4dmdhY5cpM",
+  authDomain: "las1-tracker.firebaseapp.com",
+  databaseURL: "https://las1-tracker-default-rtdb.firebaseio.com",
+  projectId: "las1-tracker",
+  storageBucket: "las1-tracker.firebasestorage.app",
+  messagingSenderId: "366160549791",
+  appId: "1:366160549791:web:b586a196cb8bf864aa0faa"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+
+// ─── State ────────────────────────────────────────────────────────────
+let currentUser = null;
+let currentUserRole = 'viewer';
+let currentAssociateId = null;
+let uphChart = null;
+let activeListeners = {};
+let allAssociates = [];
+
+// ─── Auth ─────────────────────────────────────────────────────────────
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    currentUser = user;
+    const snap = await get(ref(db, `users/${user.uid}`));
+    if (snap.exists()) {
+      const data = snap.val();
+      currentUserRole = data.role || 'viewer';
+      document.getElementById('currentUserName').textContent = data.displayName || user.email;
+      document.getElementById('currentUserRole').textContent = capitalize(currentUserRole);
+    } else {
+      // First-time admin bootstrap — if no users exist yet, make this user admin
+      const allUsers = await get(ref(db, 'users'));
+      if (!allUsers.exists()) {
+        currentUserRole = 'admin';
+        await set(ref(db, `users/${user.uid}`), {
+          email: user.email, displayName: user.email, role: 'admin',
+          createdAt: new Date().toISOString()
+        });
+        document.getElementById('currentUserName').textContent = user.email;
+        document.getElementById('currentUserRole').textContent = 'Admin';
+      }
+    }
+    showApp();
+    if (currentUserRole === 'admin') document.getElementById('navAdmin').classList.remove('d-none');
+    if (currentUserRole !== 'viewer') document.getElementById('addAssocBtn').classList.remove('d-none');
+    loadDashboard();
+  } else {
+    currentUser = null;
+    showLogin();
+  }
+});
+
+window.doLogin = async () => {
+  const email = document.getElementById('loginEmail').value.trim();
+  const pw = document.getElementById('loginPw').value;
+  const err = document.getElementById('loginError');
+  err.classList.add('d-none');
+  const btn = document.getElementById('loginBtn');
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Signing in…';
+  btn.disabled = true;
+  try {
+    await signInWithEmailAndPassword(auth, email, pw);
+  } catch (e) {
+    err.textContent = 'Invalid email or password. Contact your admin.';
+    err.classList.remove('d-none');
+    btn.innerHTML = 'Sign In'; btn.disabled = false;
+  }
+};
+
+window.doLogout = () => signOut(auth);
+document.getElementById('loginPw').addEventListener('keydown', e => { if (e.key === 'Enter') window.doLogin(); });
+
+// ─── View Management ──────────────────────────────────────────────────
+function showLogin() {
+  document.getElementById('loginScreen').classList.remove('d-none');
+  document.getElementById('appShell').classList.add('d-none');
+}
+function showApp() {
+  document.getElementById('loginScreen').classList.add('d-none');
+  document.getElementById('appShell').classList.remove('d-none');
+}
+function showView(view) {
+  document.querySelectorAll('.view').forEach(v => v.classList.add('d-none'));
+  document.getElementById(view + 'View').classList.remove('d-none');
+  document.querySelectorAll('.nav-link[data-view]').forEach(l => l.classList.remove('active'));
+  const nav = document.querySelector(`.nav-link[data-view="${view}"]`);
+  if (nav) nav.classList.add('active');
+}
+window.showView = showView;
+
+// ─── Dashboard ────────────────────────────────────────────────────────
+function loadDashboard() {
+  showView('dashboard');
+  detachAll();
+  const assocRef = ref(db, 'associates');
+  activeListeners['associates'] = assocRef;
+  onValue(assocRef, async (snap) => {
+    allAssociates = [];
+    if (snap.exists()) {
+      for (const [id, a] of Object.entries(snap.val())) {
+        const uphSnap = await get(ref(db, `productivity/${id}`));
+        let avgUph = null;
+        if (uphSnap.exists()) {
+          const logs = Object.values(uphSnap.val());
+          const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+          const recent = logs.filter(l => new Date(l.date) >= cutoff);
+          if (recent.length) avgUph = (recent.reduce((s, l) => s + l.uph, 0) / recent.length).toFixed(1);
+        }
+        allAssociates.push({ id, ...a, avgUph });
+      }
+    }
+    renderDashboard();
+  });
+}
+window.loadDashboard = loadDashboard;
+
+function renderDashboard() {
+  const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
+  const shift = document.getElementById('filterShift')?.value || '';
+  const status = document.getElementById('filterStatus')?.value || '';
+
+  const filtered = allAssociates.filter(a =>
+    (!search || a.name.toLowerCase().includes(search) || (a.employeeId || '').toLowerCase().includes(search)) &&
+    (!shift || a.shift === shift) &&
+    (!status || a.status === status)
+  );
+
+  document.getElementById('statTotal').textContent = allAssociates.length;
+  document.getElementById('statActive').textContent = allAssociates.filter(a => a.status === 'active').length;
+  const uphVals = allAssociates.filter(a => a.avgUph).map(a => parseFloat(a.avgUph));
+  document.getElementById('statAvgUph').textContent = uphVals.length
+    ? (uphVals.reduce((s, v) => s + v, 0) / uphVals.length).toFixed(1) : '—';
+
+  const grid = document.getElementById('associateGrid');
+  if (!filtered.length) {
+    grid.innerHTML = `<div class="col-12 text-center text-muted py-5">
+      <i class="fas fa-users fa-3x mb-3 d-block opacity-25"></i>
+      ${allAssociates.length ? 'No matches found' : 'No associates yet. Add one to get started.'}</div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(a => {
+    const initials = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
+    const statusColor = a.status === 'active' ? 'bg-success' : a.status === 'inactive' ? 'bg-secondary' : 'bg-warning text-dark';
+    return `<div class="col-xl-3 col-lg-4 col-md-6">
+      <div class="associate-card" onclick="openProfile('${a.id}')">
+        <div class="card-body p-3">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="avatar-circle">${initials}</div>
+            <div class="flex-grow-1" style="min-width:0">
+              <div class="assoc-name">${escapeHtml(a.name)}</div>
+              <div class="assoc-sub">${escapeHtml(a.role || '—')} · ${escapeHtml(a.shift || '—')}</div>
+            </div>
+            <span class="badge ${statusColor}">${capitalize(a.status || 'active')}</span>
+          </div>
+          <div class="d-flex justify-content-between align-items-end">
+            <div>
+              <div class="uph-value">${a.avgUph || '—'}</div>
+              <div class="uph-label">Avg UPH (30d)</div>
+            </div>
+            <i class="fas fa-chevron-right text-muted opacity-50"></i>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+window.renderDashboard = renderDashboard;
+
+// ─── Profile ──────────────────────────────────────────────────────────
+window.openProfile = async (id) => {
+  currentAssociateId = id;
+  detachAll();
+  showView('profile');
+
+  const snap = await get(ref(db, `associates/${id}`));
+  if (!snap.exists()) return;
+  const a = snap.val();
+
+  const initials = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
+  document.getElementById('profileAvatar').textContent = initials;
+  document.getElementById('profileName').textContent = a.name;
+  document.getElementById('profileMeta').textContent =
+    [a.role, a.department, a.shift ? a.shift + ' Shift' : null, a.employeeId ? 'ID: ' + a.employeeId : null]
+      .filter(Boolean).join(' · ');
+  const statusEl = document.getElementById('profileStatus');
+  statusEl.textContent = capitalize(a.status || 'active');
+  statusEl.className = 'badge ' + (a.status === 'active' ? 'bg-success' : a.status === 'inactive' ? 'bg-secondary' : 'bg-warning text-dark');
+
+  const canEdit = currentUserRole === 'admin' || currentUserRole === 'leader';
+  document.getElementById('profileEditBtn').classList.toggle('d-none', !canEdit);
+  document.getElementById('profileEditBtn').onclick = () => openEditAssociate(id, a);
+
+  listenProductivity(id);
+  listenNotes(id);
+};
+
+function listenProductivity(associateId) {
+  const prodRef = ref(db, `productivity/${associateId}`);
+  activeListeners['productivity'] = prodRef;
+  onValue(prodRef, (snap) => {
+    const logs = [];
+    if (snap.exists()) Object.entries(snap.val()).forEach(([id, l]) => logs.push({ id, ...l }));
+    logs.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+    const recent = logs.filter(l => new Date(l.date) >= cutoff);
+    const avgUph = recent.length ? (recent.reduce((s, l) => s + l.uph, 0) / recent.length).toFixed(1) : '—';
+
+    document.getElementById('statAvgUphProfile').textContent = avgUph;
+    document.getElementById('statTotalUnits').textContent = logs.reduce((s, l) => s + (l.unitsCompleted || 0), 0).toLocaleString();
+    document.getElementById('statLogCount').textContent = logs.length;
+
+    renderUphChart(logs.slice(0, 14).reverse());
+    renderProductivityTable(logs);
+  });
+}
+
+function renderUphChart(logs) {
+  if (uphChart) { uphChart.destroy(); uphChart = null; }
+  const canvas = document.getElementById('uphChartCanvas');
+  if (!canvas) return;
+  if (!logs.length) {
+    canvas.style.display = 'none';
+    document.getElementById('noChartMsg').classList.remove('d-none');
+    return;
+  }
+  canvas.style.display = '';
+  document.getElementById('noChartMsg').classList.add('d-none');
+  uphChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: logs.map(l => formatDateShort(l.date)),
+      datasets: [{
+        label: 'UPH',
+        data: logs.map(l => l.uph),
+        borderColor: '#f97316',
+        backgroundColor: 'rgba(249,115,22,0.08)',
+        tension: 0.3, fill: true,
+        pointBackgroundColor: '#f97316', pointRadius: 5
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: false, grid: { color: 'rgba(0,0,0,0.05)' } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+function renderProductivityTable(logs) {
+  const tbody = document.getElementById('productivityTbody');
+  if (!logs.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No entries yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = logs.map(l => `<tr>
+    <td>${formatDate(l.date)}</td>
+    <td><strong>${l.uph}</strong></td>
+    <td>${l.unitsCompleted?.toLocaleString() || '—'}</td>
+    <td>${escapeHtml(l.loggedBy || '—')}</td>
+    <td>${(currentUserRole === 'admin' || l.loggedByUid === currentUser?.uid)
+      ? `<button class="btn btn-sm btn-link text-danger p-0" onclick="deleteProductivityLog('${l.id}')"><i class="fas fa-times"></i></button>` : ''}</td>
+  </tr>`).join('');
+}
+
+function listenNotes(associateId) {
+  const notesRef = ref(db, `notes/${associateId}`);
+  activeListeners['notes'] = notesRef;
+  onValue(notesRef, (snap) => {
+    const notes = [];
+    if (snap.exists()) Object.entries(snap.val()).forEach(([id, n]) => notes.push({ id, ...n }));
+    notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    renderNotes(notes);
+  });
+}
+
+function renderNotes(notes) {
+  const container = document.getElementById('notesContainer');
+  if (!notes.length) {
+    container.innerHTML = `<div class="text-center text-muted py-5">
+      <i class="fas fa-comment-alt fa-2x mb-3 d-block opacity-25"></i>
+      No notes yet. Add the first one to build this associate's profile.</div>`;
+    return;
+  }
+  const typeColors = { General:'bg-secondary', Coaching:'bg-warning text-dark', Recognition:'bg-success', Warning:'bg-danger', PIP:'bg-dark', Leadership:'bg-primary' };
+  container.innerHTML = notes.map(n => `
+    <div class="note-card mb-3">
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <span class="badge ${typeColors[n.type] || 'bg-secondary'}">${escapeHtml(n.type)}</span>
+          <span class="text-muted small fw-semibold">${escapeHtml(n.author || 'Unknown')}</span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="text-muted small">${formatDateTime(n.createdAt)}</span>
+          ${(currentUserRole === 'admin' || n.authorUid === currentUser?.uid)
+            ? `<button class="btn btn-sm btn-link text-danger p-0" onclick="deleteNote('${n.id}')"><i class="fas fa-times"></i></button>` : ''}
+        </div>
+      </div>
+      <div class="note-text">${escapeHtml(n.text)}</div>
+    </div>`).join('');
+}
+
+// ─── Add/Edit Associate ───────────────────────────────────────────────
+window.openAddAssociate = () => {
+  document.getElementById('assocModalTitle').textContent = 'Add Associate';
+  document.getElementById('assocForm').reset();
+  document.getElementById('assocId').value = '';
+  new bootstrap.Modal(document.getElementById('assocModal')).show();
+};
+window.openEditAssociate = (id, data) => {
+  document.getElementById('assocModalTitle').textContent = 'Edit Associate';
+  document.getElementById('assocId').value = id;
+  ['Name','EmployeeId','Role','Dept'].forEach(f => {
+    const key = f === 'EmployeeId' ? 'employeeId' : f === 'Dept' ? 'department' : f.toLowerCase();
+    document.getElementById('assoc' + f).value = data[key] || '';
+  });
+  document.getElementById('assocShift').value = data.shift || '';
+  document.getElementById('assocStatus').value = data.status || 'active';
+  new bootstrap.Modal(document.getElementById('assocModal')).show();
+};
+window.saveAssociate = async () => {
+  const id = document.getElementById('assocId').value;
+  const data = {
+    name: document.getElementById('assocName').value.trim(),
+    employeeId: document.getElementById('assocEmployeeId').value.trim(),
+    role: document.getElementById('assocRole').value.trim(),
+    shift: document.getElementById('assocShift').value,
+    department: document.getElementById('assocDept').value.trim(),
+    status: document.getElementById('assocStatus').value,
+    updatedAt: new Date().toISOString(), updatedBy: currentUser?.email
+  };
+  if (!data.name) { alert('Name is required'); return; }
+  if (id) {
+    await update(ref(db, `associates/${id}`), data);
+  } else {
+    data.createdAt = new Date().toISOString(); data.createdBy = currentUser?.email;
+    await push(ref(db, 'associates'), data);
+  }
+  bootstrap.Modal.getInstance(document.getElementById('assocModal')).hide();
+};
+
+// ─── Log UPH ─────────────────────────────────────────────────────────
+window.openLogUph = () => {
+  document.getElementById('uphDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('uphValue').value = '';
+  document.getElementById('uphUnits').value = '';
+  new bootstrap.Modal(document.getElementById('uphModal')).show();
+};
+window.saveUphLog = async () => {
+  const date = document.getElementById('uphDate').value;
+  const uph = parseFloat(document.getElementById('uphValue').value);
+  const units = parseInt(document.getElementById('uphUnits').value) || null;
+  if (!date || isNaN(uph)) { alert('Date and UPH are required'); return; }
+  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+  await push(ref(db, `productivity/${currentAssociateId}`), {
+    date, uph, unitsCompleted: units,
+    loggedBy: displayName, loggedByUid: currentUser.uid,
+    createdAt: new Date().toISOString()
+  });
+  bootstrap.Modal.getInstance(document.getElementById('uphModal')).hide();
+};
+window.deleteProductivityLog = async (logId) => {
+  if (!confirm('Delete this entry?')) return;
+  await remove(ref(db, `productivity/${currentAssociateId}/${logId}`));
+};
+
+// ─── Notes ───────────────────────────────────────────────────────────
+window.openAddNote = () => {
+  document.getElementById('noteForm').reset();
+  new bootstrap.Modal(document.getElementById('noteModal')).show();
+};
+window.saveNote = async () => {
+  const text = document.getElementById('noteText').value.trim();
+  const type = document.getElementById('noteType').value;
+  if (!text) { alert('Note text is required'); return; }
+  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+  await push(ref(db, `notes/${currentAssociateId}`), {
+    text, type,
+    author: displayName, authorUid: currentUser.uid,
+    createdAt: new Date().toISOString()
+  });
+  bootstrap.Modal.getInstance(document.getElementById('noteModal')).hide();
+};
+window.deleteNote = async (noteId) => {
+  if (!confirm('Delete this note?')) return;
+  await remove(ref(db, `notes/${currentAssociateId}/${noteId}`));
+};
+
+// ─── Export for Claude ────────────────────────────────────────────────
+window.exportForClaude = async () => {
+  const btn = document.getElementById('exportBtn');
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Exporting…';
+  btn.disabled = true;
+
+  try {
+    const assocSnap = await get(ref(db, 'associates'));
+    if (!assocSnap.exists()) { alert('No data to export'); return; }
+
+    let out = `LAS1 ASSOCIATE PERFORMANCE INTELLIGENCE REPORT\n`;
+    out += `Generated: ${new Date().toLocaleString()}\n`;
+    out += `${'═'.repeat(60)}\n\n`;
+    out += `INSTRUCTIONS FOR CLAUDE:\nReview the associate profiles below. Each entry includes role, shift, UPH performance history, and manager notes. Use this data to:\n- Identify leadership potential based on performance trends and notes\n- Flag associates who may benefit from coaching\n- Highlight top performers for recognition or advancement\n\n${'═'.repeat(60)}\n\n`;
+
+    for (const [id, a] of Object.entries(assocSnap.val())) {
+      out += `ASSOCIATE: ${a.name}\n`;
+      out += `  Employee ID: ${a.employeeId || 'N/A'}\n`;
+      out += `  Role: ${a.role || 'N/A'}  |  Shift: ${a.shift || 'N/A'}  |  Dept: ${a.department || 'N/A'}\n`;
+      out += `  Status: ${a.status || 'N/A'}\n\n`;
+
+      const prodSnap = await get(ref(db, `productivity/${id}`));
+      if (prodSnap.exists()) {
+        const logs = Object.values(prodSnap.val()).sort((a, b) => new Date(b.date) - new Date(a.date));
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+        const recent = logs.filter(l => new Date(l.date) >= cutoff);
+        const avg30 = recent.length ? (recent.reduce((s, l) => s + l.uph, 0) / recent.length).toFixed(1) : 'N/A';
+        const avgAll = logs.length ? (logs.reduce((s, l) => s + l.uph, 0) / logs.length).toFixed(1) : 'N/A';
+        out += `  PRODUCTIVITY:\n`;
+        out += `    30-day avg UPH: ${avg30}  |  All-time avg UPH: ${avgAll}  |  Total entries: ${logs.length}\n`;
+        out += `    Recent entries:\n`;
+        logs.slice(0, 8).forEach(l => {
+          out += `      ${l.date}: ${l.uph} UPH${l.unitsCompleted ? ' (' + l.unitsCompleted + ' units)' : ''} — ${l.loggedBy || '?'}\n`;
+        });
+      } else {
+        out += `  PRODUCTIVITY: No data logged\n`;
+      }
+
+      const notesSnap = await get(ref(db, `notes/${id}`));
+      if (notesSnap.exists()) {
+        const notes = Object.values(notesSnap.val()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        out += `\n  MANAGER NOTES (${notes.length} total):\n`;
+        notes.forEach(n => {
+          out += `    [${n.type}] ${formatDateTime(n.createdAt)} — ${n.author || 'Unknown'}\n`;
+          out += `    "${n.text}"\n\n`;
+        });
+      } else {
+        out += `\n  MANAGER NOTES: None on record\n`;
+      }
+      out += `${'─'.repeat(60)}\n\n`;
+    }
+
+    const blob = new Blob([out], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `LAS1_Performance_Export_${new Date().toISOString().split('T')[0]}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } finally {
+    btn.innerHTML = '<i class="fas fa-download me-1"></i>Export for Claude';
+    btn.disabled = false;
+  }
+};
+
+// ─── Admin Panel ──────────────────────────────────────────────────────
+window.loadAdminPanel = () => {
+  showView('admin');
+  const usersRef = ref(db, 'users');
+  activeListeners['users'] = usersRef;
+  onValue(usersRef, (snap) => {
+    const tbody = document.getElementById('usersTbody');
+    if (!snap.exists()) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No users</td></tr>';
+      return;
+    }
+    const users = Object.entries(snap.val()).map(([uid, u]) => ({ uid, ...u }));
+    tbody.innerHTML = users.map(u => `<tr>
+      <td class="fw-semibold">${escapeHtml(u.displayName || '—')}</td>
+      <td class="text-muted small">${escapeHtml(u.email || '—')}</td>
+      <td><span class="badge ${u.role === 'admin' ? 'bg-danger' : u.role === 'leader' ? 'bg-primary' : 'bg-secondary'}">${capitalize(u.role || 'viewer')}</span></td>
+      <td class="text-muted small">${formatDate(u.createdAt)}</td>
+      <td>
+        <button class="btn btn-sm btn-outline-secondary me-1 py-0" onclick="cycleRole('${u.uid}', '${u.role}')">
+          <i class="fas fa-exchange-alt"></i> Role
+        </button>
+        ${u.uid !== currentUser?.uid ? `<button class="btn btn-sm btn-outline-danger py-0" onclick="removeUser('${u.uid}')"><i class="fas fa-trash-alt"></i></button>` : ''}
+      </td>
+    </tr>`).join('');
+  });
+};
+window.openCreateUser = () => {
+  document.getElementById('newUserForm').reset();
+  new bootstrap.Modal(document.getElementById('newUserModal')).show();
+};
+window.createUser = async () => {
+  const email = document.getElementById('newEmail').value.trim();
+  const pw = document.getElementById('newPw').value.trim();
+  const name = document.getElementById('newDisplayName').value.trim();
+  const role = document.getElementById('newRole').value;
+  if (!email || !pw || !name) { alert('All fields are required'); return; }
+  const btn = document.getElementById('createUserBtn');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    // Store current admin's credentials to restore session
+    const adminEmail = currentUser.email;
+    const adminPw = prompt(`To create an account, re-enter YOUR password (${adminEmail}):`);
+    if (!adminPw) { btn.disabled = false; btn.textContent = 'Create Account'; return; }
+
+    const cred = await createUserWithEmailAndPassword(auth, email, pw);
+    await set(ref(db, `users/${cred.user.uid}`), {
+      email, displayName: name, role,
+      createdAt: new Date().toISOString(), createdBy: adminEmail
+    });
+    // Sign admin back in
+    await signInWithEmailAndPassword(auth, adminEmail, adminPw);
+    bootstrap.Modal.getInstance(document.getElementById('newUserModal')).hide();
+    alert(`✓ Account created!\n\nShare these credentials with ${name}:\nEmail: ${email}\nPassword: ${pw}\n\nThey should change their password after first login.`);
+  } catch (e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create Account';
+  }
+};
+window.cycleRole = async (uid, currentRole) => {
+  const roles = ['viewer', 'leader', 'admin'];
+  const next = roles[(roles.indexOf(currentRole) + 1) % roles.length];
+  if (confirm(`Change this user's role to "${next}"?`)) {
+    await update(ref(db, `users/${uid}`), { role: next });
+  }
+};
+window.removeUser = async (uid) => {
+  if (!confirm('Remove this user from the tracker? (They can be re-added later)')) return;
+  await remove(ref(db, `users/${uid}`));
+};
+
+// ─── Import Snapshot ──────────────────────────────────────────────────
+window.openImport = () => {
+  document.getElementById('importStatus').textContent = '';
+  document.getElementById('importPreview').innerHTML = '';
+  new bootstrap.Modal(document.getElementById('importModal')).show();
+};
+window.handleImportFile = async (input) => {
+  const file = input.files[0];
+  if (!file) return;
+  const status = document.getElementById('importStatus');
+  status.textContent = 'Loading OCR engine…';
+  try {
+    if (!window.Tesseract) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    status.textContent = 'Reading image…';
+    const result = await Tesseract.recognize(file, 'eng');
+    status.textContent = 'Parsing data…';
+    parseOcrText(result.data.text);
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+  }
+};
+function parseOcrText(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const rows = [];
+  let currentEmployee = null;
+  for (const line of lines) {
+    const empMatch = line.match(/^([A-Z]{3,}[A-Z0-9]*)/);
+    const dateMatch = line.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+    const uphMatch = line.match(/Individual\s+Avg\s+UPH[:\s]+(\d+\.?\d*)/i) ||
+                     line.match(/Avg\s+UPH[:\s]+(\d+\.?\d*)/i) ||
+                     line.match(/(\d+\.?\d*)\s+UPH/i);
+    const unitsMatch = line.match(/Units\s+Completed[:\s]+(\d+)/i);
+    if (empMatch && !dateMatch) currentEmployee = empMatch[1];
+    if (dateMatch && uphMatch && currentEmployee) {
+      rows.push({ employeeId: currentEmployee, date: dateMatch[1], uph: parseFloat(uphMatch[1]), units: unitsMatch ? parseInt(unitsMatch[1]) : null });
+    }
+  }
+  const status = document.getElementById('importStatus');
+  const preview = document.getElementById('importPreview');
+  if (!rows.length) {
+    status.textContent = 'Could not extract data. Try a higher-quality or cropped screenshot.';
+    preview.innerHTML = '';
+    return;
+  }
+  status.textContent = `Found ${rows.length} row(s) — review and confirm:`;
+  const encoded = encodeURIComponent(JSON.stringify(rows));
+  preview.innerHTML = `<div class="table-responsive mt-2">
+    <table class="table table-sm table-bordered">
+      <thead class="table-light"><tr><th>Employee ID</th><th>Date</th><th>UPH</th><th>Units</th></tr></thead>
+      <tbody>${rows.map(r => `<tr><td>${r.employeeId}</td><td>${r.date}</td><td>${r.uph}</td><td>${r.units || '—'}</td></tr>`).join('')}</tbody>
+    </table>
+  </div>
+  <button class="btn btn-success" onclick="confirmImport('${encoded}')">
+    <i class="fas fa-check me-1"></i>Import ${rows.length} Row${rows.length > 1 ? 's' : ''}
+  </button>`;
+}
+window.confirmImport = async (encoded) => {
+  const rows = JSON.parse(decodeURIComponent(encoded));
+  const assocSnap = await get(ref(db, 'associates'));
+  const associates = assocSnap.exists() ? assocSnap.val() : {};
+  let matched = 0, skipped = 0;
+  for (const row of rows) {
+    const matchId = Object.keys(associates).find(id =>
+      associates[id].employeeId === row.employeeId ||
+      associates[id].name.toLowerCase().includes(row.employeeId.toLowerCase())
+    );
+    if (matchId) {
+      await push(ref(db, `productivity/${matchId}`), {
+        date: row.date, uph: row.uph, unitsCompleted: row.units,
+        loggedBy: 'Import', loggedByUid: currentUser?.uid,
+        createdAt: new Date().toISOString()
+      });
+      matched++;
+    } else skipped++;
+  }
+  document.getElementById('importStatus').textContent = `Done! ${matched} imported, ${skipped} skipped (no matching associate).`;
+  document.getElementById('importPreview').innerHTML = '';
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+function detachAll() {
+  Object.values(activeListeners).forEach(r => { try { off(r); } catch(e){} });
+  activeListeners = {};
+}
+function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : ''; }
+function formatDate(str) {
+  if (!str) return '—';
+  try { return new Date(str).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); }
+  catch { return str; }
+}
+function formatDateShort(str) {
+  if (!str) return '—';
+  try { return new Date(str).toLocaleDateString('en-US', { month:'short', day:'numeric' }); }
+  catch { return str; }
+}
+function formatDateTime(str) {
+  if (!str) return '—';
+  try { return new Date(str).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }); }
+  catch { return str; }
+}
+function escapeHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+
+<style>
+:root { --navy:#1a2744; --orange:#f97316; }
+* { box-sizing: border-box; }
+body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
+
+/* Login */
+#loginScreen {
+  min-height:100vh; display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(135deg, #1a2744 0%, #2d3f6b 100%);
+}
+.login-card {
+  background:#fff; border-radius:16px; padding:2.5rem 2rem;
+  width:100%; max-width:400px; box-shadow:0 20px 60px rgba(0,0,0,0.3);
+}
+.login-logo { color:var(--orange); font-size:2rem; font-weight:700; letter-spacing:-1px; }
+
+/* Sidebar */
+#sidebar {
+  width:220px; min-height:100vh; background:var(--navy);
+  position:fixed; left:0; top:0; display:flex; flex-direction:column; z-index:100;
+}
+.sidebar-brand { padding:1.25rem 1rem; border-bottom:1px solid rgba(255,255,255,0.1); }
+.brand-name { color:var(--orange); font-size:1rem; font-weight:700; }
+.brand-sub { color:rgba(255,255,255,0.45); font-size:0.7rem; }
+.sidebar-nav { flex:1; padding:0.75rem 0.5rem; }
+.nav-link[data-view] {
+  color:rgba(255,255,255,0.65)!important; border-radius:8px;
+  padding:0.6rem 0.75rem; margin-bottom:2px; font-size:0.875rem;
+  display:flex; align-items:center; gap:0.6rem; cursor:pointer; transition:all .15s;
+}
+.nav-link[data-view]:hover { background:rgba(255,255,255,0.08); color:#fff!important; }
+.nav-link[data-view].active { background:var(--orange); color:#fff!important; }
+.nav-link[data-view] i { width:16px; text-align:center; }
+.sidebar-user { padding:0.75rem 1rem; border-top:1px solid rgba(255,255,255,0.1); font-size:0.75rem; }
+.sidebar-user-name { color:#fff; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sidebar-user-role { color:rgba(255,255,255,0.5); }
+
+/* Layout */
+#mainContent { margin-left:220px; padding:1.5rem; min-height:100vh; }
+.page-title { font-size:1.25rem; font-weight:700; color:var(--navy); margin:0; }
+
+/* Stat cards */
+.stat-card { background:var(--navy); border-radius:12px; padding:1rem 1.25rem; }
+.stat-card .val { font-size:2rem; font-weight:700; color:var(--orange); line-height:1; }
+.stat-card .lbl { font-size:0.72rem; color:rgba(255,255,255,0.55); margin-top:4px; }
+
+/* Associate cards */
+.associate-card {
+  background:#fff; border-radius:12px; border:1px solid #e5e7eb;
+  border-top:3px solid var(--orange); cursor:pointer;
+  transition:all .15s; height:100%;
+}
+.associate-card:hover { box-shadow:0 6px 24px rgba(0,0,0,0.1); transform:translateY(-2px); }
+.avatar-circle {
+  width:42px; height:42px; border-radius:50%; background:var(--navy);
+  color:var(--orange); font-weight:700; font-size:0.875rem;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.assoc-name { font-weight:600; font-size:0.9rem; color:#1f2937; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.assoc-sub { font-size:0.75rem; color:#6b7280; }
+.uph-value { font-size:1.5rem; font-weight:700; color:var(--navy); }
+.uph-label { font-size:0.7rem; color:#9ca3af; }
+
+/* Profile */
+.profile-header { background:var(--navy); border-radius:16px; padding:1.5rem; color:#fff; margin-bottom:1.5rem; }
+.profile-avatar {
+  width:64px; height:64px; border-radius:50%; background:var(--orange);
+  color:#fff; font-weight:700; font-size:1.25rem;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.profile-name { font-size:1.5rem; font-weight:700; }
+.profile-meta { color:rgba(255,255,255,0.65); font-size:0.875rem; }
+
+/* Notes */
+.note-card {
+  background:#fff; border-radius:10px; padding:1rem;
+  border:1px solid #e5e7eb; border-left:4px solid var(--orange);
+}
+.note-text { color:#374151; font-size:0.875rem; line-height:1.6; white-space:pre-wrap; }
+
+/* Search */
+.search-wrap { position:relative; }
+.search-wrap .fa-search { position:absolute; left:0.875rem; top:50%; transform:translateY(-50%); color:#9ca3af; font-size:0.875rem; }
+.search-bar { border-radius:50px!important; padding-left:2.5rem!important; border:1.5px solid #e5e7eb; }
+
+/* Tabs */
+.nav-tabs .nav-link { color:#6b7280; }
+.nav-tabs .nav-link.active { color:var(--navy); font-weight:600; }
+
+/* Buttons */
+.btn-orange { background:var(--orange); color:#fff; border:none; }
+.btn-orange:hover { background:#ea6c0a; color:#fff; }
+
+/* Admin */
+.admin-card { background:#fff; border-radius:12px; padding:1.5rem; border:1px solid #e5e7eb; }
+
+/* Responsive */
+@media(max-width:768px){
+  #sidebar { width:60px; }
+  .brand-name,.brand-sub,.nav-link[data-view] span,.sidebar-user-name,.sidebar-user-role { display:none; }
+  .nav-link[data-view] { justify-content:center; padding:.6rem; }
+  #mainContent { margin-left:60px; padding:1rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="text-center mb-4">
+      <div class="login-logo">LAS1</div>
+      <div class="text-muted small">Associate Performance Tracker</div>
+    </div>
+    <div id="loginError" class="alert alert-danger py-2 d-none small"></div>
+    <div class="mb-3">
+      <label class="form-label small fw-semibold">Email</label>
+      <input type="email" id="loginEmail" class="form-control" placeholder="you@company.com" autocomplete="email">
+    </div>
+    <div class="mb-4">
+      <label class="form-label small fw-semibold">Password</label>
+      <input type="password" id="loginPw" class="form-control" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button id="loginBtn" class="btn btn-orange w-100 py-2 fw-semibold" onclick="doLogin()">Sign In</button>
+    <p class="text-center text-muted small mt-3 mb-0">No account? Contact your admin.</p>
+  </div>
+</div>
+
+<!-- APP SHELL -->
+<div id="appShell" class="d-none">
+
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-name">LAS1 Tracker</div>
+      <div class="brand-sub">Performance Intelligence</div>
+    </div>
+    <div class="sidebar-nav">
+      <a class="nav-link active" data-view="dashboard" onclick="loadDashboard()">
+        <i class="fas fa-th-large"></i><span>Dashboard</span>
+      </a>
+      <a class="nav-link d-none" id="navAdmin" data-view="admin" onclick="loadAdminPanel()">
+        <i class="fas fa-shield-alt"></i><span>Admin</span>
+      </a>
+    </div>
+    <div class="sidebar-user">
+      <div class="sidebar-user-name" id="currentUserName"></div>
+      <div class="sidebar-user-role" id="currentUserRole"></div>
+      <button class="btn btn-sm btn-outline-light w-100 mt-2 py-0" onclick="doLogout()">
+        <i class="fas fa-sign-out-alt me-1"></i><span>Sign Out</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <main id="mainContent">
+
+    <!-- DASHBOARD VIEW -->
+    <div id="dashboardView" class="view">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+        <h1 class="page-title"><i class="fas fa-users me-2" style="color:var(--orange)"></i>Associates</h1>
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-sm btn-outline-success" id="exportBtn" onclick="exportForClaude()">
+            <i class="fas fa-download me-1"></i>Export for Claude
+          </button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="openImport()">
+            <i class="fas fa-camera me-1"></i>Import Snapshot
+          </button>
+          <button class="btn btn-sm btn-orange d-none" id="addAssocBtn" onclick="openAddAssociate()">
+            <i class="fas fa-plus me-1"></i>Add Associate
+          </button>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-4">
+        <div class="col-md-4"><div class="stat-card"><div class="val" id="statTotal">—</div><div class="lbl">Total Associates</div></div></div>
+        <div class="col-md-4"><div class="stat-card"><div class="val" id="statActive">—</div><div class="lbl">Active</div></div></div>
+        <div class="col-md-4"><div class="stat-card"><div class="val" id="statAvgUph">—</div><div class="lbl">Team Avg UPH (30d)</div></div></div>
+      </div>
+
+      <div class="d-flex gap-2 mb-4 flex-wrap">
+        <div class="search-wrap flex-grow-1" style="max-width:360px">
+          <i class="fas fa-search"></i>
+          <input type="text" id="searchInput" class="form-control search-bar" placeholder="Search name or employee ID…" oninput="renderDashboard()">
+        </div>
+        <select class="form-select" style="width:auto" id="filterShift" onchange="renderDashboard()">
+          <option value="">All Shifts</option>
+          <option>Day</option><option>Night</option><option>Twilight</option><option>Sunrise</option>
+        </select>
+        <select class="form-select" style="width:auto" id="filterStatus" onchange="renderDashboard()">
+          <option value="">All Status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+          <option value="leave">On Leave</option>
+        </select>
+      </div>
+
+      <div class="row g-3" id="associateGrid">
+        <div class="col-12 text-center text-muted py-5">
+          <div class="spinner-border text-secondary mb-3" role="status"></div>
+          <div>Connecting…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROFILE VIEW -->
+    <div id="profileView" class="view d-none">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadDashboard()">
+          <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+        </button>
+        <button class="btn btn-sm btn-outline-secondary d-none" id="profileEditBtn">
+          <i class="fas fa-edit me-1"></i>Edit Profile
+        </button>
+      </div>
+
+      <div class="profile-header">
+        <div class="d-flex align-items-center gap-3 mb-4">
+          <div class="profile-avatar" id="profileAvatar">—</div>
+          <div class="flex-grow-1">
+            <div class="profile-name" id="profileName"></div>
+            <div class="profile-meta" id="profileMeta"></div>
+          </div>
+          <span class="badge" id="profileStatus"></span>
+        </div>
+        <div class="row g-3 text-center">
+          <div class="col-4">
+            <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statAvgUphProfile">—</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Avg UPH (30d)</div>
+          </div>
+          <div class="col-4">
+            <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statTotalUnits">—</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Total Units</div>
+          </div>
+          <div class="col-4">
+            <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statLogCount">—</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Log Entries</div>
+          </div>
+        </div>
+      </div>
+
+      <ul class="nav nav-tabs mb-3">
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabProductivity"><i class="fas fa-chart-line me-1"></i>Productivity</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabNotes"><i class="fas fa-sticky-note me-1"></i>Manager Notes</a></li>
+      </ul>
+
+      <div class="tab-content">
+        <div class="tab-pane fade show active" id="tabProductivity">
+          <div class="d-flex justify-content-end mb-3">
+            <button class="btn btn-sm btn-orange" onclick="openLogUph()"><i class="fas fa-plus me-1"></i>Log UPH Entry</button>
+          </div>
+          <div class="bg-white rounded-3 p-3 mb-3 border">
+            <div id="noChartMsg" class="text-center text-muted py-3 d-none">No productivity data yet</div>
+            <canvas id="uphChartCanvas" height="80"></canvas>
+          </div>
+          <div class="bg-white rounded-3 border overflow-hidden">
+            <table class="table table-hover mb-0 small">
+              <thead class="table-light"><tr><th>Date</th><th>UPH</th><th>Units</th><th>Logged By</th><th></th></tr></thead>
+              <tbody id="productivityTbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="tab-pane fade" id="tabNotes">
+          <div class="d-flex justify-content-end mb-3">
+            <button class="btn btn-sm btn-orange" onclick="openAddNote()"><i class="fas fa-plus me-1"></i>Add Note</button>
+          </div>
+          <div id="notesContainer"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ADMIN VIEW -->
+    <div id="adminView" class="view d-none">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="page-title"><i class="fas fa-shield-alt me-2" style="color:var(--orange)"></i>Admin Panel</h1>
+        <button class="btn btn-sm btn-orange" onclick="openCreateUser()"><i class="fas fa-user-plus me-1"></i>Create Account</button>
+      </div>
+      <div class="admin-card">
+        <h6 class="fw-bold mb-3" style="color:var(--navy)">Team Accounts</h6>
+        <div class="table-responsive">
+          <table class="table table-hover small mb-0">
+            <thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Added</th><th>Actions</th></tr></thead>
+            <tbody id="usersTbody"><tr><td colspan="5" class="text-center text-muted py-3">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="mt-3 p-3 bg-light rounded small text-muted">
+          <strong>Roles:</strong>
+          <span class="badge bg-danger ms-1">Admin</span> full access + user management.
+          <span class="badge bg-primary ms-1">Leader</span> add associates, log UPH, add notes.
+          <span class="badge bg-secondary ms-1">Viewer</span> read-only. Click "Role" to cycle between them.
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- MODALS -->
+
+<!-- Add/Edit Associate -->
+<div class="modal fade" id="assocModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header border-0 pb-0">
+      <h5 class="modal-title fw-bold" id="assocModalTitle">Add Associate</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="assocId">
+      <form id="assocForm">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label small fw-semibold">Full Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="assocName" placeholder="Last, First">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">Employee ID</label>
+            <input type="text" class="form-control" id="assocEmployeeId">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">Role</label>
+            <input type="text" class="form-control" id="assocRole" placeholder="Picker, Packer…">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">Shift</label>
+            <select class="form-select" id="assocShift">
+              <option value="">— Select —</option>
+              <option>Day</option><option>Night</option><option>Twilight</option><option>Sunrise</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">Department</label>
+            <input type="text" class="form-control" id="assocDept" placeholder="Inbound, Outbound…">
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">Status</label>
+            <select class="form-select" id="assocStatus">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="leave">On Leave</option>
+            </select>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer border-0 pt-0">
+      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-orange" onclick="saveAssociate()">Save Associate</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Log UPH -->
+<div class="modal fade" id="uphModal" tabindex="-1">
+  <div class="modal-dialog modal-sm"><div class="modal-content">
+    <div class="modal-header border-0 pb-0">
+      <h5 class="modal-title fw-bold">Log UPH Entry</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">Date <span class="text-danger">*</span></label>
+        <input type="date" class="form-control" id="uphDate">
+      </div>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">UPH <span class="text-danger">*</span></label>
+        <input type="number" class="form-control" id="uphValue" step="0.1" min="0" placeholder="e.g. 18.5">
+      </div>
+      <div class="mb-2">
+        <label class="form-label small fw-semibold">Units Completed</label>
+        <input type="number" class="form-control" id="uphUnits" min="0" placeholder="Optional">
+      </div>
+    </div>
+    <div class="modal-footer border-0 pt-0">
+      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-orange" onclick="saveUphLog()">Save</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Add Note -->
+<div class="modal fade" id="noteModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header border-0 pb-0">
+      <h5 class="modal-title fw-bold">Add Manager Note</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <form id="noteForm">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Note Type</label>
+          <select class="form-select" id="noteType">
+            <option>General</option>
+            <option>Coaching</option>
+            <option>Recognition</option>
+            <option>Warning</option>
+            <option>PIP</option>
+            <option>Leadership</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label small fw-semibold">Note <span class="text-danger">*</span></label>
+          <textarea class="form-control" id="noteText" rows="5"
+            placeholder="Add your observations, coaching points, recognition, or leadership potential notes…"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer border-0 pt-0">
+      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-orange" onclick="saveNote()">Save Note</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Create User -->
+<div class="modal fade" id="newUserModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header border-0 pb-0">
+      <h5 class="modal-title fw-bold">Create Team Account</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <form id="newUserForm">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Full Name</label>
+          <input type="text" class="form-control" id="newDisplayName" placeholder="First Last">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Email</label>
+          <input type="email" class="form-control" id="newEmail" placeholder="leader@carparts.com">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Temporary Password</label>
+          <input type="text" class="form-control" id="newPw" placeholder="Min 6 characters">
+        </div>
+        <div>
+          <label class="form-label small fw-semibold">Role</label>
+          <select class="form-select" id="newRole">
+            <option value="viewer">Viewer — read only</option>
+            <option value="leader" selected>Leader — add associates, log UPH, add notes</option>
+            <option value="admin">Admin — full access + user management</option>
+          </select>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer border-0 pt-0">
+      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-orange" id="createUserBtn" onclick="createUser()">Create Account</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Import Snapshot -->
+<div class="modal fade" id="importModal" tabindex="-1">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header border-0 pb-0">
+      <h5 class="modal-title fw-bold"><i class="fas fa-camera me-2"></i>Import from Screenshot</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <p class="text-muted small">Upload a photo or screenshot of the Employee UPH Trend report. The tracker will read it and match data to existing associates.</p>
+      <input type="file" class="form-control mb-3" accept="image/*" onchange="handleImportFile(this)">
+      <div id="importStatus" class="text-muted small mb-2"></div>
+      <div id="importPreview"></div>
+    </div>
+  </div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
