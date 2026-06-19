@@ -554,7 +554,74 @@ window.removeUser = async (uid) => {
 window.openImport = () => {
   document.getElementById('importStatus').textContent = '';
   document.getElementById('importPreview').innerHTML = '';
+  document.getElementById('manualStatus').textContent = '';
+  document.getElementById('manualEmpId').value = '';
+  document.getElementById('manualDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('manualUph').value = '';
+  document.getElementById('manualUnits').value = '';
+  document.getElementById('manualRole').value = '';
+  document.getElementById('manualOnPace').value = '';
   new bootstrap.Modal(document.getElementById('importModal')).show();
+};
+
+window.saveManualEntry = async () => {
+  const empId = document.getElementById('manualEmpId').value.trim().toUpperCase();
+  const date = document.getElementById('manualDate').value;
+  const uph = parseFloat(document.getElementById('manualUph').value);
+  const units = parseInt(document.getElementById('manualUnits').value) || null;
+  const role = document.getElementById('manualRole').value.trim() || null;
+  const onPace = document.getElementById('manualOnPace').value.trim() || null;
+  const statusEl = document.getElementById('manualStatus');
+
+  if (!empId || !date || isNaN(uph)) {
+    statusEl.textContent = 'Employee ID, date, and UPH are required.';
+    statusEl.style.color = 'red';
+    return;
+  }
+
+  // Find matching associate
+  const assocSnap = await get(ref(db, 'associates'));
+  if (!assocSnap.exists()) {
+    statusEl.textContent = 'No associates in the tracker yet. Add the associate first.';
+    statusEl.style.color = 'red';
+    return;
+  }
+  const associates = assocSnap.val();
+  const matchId = Object.keys(associates).find(id =>
+    (associates[id].employeeId || '').toUpperCase() === empId ||
+    associates[id].name.toUpperCase().includes(empId)
+  );
+
+  if (!matchId) {
+    statusEl.textContent = `No associate found with ID "${empId}". Make sure they're added to the tracker first.`;
+    statusEl.style.color = 'orange';
+    return;
+  }
+
+  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+
+  await push(ref(db, `productivity/${matchId}`), {
+    date, uph, unitsCompleted: units,
+    loggedBy: displayName, loggedByUid: currentUser.uid,
+    createdAt: new Date().toISOString()
+  });
+
+  // Add on-pace as a note if present
+  if (onPace) {
+    await push(ref(db, `notes/${matchId}`), {
+      text: `Shift ${date}: ${onPace}. UPH: ${uph}${units ? ', Units: ' + units : ''}${role ? ', Role: ' + role : ''}`,
+      type: 'General',
+      author: displayName, authorUid: currentUser.uid,
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  statusEl.textContent = `✓ Logged for ${associates[matchId].name}!`;
+  statusEl.style.color = 'green';
+  setTimeout(() => {
+    bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
+  }, 1500);
 };
 window.handleImportFile = async (input) => {
   const file = input.files[0];
@@ -1204,14 +1271,60 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 <div class="modal fade" id="importModal" tabindex="-1">
   <div class="modal-dialog modal-lg"><div class="modal-content">
     <div class="modal-header border-0 pb-0">
-      <h5 class="modal-title fw-bold"><i class="fas fa-camera me-2"></i>Import from Screenshot</h5>
+      <h5 class="modal-title fw-bold"><i class="fas fa-camera me-2"></i>Import Snapshot Data</h5>
       <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
     </div>
     <div class="modal-body">
-      <p class="text-muted small">Upload a photo or screenshot of the Employee UPH Trend report. The tracker will read it and match data to existing associates.</p>
-      <input type="file" class="form-control mb-3" accept="image/*" onchange="handleImportFile(this)">
-      <div id="importStatus" class="text-muted small mb-2"></div>
-      <div id="importPreview"></div>
+      <ul class="nav nav-tabs mb-3" id="importTabs">
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabManual"><i class="fas fa-keyboard me-1"></i>Manual Entry</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabOcr"><i class="fas fa-camera me-1"></i>OCR from Image</a></li>
+      </ul>
+      <div class="tab-content">
+
+        <!-- Manual Entry Tab -->
+        <div class="tab-pane fade show active" id="tabManual">
+          <p class="text-muted small mb-3">Enter the values directly from the Performance Snapshot.</p>
+          <div class="row g-3">
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Employee ID <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="manualEmpId" placeholder="e.g. NVTNEEL">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Shift Date <span class="text-danger">*</span></label>
+              <input type="date" class="form-control" id="manualDate">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Individual Avg UPH <span class="text-danger">*</span></label>
+              <input type="number" class="form-control" id="manualUph" step="0.1" placeholder="e.g. 30.2">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Units Completed</label>
+              <input type="number" class="form-control" id="manualUnits" placeholder="e.g. 277">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Role</label>
+              <input type="text" class="form-control" id="manualRole" placeholder="e.g. Large Pack">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold">On Pace?</label>
+              <input type="text" class="form-control" id="manualOnPace" placeholder="e.g. Crushing It">
+            </div>
+          </div>
+          <div id="manualStatus" class="text-muted small mt-2"></div>
+          <button class="btn btn-orange mt-3" onclick="saveManualEntry()">
+            <i class="fas fa-check me-1"></i>Import Entry
+          </button>
+        </div>
+
+        <!-- OCR Tab -->
+        <div class="tab-pane fade" id="tabOcr">
+          <p class="text-muted small">Upload a clear, cropped screenshot of the snapshot table. Results vary by image quality.</p>
+          <input type="file" class="form-control mb-3" accept="image/*" onchange="handleImportFile(this)">
+          <div id="importStatus" class="text-muted small mb-2"></div>
+          <div id="importPreview"></div>
+        </div>
+
+      </div>
     </div>
   </div></div>
 </div>
