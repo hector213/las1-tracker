@@ -36,8 +36,11 @@ let currentUser = null;
 let currentUserRole = 'viewer';
 let currentAssociateId = null;
 let uphChart = null;
+let roleChart = null;
 let activeListeners = {};
 let allAssociates = [];
+let currentDateRange = 30; // days; 0 = all time
+let allProductivityLogs = [];
 
 // ─── Auth ─────────────────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
@@ -152,6 +155,7 @@ function renderDashboard() {
   const uphVals = allAssociates.filter(a => a.avgUph).map(a => parseFloat(a.avgUph));
   document.getElementById('statAvgUph').textContent = uphVals.length
     ? (uphVals.reduce((s, v) => s + v, 0) / uphVals.length).toFixed(1) : '—';
+  renderRoleChart(allAssociates);
 
   const grid = document.getElementById('associateGrid');
   if (!filtered.length) {
@@ -189,6 +193,50 @@ function renderDashboard() {
 }
 window.renderDashboard = renderDashboard;
 
+async function renderRoleChart(associates) {
+  const section = document.getElementById('roleChartSection');
+  const withRoles = associates.filter(a => a.role && a.avgUph);
+  if (!withRoles.length) { section.style.display = 'none'; return; }
+
+  // Group by role
+  const roleMap = {};
+  for (const a of withRoles) {
+    const role = a.role.trim();
+    if (!roleMap[role]) roleMap[role] = [];
+    roleMap[role].push(parseFloat(a.avgUph));
+  }
+  const roles = Object.keys(roleMap).sort();
+  const avgs = roles.map(r => parseFloat((roleMap[r].reduce((s,v)=>s+v,0)/roleMap[r].length).toFixed(1)));
+  const counts = roles.map(r => roleMap[r].length);
+
+  section.style.display = 'block';
+  if (roleChart) { roleChart.destroy(); roleChart = null; }
+  const ctx = document.getElementById('roleChartCanvas');
+  roleChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: roles.map((r, i) => `${r} (${counts[i]})`),
+      datasets: [{
+        label: 'Avg UPH',
+        data: avgs,
+        backgroundColor: avgs.map(v => v >= Math.max(...avgs) * 0.9 ? '#f97316' : '#1a2744'),
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.raw} UPH avg` } }
+      },
+      scales: {
+        y: { beginAtZero: false, grid: { color: 'rgba(0,0,0,0.05)' } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+}
+
 // ─── Profile ──────────────────────────────────────────────────────────
 window.openProfile = async (id) => {
   currentAssociateId = id;
@@ -221,22 +269,38 @@ function listenProductivity(associateId) {
   const prodRef = ref(db, `productivity/${associateId}`);
   activeListeners['productivity'] = prodRef;
   onValue(prodRef, (snap) => {
-    const logs = [];
-    if (snap.exists()) Object.entries(snap.val()).forEach(([id, l]) => logs.push({ id, ...l }));
-    logs.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
-    const recent = logs.filter(l => new Date(l.date) >= cutoff);
-    const avgUph = recent.length ? (recent.reduce((s, l) => s + l.uph, 0) / recent.length).toFixed(1) : '—';
-
-    document.getElementById('statAvgUphProfile').textContent = avgUph;
-    document.getElementById('statTotalUnits').textContent = logs.reduce((s, l) => s + (l.unitsCompleted || 0), 0).toLocaleString();
-    document.getElementById('statLogCount').textContent = logs.length;
-
-    renderUphChart(logs.slice(0, 14).reverse());
-    renderProductivityTable(logs);
+    allProductivityLogs = [];
+    if (snap.exists()) Object.entries(snap.val()).forEach(([id, l]) => allProductivityLogs.push({ id, ...l }));
+    allProductivityLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
+    document.getElementById('statTotalUnits').textContent = allProductivityLogs.reduce((s, l) => s + (l.unitsCompleted || 0), 0).toLocaleString();
+    document.getElementById('statLogCount').textContent = allProductivityLogs.length;
+    applyDateRange();
   });
 }
+
+function applyDateRange() {
+  const logs = allProductivityLogs;
+  let filtered = logs;
+  if (currentDateRange > 0) {
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - currentDateRange);
+    filtered = logs.filter(l => new Date(l.date) >= cutoff);
+  }
+  const avgUph = filtered.length ? (filtered.reduce((s, l) => s + l.uph, 0) / filtered.length).toFixed(1) : '—';
+  document.getElementById('statAvgUphProfile').textContent = avgUph;
+  const chartLogs = filtered.slice(0, 30).reverse();
+  renderUphChart(chartLogs);
+  renderProductivityTable(filtered);
+}
+
+window.setDateRange = (days) => {
+  currentDateRange = days;
+  document.querySelectorAll('.range-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.days) === days);
+    b.classList.toggle('btn-orange', parseInt(b.dataset.days) === days);
+    b.classList.toggle('btn-outline-secondary', parseInt(b.dataset.days) !== days);
+  });
+  applyDateRange();
+};
 
 function renderUphChart(logs) {
   if (uphChart) { uphChart.destroy(); uphChart = null; }
@@ -1099,6 +1163,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </select>
       </div>
 
+      <!-- Role UPH Comparison Chart -->
+      <div class="bg-white rounded-3 border p-3 mb-4" id="roleChartSection" style="display:none">
+        <h6 class="fw-bold mb-3" style="color:var(--navy)">
+          <i class="fas fa-chart-bar me-2" style="color:var(--orange)"></i>Avg UPH by Role (30d)
+        </h6>
+        <canvas id="roleChartCanvas" height="55"></canvas>
+      </div>
+
       <div class="row g-3" id="associateGrid">
         <div class="col-12 text-center text-muted py-5">
           <div class="spinner-border text-secondary mb-3" role="status"></div>
@@ -1150,7 +1222,15 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
       <div class="tab-content">
         <div class="tab-pane fade show active" id="tabProductivity">
-          <div class="d-flex justify-content-end mb-3">
+          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div class="btn-group btn-group-sm">
+              <button class="range-btn btn btn-outline-secondary" data-days="7" onclick="setDateRange(7)">7d</button>
+              <button class="range-btn btn btn-outline-secondary" data-days="14" onclick="setDateRange(14)">14d</button>
+              <button class="range-btn btn btn-orange active" data-days="30" onclick="setDateRange(30)">30d</button>
+              <button class="range-btn btn btn-outline-secondary" data-days="60" onclick="setDateRange(60)">60d</button>
+              <button class="range-btn btn btn-outline-secondary" data-days="90" onclick="setDateRange(90)">90d</button>
+              <button class="range-btn btn btn-outline-secondary" data-days="0" onclick="setDateRange(0)">All</button>
+            </div>
             <button class="btn btn-sm btn-orange" onclick="openLogUph()"><i class="fas fa-plus me-1"></i>Log UPH Entry</button>
           </div>
           <div class="bg-white rounded-3 p-3 mb-3 border">
