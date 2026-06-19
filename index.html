@@ -573,35 +573,80 @@ window.handleImportFile = async (input) => {
     status.textContent = 'Reading image…';
     const result = await Tesseract.recognize(file, 'eng');
     status.textContent = 'Parsing data…';
-    parseOcrText(result.data.text);
+    parseOcrText(result.data.text, file.name);
   } catch (e) {
     status.textContent = 'Error: ' + e.message;
   }
 };
-function parseOcrText(text) {
+function parseOcrText(text, filename) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const status = document.getElementById('importStatus');
   const preview = document.getElementById('importPreview');
+  const full = text.toLowerCase();
 
-  // ── Strategy 1: Performance Snapshot key-value table (your format) ──
-  // Reads "Employee Id  NVTNEEL / Shift Date  6/18/2026 / Individual Avg UPH  30.2"
-  const kv = {};
-  for (const line of lines) {
-    const m = line.match(/^(.+?)\s{2,}(.+)$/);
-    if (m) kv[m[1].trim().toLowerCase()] = m[2].trim();
+  // ── Helper: find value near a label in raw text ──
+  function findAfterLabel(patterns) {
+    for (const pat of patterns) {
+      const idx = full.indexOf(pat.toLowerCase());
+      if (idx === -1) continue;
+      const after = text.slice(idx + pat.length).trim();
+      // value might be on same line (after spaces) or next non-empty token
+      const m = after.match(/^[\s:]*([^\n\r]+)/);
+      if (m) {
+        const val = m[1].trim();
+        if (val.length > 0 && val.length < 60) return val;
+      }
+    }
+    return null;
   }
-  const empId = kv['employee id'] || kv['employee id:'] || kv['employee'];
-  const shiftDate = kv['shift date'] || kv['date'];
-  const avgUph = parseFloat(kv['individual avg uph'] || kv['avg uph'] || kv['uph'] || '');
-  const units = parseInt(kv['units completed'] || kv['units'] || '');
-  const role = kv['role'] || null;
-  const onPace = kv['on pace?'] || kv['on pace'] || null;
 
-  if (empId && shiftDate && !isNaN(avgUph)) {
-    let isoDate = shiftDate;
-    const dParts = shiftDate.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (dParts) isoDate = `${dParts[3]}-${dParts[1].padStart(2,'0')}-${dParts[2].padStart(2,'0')}`;
-    const row = { employeeId: empId, date: isoDate, uph: avgUph, units: isNaN(units) ? null : units, role, onPace };
+  // ── Strategy 1: label-then-next-line (OCR table cells on separate lines) ──
+  const kvLines = {};
+  for (let i = 0; i < lines.length - 1; i++) {
+    const key = lines[i].toLowerCase().replace(/[^a-z\s]/g, '').trim();
+    const val = lines[i + 1];
+    if (key.length > 2 && key.length < 40 && !/^\d/.test(key)) kvLines[key] = val;
+  }
+
+  // ── Strategy 2: same-line key-value (1+ spaces) ──
+  const kvSame = {};
+  for (const line of lines) {
+    const m = line.match(/^(.+?)\s{1,}(\S.*)$/);
+    if (m) kvSame[m[1].trim().toLowerCase()] = m[2].trim();
+  }
+
+  const merged = { ...kvSame, ...kvLines };
+
+  // Pull values — check both sources
+  const empId =
+    merged['employee id'] || merged['employee id:'] ||
+    findAfterLabel(['Employee Id', 'Employee ID']) ||
+    // Fallback: parse from filename e.g. Snapshot_NVTNEEL_20260619_061829.png
+    (filename && filename.match(/Snapshot_([A-Z0-9]+)_/i)?.[1]) || null;
+
+  const shiftDateRaw =
+    merged['shift date'] || merged['date'] ||
+    findAfterLabel(['Shift Date']) ||
+    text.match(/(\d{1,2}\/\d{1,2}\/\d{4})/)?.[1] ||
+    // From filename: 20260619
+    (filename && filename.match(/_(\d{8})_/)?.[1]?.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')) || null;
+
+  const uphRaw =
+    merged['individual avg uph'] || merged['avg uph'] ||
+    findAfterLabel(['Individual Avg UPH', 'Avg UPH', 'Individual Avg']) || null;
+  const avgUph = parseFloat(uphRaw || '');
+
+  const unitsRaw = merged['units completed'] || findAfterLabel(['Units Completed']);
+  const units = parseInt(unitsRaw || '');
+  const role = merged['role'] || findAfterLabel(['Role']) || null;
+  const onPace = merged['on pace?'] || merged['on pace'] || findAfterLabel(['On Pace']) || null;
+
+  if (empId && shiftDateRaw && !isNaN(avgUph)) {
+    let isoDate = shiftDateRaw;
+    const dSlash = shiftDateRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (dSlash) isoDate = `${dSlash[3]}-${dSlash[1].padStart(2,'0')}-${dSlash[2].padStart(2,'0')}`;
+    const shiftDate = isoDate;
+    const row = { employeeId: empId.toUpperCase(), date: isoDate, uph: avgUph, units: isNaN(units) ? null : units, role, onPace };
     const encoded = encodeURIComponent(JSON.stringify([row]));
     status.textContent = 'Snapshot read — review and confirm:';
     preview.innerHTML = `<div class="table-responsive mt-2">
