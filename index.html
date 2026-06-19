@@ -580,6 +580,47 @@ window.handleImportFile = async (input) => {
 };
 function parseOcrText(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const status = document.getElementById('importStatus');
+  const preview = document.getElementById('importPreview');
+
+  // ── Strategy 1: Performance Snapshot key-value table (your format) ──
+  // Reads "Employee Id  NVTNEEL / Shift Date  6/18/2026 / Individual Avg UPH  30.2"
+  const kv = {};
+  for (const line of lines) {
+    const m = line.match(/^(.+?)\s{2,}(.+)$/);
+    if (m) kv[m[1].trim().toLowerCase()] = m[2].trim();
+  }
+  const empId = kv['employee id'] || kv['employee id:'] || kv['employee'];
+  const shiftDate = kv['shift date'] || kv['date'];
+  const avgUph = parseFloat(kv['individual avg uph'] || kv['avg uph'] || kv['uph'] || '');
+  const units = parseInt(kv['units completed'] || kv['units'] || '');
+  const role = kv['role'] || null;
+  const onPace = kv['on pace?'] || kv['on pace'] || null;
+
+  if (empId && shiftDate && !isNaN(avgUph)) {
+    let isoDate = shiftDate;
+    const dParts = shiftDate.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (dParts) isoDate = `${dParts[3]}-${dParts[1].padStart(2,'0')}-${dParts[2].padStart(2,'0')}`;
+    const row = { employeeId: empId, date: isoDate, uph: avgUph, units: isNaN(units) ? null : units, role, onPace };
+    const encoded = encodeURIComponent(JSON.stringify([row]));
+    status.textContent = 'Snapshot read — review and confirm:';
+    preview.innerHTML = `<div class="table-responsive mt-2">
+      <table class="table table-sm table-bordered">
+        <thead class="table-light"><tr><th>Employee ID</th><th>Date</th><th>UPH</th><th>Units</th>${role ? '<th>Role</th>' : ''}${onPace ? '<th>On Pace</th>' : ''}</tr></thead>
+        <tbody><tr>
+          <td><strong>${empId}</strong></td><td>${shiftDate}</td>
+          <td><strong>${avgUph}</strong></td><td>${isNaN(units) ? '—' : units}</td>
+          ${role ? `<td>${role}</td>` : ''}${onPace ? `<td>${onPace}</td>` : ''}
+        </tr></tbody>
+      </table>
+    </div>
+    <button class="btn btn-success" onclick="confirmImport('${encoded}')">
+      <i class="fas fa-check me-1"></i>Import This Entry
+    </button>`;
+    return;
+  }
+
+  // ── Strategy 2: Multi-row report (line-by-line fallback) ──
   const rows = [];
   let currentEmployee = null;
   for (const line of lines) {
@@ -591,13 +632,14 @@ function parseOcrText(text) {
     const unitsMatch = line.match(/Units\s+Completed[:\s]+(\d+)/i);
     if (empMatch && !dateMatch) currentEmployee = empMatch[1];
     if (dateMatch && uphMatch && currentEmployee) {
-      rows.push({ employeeId: currentEmployee, date: dateMatch[1], uph: parseFloat(uphMatch[1]), units: unitsMatch ? parseInt(unitsMatch[1]) : null });
+      let isoDate = dateMatch[1];
+      const dParts = dateMatch[1].match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (dParts) isoDate = `${dParts[3]}-${dParts[1].padStart(2,'0')}-${dParts[2].padStart(2,'0')}`;
+      rows.push({ employeeId: currentEmployee, date: isoDate, uph: parseFloat(uphMatch[1]), units: unitsMatch ? parseInt(unitsMatch[1]) : null });
     }
   }
-  const status = document.getElementById('importStatus');
-  const preview = document.getElementById('importPreview');
   if (!rows.length) {
-    status.textContent = 'Could not extract data. Try a higher-quality or cropped screenshot.';
+    status.textContent = 'Could not extract data. Make sure the full snapshot table is visible and the image is clear.';
     preview.innerHTML = '';
     return;
   }
