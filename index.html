@@ -329,35 +329,98 @@ function renderLeaderboard() {
   }).join('');
 }
 
-function renderMilestones() {
+async function renderMilestones() {
   const el = document.getElementById('milestonesList');
   if (!el) return;
+  el.innerHTML = '<div class="text-muted small py-2">Loading…</div>';
   const today = new Date();
-  const milestones = [];
+  today.setHours(0,0,0,0);
+  const events = [];
+
+  const dayDiff = (d) => Math.round((d - today) / (1000*60*60*24));
+
+  const inWindow = (diff) => diff >= 0 && diff <= 60;
+
+  // ── Work anniversaries ──────────────────────────────────────────────
   allAssociates.filter(a => a.hireDate && a.status === 'active').forEach(a => {
-    const hire = new Date(a.hireDate);
-    const yearsThisYear = today.getFullYear() - hire.getFullYear();
-    for (let y = yearsThisYear; y <= yearsThisYear + 1; y++) {
+    const hire = new Date(a.hireDate); hire.setHours(0,0,0,0);
+    const yearsBase = today.getFullYear() - hire.getFullYear();
+    for (let y = yearsBase; y <= yearsBase + 1; y++) {
       if (y < 1) continue;
       const anniv = new Date(hire);
-      anniv.setFullYear(today.getFullYear() + (y - yearsThisYear));
-      const diff = Math.ceil((anniv - today) / (1000 * 60 * 60 * 24));
-      if (diff >= 0 && diff <= 60) {
-        milestones.push({ name: a.name, id: a.id, years: y, date: anniv, diff });
+      anniv.setFullYear(today.getFullYear() + (y - yearsBase));
+      const diff = dayDiff(anniv);
+      if (inWindow(diff)) {
+        const yr = y === 1 ? '1 Year' : `${y} Years`;
+        events.push({ diff, id: a.id, name: a.name,
+          icon: 'fa-briefcase', color: '#1a2744',
+          detail: `${yr} Work Anniversary`,
+          dateStr: anniv.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
       }
     }
   });
-  milestones.sort((a, b) => a.diff - b.diff);
-  if (!milestones.length) { el.innerHTML = '<div class="text-muted small py-2">No anniversaries in the next 60 days.</div>'; return; }
-  el.innerHTML = milestones.map(m => {
-    const label = m.diff === 0 ? '🎉 Today!' : m.diff === 1 ? 'Tomorrow' : `In ${m.diff} days`;
-    const yr = m.years === 1 ? '1 Year' : `${m.years} Years`;
-    return `<div class="ms-row" onclick="openProfile('${m.id}')">
-      <div>
-        <div class="ms-name">${escapeHtml(m.name)}</div>
-        <div class="ms-detail">${yr} Anniversary · ${m.date.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+
+  // ── Birthdays ───────────────────────────────────────────────────────
+  allAssociates.filter(a => a.birthday && a.status === 'active').forEach(a => {
+    const bday = new Date(a.birthday + 'T00:00:00');
+    const thisYear = new Date(bday); thisYear.setFullYear(today.getFullYear());
+    const nextYear = new Date(bday); nextYear.setFullYear(today.getFullYear() + 1);
+    [thisYear, nextYear].forEach(d => {
+      const diff = dayDiff(d);
+      if (inWindow(diff)) {
+        events.push({ diff, id: a.id, name: a.name,
+          icon: 'fa-birthday-cake', color: '#f97316',
+          detail: 'Birthday 🎂',
+          dateStr: d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
+      }
+    });
+  });
+
+  // ── Point expirations (oldest +pts entry per associate, at 1-year mark) ──
+  try {
+    const logSnap = await get(ref(db, 'pointslog'));
+    if (logSnap.exists()) {
+      Object.entries(logSnap.val()).forEach(([assocId, entries]) => {
+        const assoc = allAssociates.find(a => a.id === assocId && a.status === 'active');
+        if (!assoc) return;
+        // Find all positive point entries, sorted oldest first
+        const positive = Object.values(entries)
+          .filter(e => (e.pts || 0) > 0 && e.createdAt)
+          .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        if (!positive.length) return;
+        // The oldest entry expires in 1 year
+        const oldest = positive[0];
+        const expiry = new Date(oldest.createdAt);
+        expiry.setFullYear(expiry.getFullYear() + 1);
+        expiry.setHours(0,0,0,0);
+        const diff = dayDiff(expiry);
+        if (inWindow(diff)) {
+          events.push({ diff, id: assocId, name: assoc.name,
+            icon: 'fa-star-half-alt', color: '#dc2626',
+            detail: `Losing ${oldest.pts > 0 ? '+' : ''}${oldest.pts} pts (${oldest.reason || 'oldest entry'})`,
+            dateStr: expiry.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
+        }
+      });
+    }
+  } catch(e) { /* points log unavailable */ }
+
+  events.sort((a, b) => a.diff - b.diff);
+
+  if (!events.length) {
+    el.innerHTML = '<div class="text-muted small py-2">No upcoming events in the next 60 days.</div>';
+    return;
+  }
+  el.innerHTML = events.map(ev => {
+    const when = ev.diff === 0 ? '🎉 Today!' : ev.diff === 1 ? 'Tomorrow' : `In ${ev.diff}d`;
+    return `<div class="ms-row" onclick="openProfile('${ev.id}')">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <i class="fas ${ev.icon} mt-1" style="color:${ev.color};font-size:0.85rem;flex-shrink:0"></i>
+        <div>
+          <div class="ms-name">${escapeHtml(ev.name)}</div>
+          <div class="ms-detail">${ev.detail} · ${ev.dateStr}</div>
+        </div>
       </div>
-      <span class="ms-when ${m.diff === 0 ? 'ms-today' : ''}">${label}</span>
+      <span class="ms-when ${ev.diff === 0 ? 'ms-today' : ''}">${when}</span>
     </div>`;
   }).join('');
 }
@@ -412,7 +475,7 @@ window.openProfile = async (id) => {
   const initials = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
   document.getElementById('profileAvatar').textContent = initials;
   document.getElementById('profileName').textContent   = a.name;
-  document.getElementById('profileMeta').textContent = [a.role, a.department, a.shift ? a.shift + ' Shift' : null, a.employeeId ? 'ID: ' + a.employeeId : null, a.hireDate ? 'Hired ' + new Date(a.hireDate).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : null].filter(Boolean).join(' · ');
+  document.getElementById('profileMeta').textContent = [a.role, a.department, a.shift ? a.shift + ' Shift' : null, a.employeeId ? 'ID: ' + a.employeeId : null, a.hireDate ? 'Hired ' + new Date(a.hireDate).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : null, a.birthday ? '🎂 ' + new Date(a.birthday + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : null].filter(Boolean).join(' · ');
   const pts    = a.points || 0;
   const ptsStat = document.getElementById('statPoints');
   ptsStat.textContent = (pts > 0 ? '+' : '') + pts;
@@ -466,9 +529,16 @@ window.openProfile = async (id) => {
   listenCreds(id);
   listenWatchNotes(id);
   listenAttendance(id);
-  // Show attendance add button for leads+
+  // Show attendance add button for leads+ (inside collapsed body)
   const attBtn = document.getElementById('attAddBtn');
   if (attBtn) attBtn.classList.toggle('d-none', currentUserRole === 'viewer');
+  // Always start collapsed when opening a profile
+  const attLogBody = document.getElementById('attLogBody');
+  const attChevron = document.getElementById('attLogChevron');
+  const attLabel   = document.getElementById('attLogToggleLabel');
+  if (attLogBody) attLogBody.classList.add('d-none');
+  if (attChevron) attChevron.style.transform = '';
+  if (attLabel)   attLabel.textContent = 'View Log';
 };
 
 // ─── Flagging ─────────────────────────────────────────────────────────
@@ -1041,6 +1111,7 @@ window.openEditAssociate = (id, data) => {
   document.getElementById('assocStatus').value     = data.status     || 'active';
   document.getElementById('assocPosition').value   = data.position   || '';
   document.getElementById('assocHireDate').value   = data.hireDate   || '';
+  document.getElementById('assocBirthday').value   = data.birthday   || '';
   document.getElementById('assocOpsManager').value = data.opsManager || '';
   new bootstrap.Modal(document.getElementById('assocModal')).show();
 };
@@ -1055,6 +1126,7 @@ window.saveAssociate = async () => {
     status:      document.getElementById('assocStatus').value,
     position:    document.getElementById('assocPosition').value,
     hireDate:    document.getElementById('assocHireDate').value,
+    birthday:    document.getElementById('assocBirthday').value,
     opsManager:  document.getElementById('assocOpsManager').value.trim(),
     updatedAt:  new Date().toISOString(), updatedBy: currentUser?.email
   };
@@ -1451,6 +1523,17 @@ function renderAttendanceLog() {
   }).join('');
 }
 
+window.toggleAttendanceLog = () => {
+  const body     = document.getElementById('attLogBody');
+  const chevron  = document.getElementById('attLogChevron');
+  const label    = document.getElementById('attLogToggleLabel');
+  if (!body) return;
+  const isOpen = !body.classList.contains('d-none');
+  body.classList.toggle('d-none', isOpen);
+  if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+  if (label)   label.textContent = isOpen ? 'View Log' : 'Hide Log';
+};
+
 window.openAttendanceModal = () => {
   document.getElementById('attTypeSelect').value = '';
   document.getElementById('attNote').value = '';
@@ -1667,9 +1750,9 @@ function renderAttCalendar() {
     const evts = dateMap[dateStr] || [];
     const isToday = dateStr === todayStr;
     const hasEvt  = evts.length > 0;
-    const dots = evts.map(e => {
-      const info = ATTENDANCE_TYPES.find(t => t.key === e.type) || { color: '#6b7280' };
-      return `<span class="att-cal-dot" style="background:${info.color}" title="${info.label || e.type}"></span>`;
+    const icons = evts.map(e => {
+      const info = ATTENDANCE_TYPES.find(t => t.key === e.type) || { icon: 'fa-calendar', color: '#6b7280', label: e.type };
+      return `<i class="fas ${info.icon} att-cal-icon" style="color:${info.color}" title="${info.label}"></i>`;
     }).join('');
     const tooltip = evts.map(e => {
       const info = ATTENDANCE_TYPES.find(t => t.key === e.type) || { label: e.type };
@@ -1677,7 +1760,7 @@ function renderAttCalendar() {
     }).join(', ');
     cells.push(`<div class="att-cal-day${isToday ? ' today' : ''}${hasEvt ? ' has-event' : ''}" title="${tooltip}">
       <span class="cal-date">${d}</span>
-      ${hasEvt ? `<div class="cal-dots">${dots}</div>` : ''}
+      ${hasEvt ? `<div class="cal-icons">${icons}</div>` : ''}
     </div>`);
   }
   // Trailing blanks
@@ -1696,8 +1779,8 @@ function renderAttCalendar() {
   });
   const legend = document.getElementById('attCalLegend');
   legend.innerHTML = [...typesInMonth].map(key => {
-    const info = ATTENDANCE_TYPES.find(t => t.key === key) || { label: key, color: '#6b7280' };
-    return `<span style="display:flex;align-items:center;gap:4px"><span class="att-cal-dot" style="background:${info.color}"></span>${info.label}</span>`;
+    const info = ATTENDANCE_TYPES.find(t => t.key === key) || { label: key, icon: 'fa-calendar', color: '#6b7280' };
+    return `<span style="display:flex;align-items:center;gap:5px;color:#374151"><i class="fas ${info.icon}" style="color:${info.color};font-size:0.78rem"></i><span>${info.label}</span></span>`;
   }).join('');
 }
 
@@ -2408,17 +2491,17 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .att-period-btn:hover { border-color:var(--orange); color:var(--orange); background:#fff; }
 .att-period-btn.active { border-color:var(--navy); background:var(--navy); color:#fff; }
 /* Attendance Calendar */
-.att-cal-grid   { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
-.att-cal-header { margin-bottom:4px; }
-.att-cal-header > div { text-align:center; font-size:0.7rem; font-weight:700; color:#9ca3af; padding:2px 0; }
-.att-cal-day    { min-height:38px; border-radius:7px; padding:3px 4px; background:#f9fafb; display:flex; flex-direction:column; align-items:center; font-size:0.72rem; }
+.att-cal-grid   { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+.att-cal-header { margin-bottom:6px; }
+.att-cal-header > div { text-align:center; font-size:0.75rem; font-weight:700; color:#9ca3af; padding:4px 0; }
+.att-cal-day    { min-height:58px; border-radius:8px; padding:5px 4px 4px; background:#f9fafb; display:flex; flex-direction:column; align-items:center; }
 .att-cal-day.today { background:#eff6ff; outline:2px solid #93c5fd; }
-.att-cal-day.other-month { opacity:0.3; }
-.att-cal-day .cal-date { font-weight:600; color:#374151; line-height:1.2; }
-.att-cal-day .cal-dots { display:flex; flex-wrap:wrap; gap:2px; justify-content:center; margin-top:2px; }
-.att-cal-dot    { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
-.att-cal-day.has-event { background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.08); cursor:pointer; }
-.att-cal-day.has-event:hover { box-shadow:0 2px 8px rgba(0,0,0,.15); }
+.att-cal-day.other-month { opacity:0.25; }
+.att-cal-day .cal-date { font-weight:700; font-size:0.78rem; color:#374151; line-height:1.3; }
+.att-cal-day .cal-icons { display:flex; flex-wrap:wrap; gap:3px; justify-content:center; margin-top:4px; }
+.att-cal-icon   { font-size:0.78rem; line-height:1; }
+.att-cal-day.has-event { background:#fff; box-shadow:0 1px 5px rgba(0,0,0,.1); cursor:pointer; }
+.att-cal-day.has-event:hover { box-shadow:0 3px 10px rgba(0,0,0,.15); transform:translateY(-1px); transition:.1s; }
 
 /* Cross Training Matrix */
 .matrix-wrap { overflow-x:auto; }
@@ -2528,7 +2611,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <i class="fas fa-calendar-alt"></i><span>Attendance</span>
       </a>
       <a class="nav-link" data-view="pointslog" onclick="loadPointsLog()">
-        <i class="fas fa-star"></i><span>Points Log</span>
+        <i class="fas fa-star"></i><span>Engagement Points Log</span>
       </a>
       <a class="nav-link" data-view="help" onclick="showView('help')">
         <i class="fas fa-question-circle"></i><span>Help</span>
@@ -2619,7 +2702,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
         <div class="col-lg-6" id="milestonesSection">
           <div class="dashboard-widget-panel">
-            <div class="widget-header"><i class="fas fa-birthday-cake me-2" style="color:#f97316"></i>Upcoming Milestones</div>
+            <div class="widget-header"><i class="fas fa-calendar-star me-2" style="color:#f97316"></i>Upcoming Events</div>
             <div id="milestonesList"></div>
           </div>
         </div>
@@ -2738,15 +2821,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
       </div>
 
-      <!-- Private Watch Notes (leaders/admins only) -->
       <!-- Attendance -->
       <div class="mt-4" id="attendanceSection">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-calendar-alt me-2" style="color:var(--orange)"></i>Attendance Log</h6>
-          <button class="btn btn-sm btn-orange d-none" id="attAddBtn" onclick="openAttendanceModal()"><i class="fas fa-plus me-1"></i>Log Event</button>
-        </div>
-        <!-- Score panel -->
-        <div class="att-score-panel mb-3">
+        <!-- Score panel (always visible) — click to expand log -->
+        <div class="att-score-panel mb-0" style="cursor:pointer" onclick="toggleAttendanceLog()" id="attScoreToggle">
           <div>
             <div class="att-score-big" id="attScoreVal" style="color:#10b981">0</div>
             <div class="att-score-label">Attendance Points</div>
@@ -2757,8 +2835,18 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <div class="att-score-stat"><div class="val" id="attBreakLeft">0</div><div class="lbl">Left Early</div></div>
             <div class="att-score-stat"><div class="val" id="attScoreCount">0</div><div class="lbl">Total Events</div></div>
           </div>
+          <div style="color:rgba(255,255,255,0.6);font-size:0.8rem;display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0">
+            <span id="attLogToggleLabel" style="font-size:0.72rem">View Log</span>
+            <i class="fas fa-chevron-down" id="attLogChevron" style="transition:.2s"></i>
+          </div>
         </div>
-        <div id="attendanceLog"></div>
+        <!-- Collapsible log -->
+        <div id="attLogBody" class="d-none">
+          <div class="d-flex justify-content-end mt-2 mb-1">
+            <button class="btn btn-sm btn-orange d-none" id="attAddBtn" onclick="openAttendanceModal()"><i class="fas fa-plus me-1"></i>Log Event</button>
+          </div>
+          <div id="attendanceLog"></div>
+        </div>
       </div>
 
       <div id="watchSection" class="d-none mt-4">
@@ -3036,7 +3124,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     <!-- POINTS LOG VIEW -->
     <div id="pointslogView" class="view d-none">
       <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-        <h1 class="page-title"><i class="fas fa-star me-2" style="color:var(--orange)"></i>Points Log</h1>
+        <h1 class="page-title"><i class="fas fa-star me-2" style="color:var(--orange)"></i>Engagement Points Log</h1>
       </div>
       <div class="admin-card">
         <div class="d-flex gap-2 mb-3 flex-wrap align-items-end">
@@ -3127,7 +3215,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#f8f9fa">
               <div class="form-check form-switch mb-0">
                 <input class="form-check-input" type="checkbox" id="tabToggle_pointslog" onchange="saveTabVisibility('pointslog', this.checked)">
-                <label class="form-check-label small fw-semibold" for="tabToggle_pointslog"><i class="fas fa-star me-1" style="color:var(--navy)"></i>Points Log</label>
+                <label class="form-check-label small fw-semibold" for="tabToggle_pointslog"><i class="fas fa-star me-1" style="color:var(--navy)"></i>Engagement Points Log</label>
               </div>
             </div>
           </div>
@@ -3267,6 +3355,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="col-6">
             <label class="form-label small fw-semibold">Hire Date</label>
             <input type="date" class="form-control" id="assocHireDate">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">Birthday <span class="text-muted fw-normal">(optional)</span></label>
+            <input type="date" class="form-control" id="assocBirthday">
           </div>
           <div class="col-6">
             <label class="form-label small fw-semibold">Operations Manager</label>
