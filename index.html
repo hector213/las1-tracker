@@ -664,12 +664,11 @@ window.exportToClaude = async () => {
   const btn = document.getElementById('exportClaudeBtn');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Building…'; }
 
-  const attPts  = assoc.attendancePoints || 0;
-  const policy  = attPts >= 10 ? 'TERMINATION' : attPts >= 9 ? 'Final Warning' : attPts >= 6 ? 'Written Warning' : attPts >= 3 ? 'Documented Verbal' : 'Good Standing';
-  const engPts  = assoc.points || 0;
+  const attPts = assoc.attendancePoints || 0;
+  const policy = attPts >= 10 ? 'TERMINATION' : attPts >= 9 ? 'Final Warning' : attPts >= 6 ? 'Written Warning' : attPts >= 3 ? 'Documented Verbal' : 'Good Standing';
+  const engPts = assoc.points || 0;
 
   let out = `Please provide a comprehensive HR synopsis for the following associate. Highlight strengths, engagement trends, attendance patterns, areas of concern, and any leadership development or performance management recommendations.\n\n`;
-
   out += `=== ASSOCIATE PROFILE ===\n`;
   out += `Name: ${assoc.name}\n`;
   if (assoc.employeeId) out += `Employee ID: ${assoc.employeeId}\n`;
@@ -693,13 +692,15 @@ window.exportToClaude = async () => {
   } else { out += `No attendance events on record.\n`; }
 
   out += `\n=== CERTIFICATIONS ===\n`;
-  const certSnap = await get(ref(db, `certs/${currentAssociateId}`));
-  const certsData = certSnap.exists() ? certSnap.val() : {};
-  const certified = Object.entries(certsData).filter(([,v]) => v?.status === 'certified').map(([k]) => k.replace(/_/g,' '));
-  const training  = Object.entries(certsData).filter(([,v]) => v?.status === 'training').map(([k]) => k.replace(/_/g,' '));
-  if (certified.length) out += `Certified (${certified.length}): ${certified.join(', ')}\n`;
-  else out += `No certifications held.\n`;
-  if (training.length) out += `In Training: ${training.join(', ')}\n`;
+  try {
+    const certSnap = await get(ref(db, `certs/${currentAssociateId}`));
+    const certsData = certSnap.exists() ? certSnap.val() : {};
+    const certified = Object.entries(certsData).filter(([,v]) => v?.status === 'certified').map(([k]) => k.replace(/_/g,' '));
+    const training  = Object.entries(certsData).filter(([,v]) => v?.status === 'training').map(([k]) => k.replace(/_/g,' '));
+    if (certified.length) out += `Certified (${certified.length}): ${certified.join(', ')}\n`;
+    else out += `No certifications held.\n`;
+    if (training.length) out += `In Training: ${training.join(', ')}\n`;
+  } catch(e) { out += `(Certifications unavailable)\n`; }
 
   out += `\n=== ACHIEVEMENT BADGES ===\n`;
   const approved = lastBadges.filter(b => b.status === 'approved');
@@ -745,19 +746,53 @@ window.exportToClaude = async () => {
 
   out += `\n=== END OF PROFILE DATA ===`;
 
-  try {
-    await navigator.clipboard.writeText(out);
-    window.open('https://claude.ai', '_blank');
-    const toast = document.createElement('div');
-    toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#1a2744;color:#fff;padding:14px 22px;border-radius:10px;z-index:9999;font-size:0.875rem;box-shadow:0 4px 20px rgba(0,0,0,0.25);display:flex;align-items:center;gap:10px';
-    toast.innerHTML = '<i class="fas fa-check-circle" style="color:#f97316;font-size:1.1rem"></i><div><div style="font-weight:600">Profile copied!</div><div style="font-size:0.78rem;opacity:0.75">Paste into Claude to start the analysis</div></div>';
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 5000);
-  } catch(e) {
-    const win = window.open('', '_blank');
-    win.document.write('<pre style="white-space:pre-wrap;font-family:monospace;padding:2rem">' + out.replace(/</g,'&lt;') + '</pre>');
-  }
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-robot me-1"></i>Export to Claude'; }
+
+  // Show modal with compiled text
+  let modal = document.getElementById('exportClaudeModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'exportClaudeModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:12px;width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.3)">
+        <div style="background:#1a2744;color:#fff;padding:1rem 1.25rem;border-radius:12px 12px 0 0;display:flex;align-items:center;justify-content:space-between">
+          <div style="font-weight:700;font-size:1rem"><i class="fas fa-robot me-2" style="color:#f97316"></i>Export to Claude</div>
+          <button onclick="document.getElementById('exportClaudeModal').remove()" style="background:none;border:none;color:#fff;font-size:1.25rem;cursor:pointer;line-height:1">&times;</button>
+        </div>
+        <div style="padding:1rem 1.25rem;background:#f8f9fa;border-bottom:1px solid #e5e7eb">
+          <p style="margin:0;font-size:0.85rem;color:#374151">Profile data compiled for <strong id="exportAssocName"></strong>. Click <strong>Copy &amp; Open Claude</strong>, then paste into the Claude message box.</p>
+        </div>
+        <textarea id="exportClaudeText" readonly style="flex:1;margin:0;padding:1rem 1.25rem;border:none;resize:none;font-family:monospace;font-size:0.78rem;line-height:1.5;color:#1f2937;min-height:300px;outline:none"></textarea>
+        <div style="padding:1rem 1.25rem;border-top:1px solid #e5e7eb;display:flex;gap:0.75rem;justify-content:flex-end">
+          <button onclick="document.getElementById('exportClaudeModal').remove()" style="background:#f3f4f6;border:none;padding:0.5rem 1rem;border-radius:8px;cursor:pointer;font-size:0.875rem">Close</button>
+          <button id="exportCopyBtn" onclick="window._claudeCopy()" style="background:#1a2744;color:#fff;border:none;padding:0.5rem 1.25rem;border-radius:8px;cursor:pointer;font-size:0.875rem;font-weight:600"><i class="fas fa-copy me-1"></i>Copy</button>
+          <button onclick="window._claudeCopyOpen()" style="background:#f97316;color:#fff;border:none;padding:0.5rem 1.25rem;border-radius:8px;cursor:pointer;font-size:0.875rem;font-weight:600"><i class="fas fa-robot me-1"></i>Copy &amp; Open Claude</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  document.getElementById('exportAssocName').textContent = assoc.name;
+  document.getElementById('exportClaudeText').value = out;
+
+  window._claudeCopy = () => {
+    const ta = document.getElementById('exportClaudeText');
+    ta.select();
+    try { navigator.clipboard.writeText(ta.value); } catch(e) { document.execCommand('copy'); }
+    const cb = document.getElementById('exportCopyBtn');
+    cb.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+    cb.style.background = '#16a34a';
+    setTimeout(() => { cb.innerHTML = '<i class="fas fa-copy me-1"></i>Copy'; cb.style.background = '#1a2744'; }, 2000);
+  };
+
+  window._claudeCopyOpen = () => {
+    const ta = document.getElementById('exportClaudeText');
+    ta.select();
+    try { navigator.clipboard.writeText(ta.value); } catch(e) { document.execCommand('copy'); }
+    window.open('https://claude.ai', '_blank');
+    document.getElementById('exportClaudeModal').remove();
+  };
 };
 
 window.openFlagModal = () => {
@@ -4158,7 +4193,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <input type="date" class="form-control" id="manualDate">
             </div>
             <div class="col-6">
-              <label class="form-label small fw-semibold">Individual Avg UPH <span class="text-danger">*</span></label>
               <label class="form-label small fw-semibold">Individual Avg UPH <span class="text-danger">*</span></label>
               <input type="number" class="form-control" id="manualUph" step="0.1" placeholder="e.g. 30.2">
             </div>
