@@ -659,9 +659,11 @@ window.loadAdminPanel = () => {
       <td><span class="badge ${u.role === 'admin' ? 'bg-danger' : u.role === 'leader' ? 'bg-primary' : 'bg-secondary'}">${capitalize(u.role || 'viewer')}</span></td>
       <td class="text-muted small">${formatDate(u.createdAt)}</td>
       <td>
-        <button class="btn btn-sm btn-outline-secondary me-1 py-0" onclick="cycleRole('${u.uid}','${u.role}')">
-          <i class="fas fa-exchange-alt"></i> Role
-        </button>
+        <select class="form-select form-select-sm d-inline-block me-1" style="width:auto" onchange="setRole('${u.uid}',this.value)" ${u.uid === currentUser?.uid ? 'disabled' : ''}>
+          <option value="viewer" ${(u.role||'viewer')==='viewer' ? 'selected' : ''}>Viewer</option>
+          <option value="leader" ${(u.role||'viewer')==='leader' ? 'selected' : ''}>Leader</option>
+          <option value="admin"  ${(u.role||'viewer')==='admin'  ? 'selected' : ''}>Admin</option>
+        </select>
         ${u.uid !== currentUser?.uid ? `<button class="btn btn-sm btn-outline-danger py-0" onclick="removeUser('${u.uid}')"><i class="fas fa-trash-alt"></i></button>` : ''}
       </td>
     </tr>`).join('');
@@ -737,10 +739,9 @@ window.createUser = async () => {
     btn.disabled = false; btn.textContent = 'Create Account';
   }
 };
-window.cycleRole = async (uid, currentRole) => {
-  const roles = ['viewer', 'leader', 'admin'];
-  const next  = roles[(roles.indexOf(currentRole) + 1) % roles.length];
-  if (confirm(`Change role to "${next}"?`)) await update(ref(db, `users/${uid}`), { role: next });
+window.setRole = async (uid, newRole) => {
+  if (!confirm(`Change role to "${newRole}"?`)) { loadUsers(); return; }
+  await update(ref(db, `users/${uid}`), { role: newRole });
 };
 window.removeUser = async (uid) => {
   if (!confirm('Remove this user?')) return;
