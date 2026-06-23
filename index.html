@@ -2032,6 +2032,7 @@ window.loadAdminPanel = () => {
   loadPendingBadges();
   loadTabToggles();
   loadResetPanel();
+  loadAttResetPanel();
 };
 
 // ─── Tab Visibility ───────────────────────────────────────────────────
@@ -2162,11 +2163,66 @@ window.resetAllEngagementPoints = async () => {
     await remove(ref(db, 'pointslog'));
     const writes = allAssociates.map(a => update(ref(db, `associates/${a.id}`), { points: 0 }));
     await Promise.all(writes);
-    _expirationChecked = false; // allow next expiration check to run fresh
+    _expirationChecked = false;
     alert('All engagement points have been reset.');
     loadResetPanel();
   } catch(e) { alert('Error: ' + e.message); }
   finally { btn.disabled = false; btn.textContent = 'Reset All Points'; }
+};
+
+// ── Attendance data management ────────────────────────────────────────
+window.loadAttResetPanel = () => {
+  const container = document.getElementById('resetAttList');
+  if (!container) return;
+  const active = allAssociates.filter(a => a.status === 'active').sort((a,b) => a.name.localeCompare(b.name));
+  if (!active.length) { container.innerHTML = '<p class="text-muted small">No active associates.</p>'; return; }
+  container.innerHTML = active.map(a => `
+    <div class="form-check">
+      <input class="form-check-input reset-att-check" type="checkbox" id="acheck_${a.id}" value="${a.id}">
+      <label class="form-check-label small" for="acheck_${a.id}">
+        ${escapeHtml(a.name)}
+        <span class="text-muted">(${(a.attendancePoints || 0).toFixed ? (+(a.attendancePoints||0) % 1 === 0 ? (a.attendancePoints||0) : (+a.attendancePoints||0).toFixed(1)) : 0} att. pts)</span>
+      </label>
+    </div>`).join('');
+};
+
+window.selectAllAttReset = (checked) => {
+  document.querySelectorAll('.reset-att-check').forEach(cb => cb.checked = checked);
+};
+
+window.deleteSelectedAttendance = async () => {
+  const selected = [...document.querySelectorAll('.reset-att-check:checked')].map(cb => cb.value);
+  if (!selected.length) { alert('Select at least one associate.'); return; }
+  const names = selected.map(id => allAssociates.find(a => a.id === id)?.name || id).join(', ');
+  if (!confirm(`Delete all attendance records for:\n${names}\n\nThis will zero their attendance point totals. Continue?`)) return;
+  const btn = document.getElementById('deleteSelectedAttBtn');
+  btn.disabled = true; btn.textContent = 'Clearing…';
+  try {
+    const writes = [];
+    for (const assocId of selected) {
+      writes.push(remove(ref(db, `attendance/${assocId}`)));
+      writes.push(update(ref(db, `associates/${assocId}`), { attendancePoints: 0 }));
+    }
+    await Promise.all(writes);
+    alert('Done! Attendance records cleared.');
+    loadAttResetPanel();
+  } catch(e) { alert('Error: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = 'Delete Selected'; }
+};
+
+window.resetAllAttendance = async () => {
+  if (!confirm('⚠️ RESET ALL ATTENDANCE RECORDS\n\nThis will:\n• Delete ALL attendance entries for every associate\n• Set every associate\'s attendance points to 0\n\nThis cannot be undone. Continue?')) return;
+  const btn = document.getElementById('resetAllAttBtn');
+  btn.disabled = true; btn.textContent = 'Resetting…';
+  try {
+    await remove(ref(db, 'attendance'));
+    const writes = allAssociates.map(a => update(ref(db, `associates/${a.id}`), { attendancePoints: 0 }));
+    await Promise.all(writes);
+    _expirationChecked = false;
+    alert('All attendance records have been reset.');
+    loadAttResetPanel();
+  } catch(e) { alert('Error: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = 'Reset All Attendance'; }
 };
 
 window.openCreateUser = () => {
@@ -3499,15 +3555,36 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <i class="fas fa-trash-alt me-1"></i>Reset All Points
           </button>
         </div>
-        <p class="small text-muted mb-3">Select associates to clear their individual point logs and zero their totals, or use Reset All to wipe everyone at once.</p>
+        <!-- Engagement Points -->
+        <div class="mb-1"><span class="small fw-semibold" style="color:var(--navy)"><i class="fas fa-star me-1" style="color:var(--orange)"></i>Engagement Points</span></div>
+        <p class="small text-muted mb-2">Select associates to clear their individual point logs and zero their totals, or use Reset All to wipe everyone at once.</p>
         <div class="d-flex gap-2 mb-2">
           <button class="btn btn-sm btn-outline-secondary" onclick="selectAllReset(true)">Select All</button>
-          <button class="btn btn-sm btn-outline-secondary" onclick="selectAllReset(false)">Clear Selection</button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="selectAllReset(false)">Clear</button>
           <button class="btn btn-sm btn-danger ms-auto" id="deleteSelectedBtn" onclick="deleteSelectedPoints()">
             <i class="fas fa-times me-1"></i>Delete Selected
           </button>
         </div>
-        <div id="resetAssocList" class="border rounded p-2" style="max-height:220px;overflow-y:auto;background:#fafafa">
+        <div id="resetAssocList" class="border rounded p-2 mb-4" style="max-height:200px;overflow-y:auto;background:#fafafa">
+          <p class="text-muted small mb-0">Loading…</p>
+        </div>
+
+        <!-- Attendance Data -->
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="small fw-semibold" style="color:var(--navy)"><i class="fas fa-calendar-alt me-1" style="color:var(--orange)"></i>Attendance Records</span>
+          <button class="btn btn-sm btn-outline-danger" id="resetAllAttBtn" onclick="resetAllAttendance()">
+            <i class="fas fa-trash-alt me-1"></i>Reset All Attendance
+          </button>
+        </div>
+        <p class="small text-muted mb-2">Select associates to delete their attendance log entries and zero their attendance point totals.</p>
+        <div class="d-flex gap-2 mb-2">
+          <button class="btn btn-sm btn-outline-secondary" onclick="selectAllAttReset(true)">Select All</button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="selectAllAttReset(false)">Clear</button>
+          <button class="btn btn-sm btn-danger ms-auto" id="deleteSelectedAttBtn" onclick="deleteSelectedAttendance()">
+            <i class="fas fa-times me-1"></i>Delete Selected
+          </button>
+        </div>
+        <div id="resetAttList" class="border rounded p-2" style="max-height:200px;overflow-y:auto;background:#fafafa">
           <p class="text-muted small mb-0">Loading…</p>
         </div>
       </div>
@@ -3893,6 +3970,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <option value="viewer">Viewer — read only</option>
             <option value="lead" selected>Lead — add notes, certs, nominate badges, view/add credentials</option>
             <option value="supervisor">Supervisor — Lead access + private watch notes + delete notes</option>
+            <option value="admin">Admin — full access + user management + badge approvals</option>
             <option value="admin">Admin — full access + user management + badge approvals</option>
           </select>
         </div>
