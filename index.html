@@ -275,6 +275,9 @@ window.openProfile = async (id) => {
   document.getElementById('profileMeta').textContent   =
     [a.role, a.department, a.shift ? a.shift + ' Shift' : null, a.employeeId ? 'ID: ' + a.employeeId : null]
       .filter(Boolean).join(' · ');
+  const omEl = document.getElementById('profileOpsManager');
+  if (a.opsManager) { omEl.textContent = ''; omEl.innerHTML = `<i class="fas fa-user-tie me-1" style="color:var(--orange)"></i>Ops Manager: <strong>${escapeHtml(a.opsManager)}</strong>`; omEl.classList.remove('d-none'); }
+  else { omEl.classList.add('d-none'); }
 
   const statusEl = document.getElementById('profileStatus');
   statusEl.textContent = capitalize(a.status || 'active');
@@ -751,9 +754,10 @@ window.openEditAssociate = (id, data) => {
     const key = f === 'EmployeeId' ? 'employeeId' : f === 'Dept' ? 'department' : f.toLowerCase();
     document.getElementById('assoc' + f).value = data[key] || '';
   });
-  document.getElementById('assocShift').value    = data.shift    || '';
-  document.getElementById('assocStatus').value   = data.status   || 'active';
-  document.getElementById('assocPosition').value = data.position || '';
+  document.getElementById('assocShift').value      = data.shift      || '';
+  document.getElementById('assocStatus').value     = data.status     || 'active';
+  document.getElementById('assocPosition').value   = data.position   || '';
+  document.getElementById('assocOpsManager').value = data.opsManager || '';
   new bootstrap.Modal(document.getElementById('assocModal')).show();
 };
 window.saveAssociate = async () => {
@@ -762,10 +766,11 @@ window.saveAssociate = async () => {
     name:       document.getElementById('assocName').value.trim(),
     employeeId: document.getElementById('assocEmployeeId').value.trim(),
     role:       document.getElementById('assocRole').value.trim(),
-    shift:      document.getElementById('assocShift').value,
-    department: document.getElementById('assocDept').value.trim(),
-    status:     document.getElementById('assocStatus').value,
-    position:   document.getElementById('assocPosition').value,
+    shift:       document.getElementById('assocShift').value,
+    department:  document.getElementById('assocDept').value.trim(),
+    status:      document.getElementById('assocStatus').value,
+    position:    document.getElementById('assocPosition').value,
+    opsManager:  document.getElementById('assocOpsManager').value.trim(),
     updatedAt:  new Date().toISOString(), updatedBy: currentUser?.email
   };
   if (!data.name) { alert('Name is required'); return; }
@@ -1512,6 +1517,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="flex-grow-1">
             <div class="profile-name" id="profileName"></div>
             <div class="profile-meta" id="profileMeta"></div>
+            <div class="profile-meta d-none mt-1" id="profileOpsManager" style="font-size:0.78rem;color:rgba(255,255,255,0.75)"></div>
             <div class="d-flex gap-2 align-items-center mt-1 flex-wrap">
               <span class="badge" id="profileStatus"></span>
               <span id="profilePosition"></span>
@@ -1696,6 +1702,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <option value="lead">Lead</option>
               <option value="supervisor">Supervisor</option>
             </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">Operations Manager</label>
+            <input type="text" class="form-control" id="assocOpsManager" placeholder="Name of their Operations Manager">
           </div>
         </div>
       </form>
