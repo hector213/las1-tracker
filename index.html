@@ -2670,6 +2670,24 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
       </div>
 
+      <!-- Leadership Team -->
+      <div id="leadershipSection" class="d-none mb-4">
+        <div class="leadership-panel">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div class="leadership-header mb-0">
+              <i class="fas fa-shield-alt me-2"></i>Meet Your Leadership Team
+            </div>
+            <div class="d-flex gap-1">
+              <button class="leader-filter-btn filter-active" data-shift="All" onclick="setLeaderFilter('All')">All</button>
+              <button class="leader-filter-btn" data-shift="A1" onclick="setLeaderFilter('A1')">A1</button>
+              <button class="leader-filter-btn" data-shift="A2" onclick="setLeaderFilter('A2')">A2</button>
+              <button class="leader-filter-btn" data-shift="B1" onclick="setLeaderFilter('B1')">B1</button>
+            </div>
+          </div>
+          <div class="leadership-roster" id="leadershipRoster"></div>
+        </div>
+      </div>
+
       <div class="row g-3 mb-4">
         <div class="col-md-4"><div class="stat-card"><div class="val" id="statTotal">—</div><div class="lbl">Total Associates</div></div></div>
         <div class="col-md-4"><div class="stat-card"><div class="val" id="statActive">—</div><div class="lbl">Active</div></div></div>
@@ -2683,7 +2701,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
         <select class="form-select" style="width:auto" id="filterShift" onchange="renderDashboard()">
           <option value="">All Shifts</option>
-          <option>Day</option><option>Night</option><option>Twilight</option><option>Sunrise</option>
+          <option>A1</option><option>A2</option><option>B1</option>
         </select>
         <select class="form-select" style="width:auto" id="filterStatus" onchange="renderDashboard()">
           <option value="">All Status</option>
@@ -2696,13 +2714,22 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <option value="pip">PIP Track</option>
           <option value="low-uph">Low UPH</option>
         </select>
+        <select class="form-select" style="width:auto" id="filterCert" onchange="renderDashboard()">
+          <option value="">All Certs</option>
+        </select>
       </div>
 
-      <div class="row g-3" id="associateGrid">
+      <div class="row g-3 mb-4" id="associateGrid">
         <div class="col-12 text-center text-muted py-5">
           <div class="spinner-border text-secondary mb-3" role="status"></div>
           <div>Connecting…</div>
         </div>
+      </div>
+
+      <!-- Upcoming Events widget -->
+      <div class="admin-card mt-2">
+        <div class="widget-header"><i class="fas fa-calendar-star me-2" style="color:#f97316"></i>Upcoming Events</div>
+        <div id="milestonesList" class="pt-2"><div class="text-muted small py-2">Loading…</div></div>
       </div>
     </div>
 
