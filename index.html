@@ -60,7 +60,9 @@ let currentAssociateId = null;
 let activeListeners = {};
 let allAssociates = [];
 let lastNotes = [];
-let currentNoteFilter = 'All';
+let currentNoteFilter   = 'All';
+let leaderShiftFilter   = 'All';
+let allLeaders          = [];
 
 // ─── Auth ─────────────────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
@@ -166,6 +168,21 @@ function renderDashboard() {
   document.getElementById('statActive').textContent  = allAssociates.filter(a => a.status === 'active').length;
   document.getElementById('statFlagged').textContent = allAssociates.filter(a => a.flag && a.flag !== '').length;
 
+  // Leadership section
+  allLeaders = allAssociates
+    .filter(a => a.position === 'supervisor' || a.position === 'lead')
+    .sort((a, b) => {
+      if (a.position !== b.position) return a.position === 'supervisor' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+  const leaderSection = document.getElementById('leadershipSection');
+  if (allLeaders.length) {
+    leaderSection.classList.remove('d-none');
+    renderLeaders();
+  } else {
+    leaderSection.classList.add('d-none');
+  }
+
   const grid = document.getElementById('associateGrid');
   if (!filtered.length) {
     grid.innerHTML = `<div class="col-12 text-center text-muted py-5">
@@ -210,6 +227,36 @@ function renderDashboard() {
   }).join('');
 }
 window.renderDashboard = renderDashboard;
+
+function renderLeaders() {
+  const roster   = document.getElementById('leadershipRoster');
+  const filtered = leaderShiftFilter === 'All'
+    ? allLeaders
+    : allLeaders.filter(a => a.shift === leaderShiftFilter);
+
+  if (!filtered.length) {
+    roster.innerHTML = `<div class="text-white-50 small py-2">No leaders on ${leaderShiftFilter} shift.</div>`;
+    return;
+  }
+  roster.innerHTML = filtered.map(a => {
+    const initials = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
+    const isSup    = a.position === 'supervisor';
+    return `<div class="leader-card" onclick="openProfile('${a.id}')">
+      <div class="leader-avatar ${isSup ? 'avatar-supervisor' : 'avatar-lead'}">${initials}</div>
+      <div class="leader-name">${escapeHtml(a.name)}</div>
+      <div class="leader-pos"><i class="fas ${isSup ? 'fa-shield-alt' : 'fa-star'} me-1"></i>${isSup ? 'Supervisor' : 'Lead'}</div>
+      <div class="leader-shift">${escapeHtml(a.shift || '—')} Shift</div>
+    </div>`;
+  }).join('');
+}
+
+window.setLeaderFilter = (shift) => {
+  leaderShiftFilter = shift;
+  document.querySelectorAll('.leader-filter-btn').forEach(b =>
+    b.classList.toggle('filter-active', b.dataset.shift === shift)
+  );
+  renderLeaders();
+};
 
 // ─── Profile ──────────────────────────────────────────────────────────
 window.openProfile = async (id) => {
@@ -409,24 +456,34 @@ function renderBadges(badges) {
     if (b.status === 'pending')  pendingMap[b.badge]  = b;
   });
 
-  let html = '<div class="badge-shelf">';
-  BADGES.forEach(def => {
-    const awarded  = approvedMap[def.label];
-    const pending  = canNominate && pendingMap[def.label];
-    const isElite  = def.tier === 'elite';
-    const activeClass = awarded ? (isElite ? 'badge-card-elite' : 'badge-card-active') : 'badge-card-inactive';
-    const title    = awarded
-      ? `Awarded ${formatDate(awarded.approvedAt)} by ${escapeHtml(awarded.approvedBy || '?')}`
-      : pending ? `Pending approval (nominated by ${escapeHtml(pending.nominatedBy || '?')})` : '';
-    html += `<div class="badge-card ${activeClass}" title="${title}">
-      <div class="badge-emoji">${def.emoji}</div>
-      <div class="badge-label">${escapeHtml(def.label)}</div>
-      ${awarded ? `<div class="badge-date">${formatDate(awarded.approvedAt)}</div>` : ''}
-      ${pending ? `<div class="badge-pending-tag">Pending</div>` : ''}
-      ${awarded && currentUserRole === 'admin' ? `<button class="badge-remove-btn" onclick="removeBadge('${awarded.id}')" title="Remove badge">×</button>` : ''}
-    </div>`;
-  });
-  html += '</div>';
+  // Only show approved badges (and pending ones to the nominator/admin)
+  const visibleBadges = BADGES.filter(def =>
+    approvedMap[def.label] || (canNominate && pendingMap[def.label])
+  );
+
+  let html = '';
+  if (visibleBadges.length) {
+    html += '<div class="badge-shelf">';
+    visibleBadges.forEach(def => {
+      const awarded = approvedMap[def.label];
+      const pending = pendingMap[def.label];
+      const isElite = def.tier === 'elite';
+      const cardClass = awarded ? (isElite ? 'badge-card-elite' : 'badge-card-active') : 'badge-card-pending-view';
+      const title = awarded
+        ? `Awarded ${formatDate(awarded.approvedAt)} by ${escapeHtml(awarded.approvedBy || '?')}`
+        : `Pending approval — nominated by ${escapeHtml(pending?.nominatedBy || '?')}`;
+      html += `<div class="badge-card ${cardClass}" title="${title}">
+        <div class="badge-emoji">${def.emoji}</div>
+        <div class="badge-label">${escapeHtml(def.label)}</div>
+        ${awarded ? `<div class="badge-date">${formatDate(awarded.approvedAt)}</div>` : ''}
+        ${!awarded && pending ? `<div class="badge-pending-tag">Pending Approval</div>` : ''}
+        ${awarded && currentUserRole === 'admin' ? `<button class="badge-remove-btn" onclick="removeBadge('${awarded.id}')" title="Remove badge">×</button>` : ''}
+      </div>`;
+    });
+    html += '</div>';
+  } else {
+    html += '<span class="text-muted small">No badges earned yet.</span>';
+  }
 
   if (canNominate) {
     html += `<div class="mt-2"><button class="btn btn-sm btn-outline-secondary" onclick="openNominateBadge()">
@@ -439,15 +496,18 @@ function renderBadges(badges) {
 window.openNominateBadge = () => {
   const sel = document.getElementById('badgeSelect');
   sel.innerHTML = BADGES.map(b => `<option value="${b.label}">${b.emoji} ${b.label}${b.tier==='elite' ? ' ⭐' : ''}</option>`).join('');
+  document.getElementById('badgeReason').value = '';
   new bootstrap.Modal(document.getElementById('badgeModal')).show();
 };
 window.saveBadgeNomination = async () => {
-  const badge    = document.getElementById('badgeSelect').value;
+  const badge  = document.getElementById('badgeSelect').value;
+  const reason = document.getElementById('badgeReason').value.trim();
+  if (!reason) { alert('Please add a reason for the nomination.'); return; }
   const userSnap = await get(ref(db, `users/${currentUser.uid}`));
   const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
   const assoc    = allAssociates.find(a => a.id === currentAssociateId);
   await push(ref(db, `badges/${currentAssociateId}`), {
-    badge, status: 'pending',
+    badge, reason, status: 'pending',
     nominatedBy: displayName, nominatedByUid: currentUser.uid,
     nominatedAt: new Date().toISOString(),
     associateId: currentAssociateId, associateName: assoc?.name || ''
@@ -664,19 +724,26 @@ async function loadPendingBadges() {
     container.innerHTML = '<p class="text-muted small mb-0">No pending nominations right now.</p>';
     return;
   }
-  container.innerHTML = `<div class="table-responsive"><table class="table table-sm small mb-0">
-    <thead class="table-light"><tr><th>Associate</th><th>Badge</th><th>Nominated By</th><th>Date</th><th>Actions</th></tr></thead>
-    <tbody>${pending.map(p => `<tr>
-      <td class="fw-semibold">${escapeHtml(p.associateName || p.assocId)}</td>
-      <td><i class="fas fa-star text-warning me-1"></i>${escapeHtml(p.badge)}</td>
-      <td>${escapeHtml(p.nominatedBy || '—')}</td>
-      <td>${formatDate(p.nominatedAt)}</td>
-      <td>
-        <button class="btn btn-sm btn-success py-0 me-1" onclick="approveBadge('${p.assocId}','${p.badgeId}').then(()=>loadPendingBadges())">Approve</button>
-        <button class="btn btn-sm btn-outline-danger py-0" onclick="rejectBadge('${p.assocId}','${p.badgeId}').then(()=>loadPendingBadges())">Reject</button>
-      </td>
-    </tr>`).join('')}</tbody>
-  </table></div>`;
+  container.innerHTML = pending.map(p => `
+    <div class="pending-badge-card mb-3">
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+        <div>
+          <span class="fw-bold">${escapeHtml(p.associateName || p.assocId)}</span>
+          <span class="mx-2 text-muted">·</span>
+          <span class="badge bg-warning text-dark"><i class="fas fa-star me-1"></i>${escapeHtml(p.badge)}</span>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-success py-0" onclick="approveBadge('${p.assocId}','${p.badgeId}').then(()=>loadPendingBadges())">
+            <i class="fas fa-check me-1"></i>Approve
+          </button>
+          <button class="btn btn-sm btn-outline-danger py-0" onclick="rejectBadge('${p.assocId}','${p.badgeId}').then(()=>loadPendingBadges())">
+            <i class="fas fa-times me-1"></i>Reject
+          </button>
+        </div>
+      </div>
+      ${p.reason ? `<div class="pending-badge-reason">"${escapeHtml(p.reason)}"</div>` : ''}
+      <div class="text-muted small mt-1">Nominated by ${escapeHtml(p.nominatedBy || '—')} · ${formatDate(p.nominatedAt)}</div>
+    </div>`).join('');
 }
 window.loadPendingBadges = loadPendingBadges;
 
@@ -1024,7 +1091,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   background:linear-gradient(135deg,#78350f 0%,#b45309 50%,#d97706 100%);
   border-color:#fbbf24; box-shadow:0 4px 20px rgba(251,191,36,0.4);
 }
-.badge-card-inactive { opacity:0.38; filter:grayscale(0.6); }
+.badge-card-inactive     { opacity:0.38; filter:grayscale(0.6); }
+.badge-card-pending-view { background:#f9fafb; border-color:#d1d5db; opacity:0.6; }
 .badge-emoji { font-size:2.4rem; line-height:1; margin-bottom:0.35rem; }
 .badge-label {
   font-size:0.68rem; font-weight:600; line-height:1.25;
@@ -1052,6 +1120,27 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .note-filter-btn { background:#f3f4f6; border:1px solid #e5e7eb; border-radius:20px; padding:3px 12px; font-size:0.78rem; cursor:pointer; color:#374151; }
 .note-filter-btn.filter-active { background:var(--navy); color:#fff; border-color:var(--navy); }
 
+/* Leadership panel */
+.leadership-panel { background:linear-gradient(135deg,#1a2744 0%,#2d3f6b 100%); border-radius:14px; padding:1.25rem 1.5rem; }
+.leadership-header { color:var(--orange); font-weight:700; font-size:0.9rem; letter-spacing:0.04em; text-transform:uppercase; }
+.leader-filter-btn { background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:20px; padding:3px 12px; font-size:0.75rem; cursor:pointer; color:rgba(255,255,255,0.7); transition:all .15s; }
+.leader-filter-btn:hover { background:rgba(255,255,255,0.18); color:#fff; }
+.leader-filter-btn.filter-active { background:var(--orange); border-color:var(--orange); color:#fff; }
+.leadership-roster { display:flex; flex-wrap:wrap; gap:1rem; }
+.leader-card {
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.12);
+  border-radius:12px; padding:1rem 1.25rem; cursor:pointer; min-width:110px;
+  transition:all .2s;
+}
+.leader-card:hover { background:rgba(255,255,255,0.13); transform:translateY(-2px); }
+.leader-avatar { width:52px; height:52px; border-radius:50%; font-weight:700; font-size:1rem; display:flex; align-items:center; justify-content:center; margin-bottom:0.5rem; }
+.avatar-supervisor { background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; box-shadow:0 0 0 3px rgba(124,58,237,0.35); }
+.avatar-lead       { background:linear-gradient(135deg,#0369a1,#0891b2); color:#fff; box-shadow:0 0 0 3px rgba(8,145,178,0.35); }
+.leader-name  { color:#fff; font-weight:600; font-size:0.85rem; line-height:1.2; }
+.leader-pos   { color:var(--orange); font-size:0.72rem; font-weight:600; margin-top:3px; }
+.leader-shift { color:rgba(255,255,255,0.45); font-size:0.68rem; margin-top:2px; }
+
 /* Position badges */
 .position-badge { display:inline-flex; align-items:center; border-radius:20px; padding:2px 8px; font-size:0.68rem; font-weight:700; letter-spacing:0.02em; }
 .pos-supervisor { background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; }
@@ -1077,6 +1166,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
 /* Admin */
 .admin-card { background:#fff; border-radius:12px; padding:1.5rem; border:1px solid #e5e7eb; margin-bottom:1.5rem; }
+.pending-badge-card { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:0.875rem 1rem; }
+.pending-badge-reason { font-size:0.85rem; color:#374151; font-style:italic; background:#fff; border-left:3px solid #f97316; padding:0.4rem 0.75rem; border-radius:0 6px 6px 0; }
 
 /* Responsive */
 @media(max-width:768px){
@@ -1146,9 +1237,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <button class="btn btn-sm btn-outline-success" id="exportBtn" onclick="exportForClaude()">
             <i class="fas fa-download me-1"></i>Export for Claude
           </button>
-          <button class="btn btn-sm btn-outline-secondary" onclick="openImport()">
-            <i class="fas fa-camera me-1"></i>Import Snapshot
-          </button>
           <button class="btn btn-sm btn-orange d-none" id="addAssocBtn" onclick="openAddAssociate()">
             <i class="fas fa-plus me-1"></i>Add Associate
           </button>
@@ -1168,7 +1256,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
         <select class="form-select" style="width:auto" id="filterShift" onchange="renderDashboard()">
           <option value="">All Shifts</option>
-          <option>Day</option><option>Night</option><option>Twilight</option><option>Sunrise</option>
+          <option>A1</option><option>A2</option><option>B1</option>
         </select>
         <select class="form-select" style="width:auto" id="filterStatus" onchange="renderDashboard()">
           <option value="">All Status</option>
@@ -1181,6 +1269,24 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <option value="pip">PIP Track</option>
           <option value="low-uph">Low UPH</option>
         </select>
+      </div>
+
+      <!-- Leadership Team -->
+      <div id="leadershipSection" class="d-none mb-4">
+        <div class="leadership-panel">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div class="leadership-header mb-0">
+              <i class="fas fa-shield-alt me-2"></i>Meet Your Leadership Team
+            </div>
+            <div class="d-flex gap-1">
+              <button class="leader-filter-btn filter-active" data-shift="All" onclick="setLeaderFilter('All')">All</button>
+              <button class="leader-filter-btn" data-shift="A1" onclick="setLeaderFilter('A1')">A1</button>
+              <button class="leader-filter-btn" data-shift="A2" onclick="setLeaderFilter('A2')">A2</button>
+              <button class="leader-filter-btn" data-shift="B1" onclick="setLeaderFilter('B1')">B1</button>
+            </div>
+          </div>
+          <div class="leadership-roster" id="leadershipRoster"></div>
+        </div>
       </div>
 
       <div class="row g-3" id="associateGrid">
@@ -1221,15 +1327,11 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </div>
         </div>
         <div class="row g-3 text-center">
-          <div class="col-4">
-            <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statSnapCount">—</div>
-            <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Snapshots</div>
-          </div>
-          <div class="col-4">
+          <div class="col-6">
             <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statNoteCount">—</div>
             <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Notes on File</div>
           </div>
-          <div class="col-4">
+          <div class="col-6">
             <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statCertCount">—</div>
             <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Certifications</div>
           </div>
@@ -1238,9 +1340,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
       <!-- Badges section -->
       <div class="chips-section">
-        <h6><i class="fas fa-star me-1" style="color:#f97316"></i>Achievement Badges
-          <span class="text-muted fw-normal" style="font-size:0.7rem"> — lit badges are awarded · dim badges are available to nominate</span>
-        </h6>
+        <h6><i class="fas fa-star me-1" style="color:#f97316"></i>Achievement Badges</h6>
         <div id="badgesContainer">
           <div class="badge-shelf"><span class="text-muted small">Loading…</span></div>
         </div>
@@ -1364,7 +1464,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <label class="form-label small fw-semibold">Shift</label>
             <select class="form-select" id="assocShift">
               <option value="">— Select —</option>
-              <option>Day</option><option>Night</option><option>Twilight</option><option>Sunrise</option>
+              <option>A1</option><option>A2</option><option>B1</option>
             </select>
           </div>
           <div class="col-6">
@@ -1430,9 +1530,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     </div>
     <div class="modal-body">
       <label class="form-label small fw-semibold">Achievement Badge</label>
-      <select class="form-select" id="badgeSelect">
+      <select class="form-select mb-3" id="badgeSelect">
         <!-- options populated dynamically by openNominateBadge() -->
       </select>
+      <label class="form-label small fw-semibold">Reason for Nomination <span class="text-danger">*</span></label>
+      <textarea class="form-control" id="badgeReason" rows="3"
+        placeholder="Why does this associate deserve this badge? Be specific…"></textarea>
       <p class="text-muted small mt-2 mb-0">Nomination will be sent to an admin for approval.</p>
     </div>
     <div class="modal-footer border-0 pt-0">
