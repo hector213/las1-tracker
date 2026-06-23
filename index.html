@@ -298,7 +298,6 @@ window.openProfile = async (id) => {
   // Reset note filter UI
   document.querySelectorAll('.note-filter-btn').forEach(b => b.classList.toggle('filter-active', b.dataset.type === 'All'));
 
-  listenSnapshots(id);
   listenNotes(id);
   listenBadges(id);
   listenCerts(id);
@@ -395,45 +394,6 @@ window.deleteNote = async (noteId) => {
   if (!confirm('Delete this note?')) return;
   await remove(ref(db, `notes/${currentAssociateId}/${noteId}`));
 };
-
-// ─── Snapshots ────────────────────────────────────────────────────────
-function listenSnapshots(associateId) {
-  const snapRef = ref(db, `snapshots/${associateId}`);
-  activeListeners['snapshots'] = snapRef;
-  onValue(snapRef, (snap) => {
-    const snapshots = [];
-    if (snap.exists()) Object.entries(snap.val()).forEach(([id, s]) => snapshots.push({ id, ...s }));
-    snapshots.sort((a, b) => new Date(b.date) - new Date(a.date));
-    document.getElementById('statSnapCount').textContent = snapshots.length;
-    renderSnapshots(snapshots);
-  });
-}
-
-function renderSnapshots(snapshots) {
-  const tbody = document.getElementById('snapshotsTbody');
-  if (!snapshots.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No snapshots yet — import one using the Import button</td></tr>';
-    return;
-  }
-  const onPaceColor = (val) => {
-    if (!val) return '';
-    const v = val.toLowerCase();
-    if (v.includes('crush') || v === 'yes' || v === 'on pace') return 'text-success fw-semibold';
-    if (v.includes('behind') || v === 'no') return 'text-danger fw-semibold';
-    return 'text-warning fw-semibold';
-  };
-  tbody.innerHTML = snapshots.map(s => `
-    <tr>
-      <td>${s.date || '—'}</td>
-      <td>${escapeHtml(s.role || '—')}</td>
-      <td class="fw-semibold">${s.uph != null ? s.uph : '—'}</td>
-      <td>${s.unitsCompleted != null ? s.unitsCompleted.toLocaleString() : '—'}</td>
-      <td>${escapeHtml(s.uphTarget || '—')}</td>
-      <td>${escapeHtml(s.variance || '—')}</td>
-      <td class="${onPaceColor(s.onPace)}">${escapeHtml(s.onPace || '—')}</td>
-      <td class="text-muted small">${escapeHtml(s.importedBy || '—')}</td>
-    </tr>`).join('');
-}
 
 // ─── Badges ───────────────────────────────────────────────────────────
 function listenBadges(associateId) {
@@ -1356,46 +1316,23 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
       </div>
 
-      <!-- Tabs -->
-      <ul class="nav nav-tabs mb-3">
-        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabSnapshots"><i class="fas fa-camera me-1"></i>Shift Snapshots</a></li>
-        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabNotes"><i class="fas fa-sticky-note me-1"></i>Manager Notes</a></li>
-      </ul>
-
-      <div class="tab-content">
-
-        <!-- Shift Snapshots -->
-        <div class="tab-pane fade show active" id="tabSnapshots">
-          <div class="bg-white rounded-3 border overflow-hidden">
-            <table class="table table-hover mb-0 small">
-              <thead class="table-light">
-                <tr><th>Date</th><th>Role</th><th>UPH</th><th>Units</th><th>Target</th><th>Variance</th><th>On Pace</th><th>Imported By</th></tr>
-              </thead>
-              <tbody id="snapshotsTbody">
-                <tr><td colspan="8" class="text-center text-muted py-3">No snapshots yet</td></tr>
-              </tbody>
-            </table>
+      <!-- Manager Notes -->
+      <div class="notes-section-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <h6 class="fw-bold mb-1" style="color:var(--navy)"><i class="fas fa-sticky-note me-2" style="color:var(--orange)"></i>Manager Notes</h6>
+          <div class="d-flex gap-1 flex-wrap">
+            <button class="note-filter-btn filter-active" data-type="All" onclick="setNoteFilter('All')">All</button>
+            <button class="note-filter-btn" data-type="Coaching" onclick="setNoteFilter('Coaching')">Coaching</button>
+            <button class="note-filter-btn" data-type="Recognition" onclick="setNoteFilter('Recognition')">Recognition</button>
+            <button class="note-filter-btn" data-type="Leadership" onclick="setNoteFilter('Leadership')">Leadership</button>
+            <button class="note-filter-btn" data-type="Warning" onclick="setNoteFilter('Warning')">Warning</button>
+            <button class="note-filter-btn" data-type="PIP" onclick="setNoteFilter('PIP')">PIP</button>
+            <button class="note-filter-btn" data-type="General" onclick="setNoteFilter('General')">General</button>
           </div>
         </div>
-
-        <!-- Manager Notes -->
-        <div class="tab-pane fade" id="tabNotes">
-          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-            <div class="d-flex gap-1 flex-wrap">
-              <button class="note-filter-btn filter-active" data-type="All" onclick="setNoteFilter('All')">All</button>
-              <button class="note-filter-btn" data-type="Coaching" onclick="setNoteFilter('Coaching')">Coaching</button>
-              <button class="note-filter-btn" data-type="Recognition" onclick="setNoteFilter('Recognition')">Recognition</button>
-              <button class="note-filter-btn" data-type="Leadership" onclick="setNoteFilter('Leadership')">Leadership</button>
-              <button class="note-filter-btn" data-type="Warning" onclick="setNoteFilter('Warning')">Warning</button>
-              <button class="note-filter-btn" data-type="PIP" onclick="setNoteFilter('PIP')">PIP</button>
-              <button class="note-filter-btn" data-type="General" onclick="setNoteFilter('General')">General</button>
-            </div>
-            <button class="btn btn-sm btn-orange" onclick="openAddNote()"><i class="fas fa-plus me-1"></i>Add Note</button>
-          </div>
-          <div id="notesContainer"></div>
-        </div>
-
+        <button class="btn btn-sm btn-orange" onclick="openAddNote()"><i class="fas fa-plus me-1"></i>Add Note</button>
       </div>
+      <div id="notesContainer"></div>
     </div>
 
     <!-- ADMIN VIEW -->
