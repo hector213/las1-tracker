@@ -43,7 +43,7 @@ const CERTS = [
   'Small Packer','Large Packer','MOD Pick','Replen Pick','Replen Put',
   'Inbound Putaway','Inbound Receiver','Inbound Unloader','Small Loader','Large Loader',
   'Inbound Spider','Outbound Spider','Jackpot','WOS Pick','WOS Pack',
-  'Inventory Control','Large Consolidator','Small Consolidator','Inbound Profiler','Maintenance'
+  'Inventory Control','Large Consolidator','Small Consolidator','Inbound Profiler','Maintenance','Pack Size Operator'
 ];
 const FLAGS  = {
   '':               { label: 'No Flag',        cls: 'bg-secondary' },
@@ -418,7 +418,7 @@ window.openProfile = async (id) => {
   flagEl.innerHTML = (a.flag && a.flag !== '')
     ? `<span class="badge ${FLAGS[a.flag].cls}">${FLAGS[a.flag].label}</span>` : '';
 
-  const canEdit = currentUserRole === 'admin' || currentUserRole === 'leader';
+  const canEdit = currentUserRole === 'admin' || currentUserRole === 'supervisor' || currentUserRole === 'lead';
   document.getElementById('profileEditBtn').classList.toggle('d-none', !canEdit);
   document.getElementById('profileEditBtn').onclick = () => openEditAssociate(id, a);
   document.getElementById('profileFlagBtn').classList.toggle('d-none', !canEdit);
@@ -503,7 +503,7 @@ function renderNotes(notes) {
         </div>
         <div class="d-flex align-items-center gap-2">
           <span class="text-muted small">${formatDateTime(n.createdAt)}</span>
-          ${(currentUserRole === 'admin' || n.authorUid === currentUser?.uid)
+          ${(currentUserRole === 'admin' || currentUserRole === 'supervisor')
             ? `<button class="btn btn-sm btn-link text-danger p-0" onclick="deleteNote('${n.id}')"><i class="fas fa-times"></i></button>` : ''}
         </div>
       </div>
@@ -671,7 +671,7 @@ let lastWatchNotes = [];
 let watchNotesOpen = false;
 
 function listenWatchNotes(associateId) {
-  const canSee = currentUserRole === 'admin' || currentUserRole === 'leader';
+  const canSee = currentUserRole === 'admin' || currentUserRole === 'supervisor';
   const section = document.getElementById('watchSection');
   if (!canSee) { section.classList.add('d-none'); return; }
   section.classList.remove('d-none');
@@ -690,7 +690,7 @@ function listenWatchNotes(associateId) {
 
 function renderWatchNotes(notes) {
   const container = document.getElementById('watchNotesContainer');
-  const canEdit = currentUserRole === 'admin' || currentUserRole === 'leader';
+  const canEdit = currentUserRole === 'admin' || currentUserRole === 'supervisor';
   if (!notes.length) {
     container.innerHTML = `<div class="text-center text-muted py-3 small"><i class="fas fa-eye-slash me-1"></i>No watch notes yet.</div>`;
     return;
@@ -765,7 +765,7 @@ let badgesExpanded = false;
 
 function renderBadges(badges) {
   const container   = document.getElementById('badgesContainer');
-  const canNominate = currentUserRole === 'admin' || currentUserRole === 'leader';
+  const canNominate = currentUserRole === 'admin' || currentUserRole === 'supervisor' || currentUserRole === 'lead';
 
   // Group approved by type (array), collect pending by type
   const approvedByType = {}; // label → [badge, ...]
@@ -932,36 +932,71 @@ function listenCerts(associateId) {
 
 function renderCerts(certs) {
   const container = document.getElementById('certsContainer');
-  const canEdit   = currentUserRole === 'admin' || currentUserRole === 'leader';
+  const canEdit   = currentUserRole === 'admin' || currentUserRole === 'supervisor' || currentUserRole === 'lead';
   container.innerHTML = CERTS.map(cert => {
-    const key  = cert.replace(/\s+/g, '_');
-    const held = certs[key];
-    const tip  = held
+    const key      = cert.replace(/\s+/g, '_');
+    const held     = certs[key];
+    const status   = held ? (held.status || 'certified') : null;
+    const isTraining   = status === 'training';
+    const isCertified  = status === 'certified';
+    const chipCls  = isCertified ? 'chip-cert' : isTraining ? 'chip-cert-training' : 'chip-cert-empty';
+    const icon     = isCertified ? 'fa-check-circle' : isTraining ? 'fa-clock' : 'fa-circle';
+    const tip      = isCertified
       ? `Certified ${formatDate(held.certifiedAt)} by ${escapeHtml(held.certifiedBy || '?')}`
-      : 'Not certified — click to certify';
-    return `<span class="chip ${held ? 'chip-cert' : 'chip-cert-empty'}"
+      : isTraining
+        ? `In Training — added ${formatDate(held.certifiedAt)} by ${escapeHtml(held.certifiedBy || '?')}`
+        : 'Not certified — click to update';
+    return `<span class="chip ${chipCls}"
       title="${tip}"
-      ${canEdit ? `onclick="toggleCert('${key}', '${cert.replace(/'/g,"\\'")}' )"` : ''}
+      ${canEdit ? `onclick="openCertModal('${key}', '${cert.replace(/'/g,"\\'")}')"` : ''}
       style="${canEdit ? 'cursor:pointer' : ''}">
-      <i class="fas ${held ? 'fa-check-circle' : 'fa-circle'} me-1"></i>${cert}
+      <i class="fas ${icon} me-1"></i>${cert}
     </span>`;
   }).join('');
 }
 
-window.toggleCert = async (key, label) => {
-  const certRef  = ref(db, `certs/${currentAssociateId}/${key}`);
-  const existing = await get(certRef);
-  if (existing.exists()) {
-    if (!confirm(`Remove "${label}" certification?`)) return;
+let _certModalKey = null;
+let _certModalLabel = null;
+let _certModalExisting = null;
+
+window.openCertModal = async (key, label) => {
+  _certModalKey   = key;
+  _certModalLabel = label;
+  const snap = await get(ref(db, `certs/${currentAssociateId}/${key}`));
+  _certModalExisting = snap.exists() ? snap.val() : null;
+
+  const status = _certModalExisting ? (_certModalExisting.status || 'certified') : null;
+  document.getElementById('certModalTitle').textContent = label;
+  // Highlight current status
+  document.getElementById('certBtnCertified').classList.toggle('active', status === 'certified');
+  document.getElementById('certBtnTraining').classList.toggle('active', status === 'training');
+  document.getElementById('certBtnRemove').classList.toggle('d-none', !_certModalExisting);
+  new bootstrap.Modal(document.getElementById('certModal')).show();
+};
+
+window.setCertStatus = async (newStatus) => {
+  bootstrap.Modal.getInstance(document.getElementById('certModal'))?.hide();
+  const certRef = ref(db, `certs/${currentAssociateId}/${_certModalKey}`);
+  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+  const oldStatus = _certModalExisting ? (_certModalExisting.status || 'certified') : null;
+
+  if (newStatus === 'remove') {
     await remove(certRef);
-    await update(ref(db, `associates/${currentAssociateId}`), { points: increment(-10) });
-    await logPoints(currentAssociateId, 'Certification', `Cert removed: ${label}`, -10);
+    if (oldStatus === 'certified') {
+      await update(ref(db, `associates/${currentAssociateId}`), { points: increment(-10) });
+      await logPoints(currentAssociateId, 'Certification', `Cert removed: ${_certModalLabel}`, -10);
+    }
   } else {
-    const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-    const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
-    await set(certRef, { certifiedAt: new Date().toISOString(), certifiedBy: displayName });
-    await update(ref(db, `associates/${currentAssociateId}`), { points: increment(10) });
-    await logPoints(currentAssociateId, 'Certification', `Cert earned: ${label}`, 10);
+    await set(certRef, { certifiedAt: new Date().toISOString(), certifiedBy: displayName, status: newStatus });
+    if (newStatus === 'certified' && oldStatus !== 'certified') {
+      await update(ref(db, `associates/${currentAssociateId}`), { points: increment(10) });
+      await logPoints(currentAssociateId, 'Certification', `Cert earned: ${_certModalLabel}`, 10);
+    } else if (newStatus === 'training' && oldStatus === 'certified') {
+      // Downgraded from certified — reverse the points
+      await update(ref(db, `associates/${currentAssociateId}`), { points: increment(-10) });
+      await logPoints(currentAssociateId, 'Certification', `Cert moved to training: ${_certModalLabel}`, -10);
+    }
   }
 };
 
@@ -1131,6 +1166,180 @@ window.exportForClaude = async () => {
   }
 };
 
+// ─── Cross Training Matrix ─────────────────────────────────────────────
+let matrixCertsData = {}; // { associateId: { certKey: certData } }
+
+window.loadMatrix = async () => {
+  showView('matrix');
+  detachAll();
+  // Load all certs from Firebase
+  const certsSnap = await get(ref(db, 'certs'));
+  matrixCertsData = certsSnap.exists() ? certsSnap.val() : {};
+  renderMatrix();
+};
+window.renderMatrix = renderMatrix;
+
+function renderMatrix() {
+  const shiftFilter  = document.getElementById('matrixShift')?.value  || '';
+  const statusFilter = document.getElementById('matrixStatus')?.value;
+
+  // Filter associates
+  let associates = allAssociates.filter(a => {
+    if (shiftFilter  && a.shift  !== shiftFilter)  return false;
+    if (statusFilter && a.status !== statusFilter) return false;
+    return true;
+  }).sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!associates.length) {
+    document.getElementById('matrixTable').innerHTML =
+      '<div class="text-muted text-center py-5">No associates match the selected filters.</div>';
+    document.getElementById('matrixCoverageBar').innerHTML = '';
+    document.getElementById('matrixRecommendations').innerHTML = '';
+    return;
+  }
+
+  // Build cert coverage data
+  // certCoverage[certLabel] = { count, total, assocIds[] }
+  const certCoverage = {};
+  CERTS.forEach(cert => {
+    certCoverage[cert] = { count: 0, total: associates.length, holders: [] };
+  });
+
+  // Build per-associate cert map: { certLabel → 'certified'|'training'|null }
+  const assocCertMap = {}; // assocId → Map of cert label → status
+  associates.forEach(a => {
+    const myCerts = matrixCertsData[a.id] || {};
+    const certStatusMap = {};
+    CERTS.forEach(cert => {
+      const key = cert.replace(/\s+/g, '_');
+      if (myCerts[key]) {
+        const status = myCerts[key].status || 'certified';
+        certStatusMap[cert] = status;
+        if (status === 'certified') {
+          certCoverage[cert].count++;
+          certCoverage[cert].holders.push(a.name);
+        }
+      }
+    });
+    assocCertMap[a.id] = certStatusMap;
+  });
+
+  // ── Coverage bar ──────────────────────────────────────────────────
+  const barEl = document.getElementById('matrixCoverageBar');
+  const sortedCerts = [...CERTS].sort((a, b) =>
+    certCoverage[a].count / certCoverage[a].total - certCoverage[b].count / certCoverage[b].total
+  );
+  barEl.innerHTML = sortedCerts.map(cert => {
+    const { count, total } = certCoverage[cert];
+    const pct = total ? Math.round((count / total) * 100) : 0;
+    const color = pct < 25 ? '#dc2626' : pct < 50 ? '#d97706' : pct < 75 ? '#f97316' : '#059669';
+    return `<div class="coverage-bar-row">
+      <div class="coverage-bar-label" title="${cert}">${cert}</div>
+      <div class="coverage-bar-track">
+        <div class="coverage-bar-fill" style="width:${pct}%;background:${color}"></div>
+      </div>
+      <div class="coverage-bar-pct" style="color:${color}">${pct}%</div>
+      <div style="font-size:11px;color:#9ca3af;min-width:60px">${count}/${total}</div>
+    </div>`;
+  }).join('');
+
+  // ── Recommendations ───────────────────────────────────────────────
+  const recEl = document.getElementById('matrixRecommendations');
+  const critical = sortedCerts.filter(c => {
+    const pct = certCoverage[c].total ? certCoverage[c].count / certCoverage[c].total * 100 : 0;
+    return pct < 20;
+  });
+  const warning = sortedCerts.filter(c => {
+    const pct = certCoverage[c].total ? certCoverage[c].count / certCoverage[c].total * 100 : 0;
+    return pct >= 20 && pct < 40;
+  });
+  const wellCovered = sortedCerts.filter(c => {
+    const pct = certCoverage[c].total ? certCoverage[c].count / certCoverage[c].total * 100 : 0;
+    return pct >= 75;
+  });
+
+  let recs = '';
+  if (critical.length) {
+    const names = critical.slice(0, 5).join(', ') + (critical.length > 5 ? ` +${critical.length - 5} more` : '');
+    recs += `<div class="rec-card rec-critical">
+      <div class="rec-icon">🚨</div>
+      <div class="rec-body">
+        <div class="rec-title">Critical gaps — immediate training needed</div>
+        <div class="rec-detail">${names} — fewer than 20% of your team is certified. A single call-out creates a coverage risk.</div>
+      </div>
+    </div>`;
+  }
+  if (warning.length) {
+    const names = warning.slice(0, 5).join(', ') + (warning.length > 5 ? ` +${warning.length - 5} more` : '');
+    recs += `<div class="rec-card rec-warning">
+      <div class="rec-icon">⚠️</div>
+      <div class="rec-body">
+        <div class="rec-title">Low coverage — plan cross-training soon</div>
+        <div class="rec-detail">${names} — 20–40% coverage. Prioritize these in your next training cycle.</div>
+      </div>
+    </div>`;
+  }
+  if (wellCovered.length) {
+    const names = wellCovered.slice(0, 4).join(', ') + (wellCovered.length > 4 ? ` +${wellCovered.length - 4} more` : '');
+    recs += `<div class="rec-card rec-good">
+      <div class="rec-icon">✅</div>
+      <div class="rec-body">
+        <div class="rec-title">Well covered</div>
+        <div class="rec-detail">${names} — 75%+ of the team is certified. Maintain and consider mentorship opportunities.</div>
+      </div>
+    </div>`;
+  }
+  if (!recs) {
+    recs = `<div class="rec-card rec-good"><div class="rec-icon">✅</div><div class="rec-body"><div class="rec-title">Good coverage across the board!</div></div></div>`;
+  }
+  recEl.innerHTML = recs;
+
+  // ── Matrix table ──────────────────────────────────────────────────
+  const pctOf = cert => certCoverage[cert].total
+    ? certCoverage[cert].count / certCoverage[cert].total * 100 : 0;
+  const headerCls = cert => pctOf(cert) < 25 ? 'cert-low' : pctOf(cert) < 50 ? 'cert-med' : 'cert-ok';
+
+  const headerRow = `<tr>
+    <th>Associate${shiftFilter ? ' · ' + shiftFilter : ''}</th>
+    ${CERTS.map(c => `<th class="${headerCls(c)}" title="${c}: ${certCoverage[c].count}/${certCoverage[c].total} certified">${c}</th>`).join('')}
+    <th style="background:#1e3a5f">Total</th>
+  </tr>`;
+
+  const bodyRows = associates.map(a => {
+    const certMap = assocCertMap[a.id];
+    const certifiedCount = CERTS.filter(c => certMap[c] === 'certified').length;
+    return `<tr>
+      <td onclick="openProfile('${a.id}')" style="cursor:pointer" title="Open ${escapeHtml(a.name)}'s profile">${escapeHtml(a.name)}</td>
+      ${CERTS.map(c => {
+        const s = certMap[c];
+        if (s === 'certified') return `<td class="matrix-cell-yes" title="Certified"><span>✓</span></td>`;
+        if (s === 'training')  return `<td style="background:#fff7ed;text-align:center" title="In Training"><span style="color:#f97316;font-size:12px">⏳</span></td>`;
+        return `<td class="matrix-cell-no"><span>·</span></td>`;
+      }).join('')}
+      <td style="text-align:center;font-weight:700;color:var(--orange)">${certifiedCount}</td>
+    </tr>`;
+  }).join('');
+
+  const footerRow = `<tr class="matrix-footer">
+    <td>Coverage</td>
+    ${CERTS.map(c => {
+      const pct = Math.round(pctOf(c));
+      const color = pct < 25 ? '#dc2626' : pct < 50 ? '#d97706' : '#059669';
+      return `<td style="color:${color}">${pct}%</td>`;
+    }).join('')}
+    <td></td>
+  </tr>`;
+
+  document.getElementById('matrixTable').innerHTML = `
+    <div class="matrix-wrap">
+      <table class="matrix-tbl">
+        <thead>${headerRow}</thead>
+        <tbody>${bodyRows}</tbody>
+        <tfoot>${footerRow}</tfoot>
+      </table>
+    </div>`;
+}
+
 // ─── Points Log ───────────────────────────────────────────────────────
 let allPointsLog = [];
 
@@ -1240,13 +1449,14 @@ window.loadAdminPanel = () => {
     tbody.innerHTML = users.map(u => `<tr>
       <td class="fw-semibold">${escapeHtml(u.displayName || '—')}</td>
       <td class="text-muted small">${escapeHtml(u.email || '—')}</td>
-      <td><span class="badge ${u.role === 'admin' ? 'bg-danger' : u.role === 'leader' ? 'bg-primary' : 'bg-secondary'}">${capitalize(u.role || 'viewer')}</span></td>
+      <td><span class="badge ${u.role === 'admin' ? 'bg-danger' : u.role === 'supervisor' ? 'bg-primary' : u.role === 'lead' ? 'bg-success' : 'bg-secondary'}">${capitalize(u.role || 'viewer')}</span></td>
       <td class="text-muted small">${formatDate(u.createdAt)}</td>
       <td>
         <select class="form-select form-select-sm d-inline-block me-1" style="width:auto" onchange="setRole('${u.uid}',this.value)" ${u.uid === currentUser?.uid ? 'disabled' : ''}>
-          <option value="viewer" ${(u.role||'viewer')==='viewer' ? 'selected' : ''}>Viewer</option>
-          <option value="leader" ${(u.role||'viewer')==='leader' ? 'selected' : ''}>Leader</option>
-          <option value="admin"  ${(u.role||'viewer')==='admin'  ? 'selected' : ''}>Admin</option>
+          <option value="viewer"     ${(u.role||'viewer')==='viewer'     ? 'selected' : ''}>Viewer</option>
+          <option value="lead"       ${(u.role||'viewer')==='lead'       ? 'selected' : ''}>Lead</option>
+          <option value="supervisor" ${(u.role||'viewer')==='supervisor' ? 'selected' : ''}>Supervisor</option>
+          <option value="admin"      ${(u.role||'viewer')==='admin'      ? 'selected' : ''}>Admin</option>
         </select>
         ${u.uid !== currentUser?.uid ? `<button class="btn btn-sm btn-outline-danger py-0" onclick="removeUser('${u.uid}')"><i class="fas fa-trash-alt"></i></button>` : ''}
       </td>
@@ -1636,8 +1846,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .chips-section h6 { font-size:0.8rem; font-weight:700; color:var(--navy); margin-bottom:0.75rem; }
 .chips-row { display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; }
 .chip { display:inline-flex; align-items:center; gap:2px; padding:4px 10px; border-radius:20px; font-size:0.78rem; font-weight:500; }
-.chip-cert       { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
-.chip-cert-empty { background:#f9fafb; color:#9ca3af; border:1px solid #e5e7eb; }
+.chip-cert          { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+.chip-cert-training { background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; }
+.chip-cert-empty    { background:#f9fafb; color:#9ca3af; border:1px solid #e5e7eb; }
 .chip-remove { background:none; border:none; color:inherit; opacity:0.6; cursor:pointer; margin-left:4px; font-size:0.9rem; line-height:1; padding:0; }
 .chip-remove:hover { opacity:1; }
 
@@ -1777,6 +1988,37 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .active-user-row:last-child { border-bottom:none; }
 .active-user-dot { width:7px; height:7px; background:#10b981; border-radius:50%; flex-shrink:0; }
 
+/* Cross Training Matrix */
+.matrix-wrap { overflow-x:auto; }
+.matrix-tbl  { border-collapse:collapse; font-size:11px; min-width:100%; }
+.matrix-tbl th, .matrix-tbl td { border:1px solid #e5e7eb; padding:0; white-space:nowrap; }
+.matrix-tbl thead th { background:var(--navy); color:#fff; padding:6px 8px; font-weight:600; position:sticky; top:0; z-index:2; }
+.matrix-tbl thead th:first-child { position:sticky; left:0; z-index:3; background:var(--navy); min-width:150px; }
+.matrix-tbl tbody td:first-child { position:sticky; left:0; background:#fff; z-index:1; padding:5px 10px; font-weight:500; color:var(--navy); border-right:2px solid #e5e7eb; }
+.matrix-tbl tbody tr:hover td { background:#f8fafc; }
+.matrix-tbl tbody tr:hover td:first-child { background:#f0f4ff; }
+.matrix-cell-yes { background:#d1fae5; text-align:center; }
+.matrix-cell-no  { background:#fff; text-align:center; color:#e5e7eb; }
+.matrix-cell-yes span { color:#059669; font-size:13px; }
+.matrix-tbl thead th.cert-low  { background:#dc2626; }
+.matrix-tbl thead th.cert-med  { background:#d97706; }
+.matrix-tbl thead th.cert-ok   { background:var(--navy); }
+.matrix-footer td { background:#f9fafb; font-weight:700; font-size:11px; padding:5px 8px; color:var(--navy); text-align:center; position:sticky; bottom:0; }
+.matrix-footer td:first-child { text-align:left; }
+.coverage-bar-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:12px; }
+.coverage-bar-label { min-width:160px; text-align:right; color:#374151; font-weight:500; overflow:hidden; text-overflow:ellipsis; }
+.coverage-bar-track { flex:1; background:#e5e7eb; border-radius:99px; height:10px; }
+.coverage-bar-fill  { height:10px; border-radius:99px; transition:width .3s; }
+.coverage-bar-pct   { min-width:34px; font-weight:700; font-size:11px; }
+.rec-card { border-radius:10px; padding:0.875rem 1rem; margin-bottom:0.5rem; display:flex; align-items:flex-start; gap:10px; }
+.rec-critical { background:#fef2f2; border:1px solid #fca5a5; }
+.rec-warning  { background:#fffbeb; border:1px solid #fde68a; }
+.rec-good     { background:#f0fdf4; border:1px solid #86efac; }
+.rec-icon { font-size:1.1rem; margin-top:1px; }
+.rec-body { flex:1; }
+.rec-title { font-weight:700; font-size:0.82rem; color:var(--navy); }
+.rec-detail { font-size:0.78rem; color:#6b7280; margin-top:2px; }
+
 /* Admin */
 .admin-card { background:#fff; border-radius:12px; padding:1.5rem; border:1px solid #e5e7eb; margin-bottom:1.5rem; }
 .pending-badge-card { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:0.875rem 1rem; }
@@ -1846,6 +2088,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       </a>
       <a class="nav-link d-none" id="navAdmin" data-view="admin" onclick="loadAdminPanel()">
         <i class="fas fa-shield-alt"></i><span>Admin</span>
+      </a>
+      <a class="nav-link" data-view="matrix" onclick="loadMatrix()">
+        <i class="fas fa-table"></i><span>Matrix</span>
       </a>
       <a class="nav-link" data-view="pointslog" onclick="loadPointsLog()">
         <i class="fas fa-star"></i><span>Points Log</span>
@@ -2013,7 +2258,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <!-- Certifications section -->
       <div class="chips-section">
         <h6><i class="fas fa-certificate me-1" style="color:#f97316"></i>Cross-Training Certifications
-          <span class="text-muted fw-normal" style="font-size:0.7rem"> — click to toggle (leaders/admins)</span>
+          <span class="text-muted fw-normal" style="font-size:0.7rem"> — click to toggle (leads/supervisors/admins)</span>
         </h6>
         <div class="chips-row" id="certsContainer">
           <span class="text-muted small">Loading…</span>
@@ -2115,7 +2360,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-users me-2" style="color:var(--orange)"></i>Dashboard</h6>
             <p class="small text-muted">The dashboard shows all associates as cards. Use the search bar to find by name or employee ID. Filter by shift, status, flag, or certification. The leaderboard shows the top 10 active associates by points. The milestones widget shows upcoming work anniversaries within the next 60 days.</p>
             <h6 class="fw-bold mb-2 mt-3" style="color:var(--navy)"><i class="fas fa-user me-2" style="color:var(--orange)"></i>Associate Profiles</h6>
-            <p class="small text-muted">Click any card to open a profile. From there you can add manager notes, toggle certifications, nominate badges, and view the private watch notes section (leaders/admins only). Use the Export PDF button to generate a printable summary for HR records.</p>
+            <p class="small text-muted">Click any card to open a profile. From there you can add manager notes, toggle certifications, nominate badges, and view the private watch notes section (supervisors/admins only). Use the Export PDF button to generate a printable summary for HR records.</p>
             <h6 class="fw-bold mb-2 mt-3" style="color:var(--navy)"><i class="fas fa-sticky-note me-2" style="color:var(--orange)"></i>Note Types</h6>
             <p class="small text-muted"><strong>Coaching:</strong> performance conversations, no point impact. <strong>Recognition:</strong> positive callouts, +10 pts. <strong>Leadership:</strong> leadership potential observations, +15 pts. <strong>Warning:</strong> formal warnings, -10 pts. <strong>PIP:</strong> performance improvement plan entries, -25 pts. <strong>General:</strong> misc notes, no point impact.</p>
           </div>
@@ -2124,21 +2369,21 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-trophy me-2" style="color:var(--orange)"></i>Achievement Badges</h6>
-            <p class="small text-muted">Leaders and Admins can nominate associates for badges. Each nomination requires a reason. Nominations show as <em>Pending</em> until an Admin approves them in the Admin panel. Once approved, points are awarded automatically. Badges stack — an associate can earn the same badge multiple times. Hover over a badge to see the nomination reason.</p>
+            <p class="small text-muted">Leads, Supervisors, and Admins can nominate associates for badges. Each nomination requires a reason. Nominations show as <em>Pending</em> until an Admin approves them in the Admin panel. Once approved, points are awarded automatically. Badges stack — an associate can earn the same badge multiple times. Hover over a badge to see the nomination reason.</p>
           </div>
         </div>
 
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-certificate me-2" style="color:var(--orange)"></i>Certifications</h6>
-            <p class="small text-muted">Leaders and Admins can toggle certifications on each profile. Each cert earned adds +10 points; removing one deducts 10. There are 25 certifications available covering all major warehouse roles — use the cert filter on the dashboard to see who is qualified for a specific role.</p>
+            <p class="small text-muted">Leads, Supervisors, and Admins can toggle certifications on each profile. Each cert earned adds +10 points; removing one deducts 10. There are 25 certifications available covering all major warehouse roles — use the cert filter on the dashboard to see who is qualified for a specific role.</p>
           </div>
         </div>
 
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-lock me-2" style="color:var(--orange)"></i>Private Watch Notes</h6>
-            <p class="small text-muted">The amber dashed section at the bottom of each profile is only visible to Leaders and Admins. Use it to track attendance patterns, early departures, tardiness, or behavioral observations you don't want in the general notes feed. These notes do not affect points.</p>
+            <p class="small text-muted">The amber dashed section at the bottom of each profile is only visible to Supervisors and Admins. Use it to track attendance patterns, early departures, tardiness, or behavioral observations you don't want in the general notes feed. These notes do not affect points.</p>
           </div>
         </div>
 
@@ -2146,20 +2391,54 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-shield-alt me-2" style="color:var(--orange)"></i>Roles & Permissions</h6>
             <table class="table table-sm small mb-0">
-              <thead class="table-light"><tr><th>Action</th><th>Viewer</th><th>Leader</th><th>Admin</th></tr></thead>
+              <thead class="table-light"><tr><th>Action</th><th>Viewer</th><th>Lead</th><th>Supervisor</th><th>Admin</th></tr></thead>
               <tbody>
-                <tr><td>View profiles & notes</td><td>✓</td><td>✓</td><td>✓</td></tr>
-                <tr><td>Add notes & toggle certs</td><td></td><td>✓</td><td>✓</td></tr>
-                <tr><td>Nominate badges</td><td></td><td>✓</td><td>✓</td></tr>
-                <tr><td>View private watch notes</td><td></td><td>✓</td><td>✓</td></tr>
-                <tr><td>View & add credentials</td><td></td><td>✓</td><td>✓</td></tr>
-                <tr><td>Approve/reject badges</td><td></td><td></td><td>✓</td></tr>
-                <tr><td>Delete credentials</td><td></td><td></td><td>✓</td></tr>
-                <tr><td>Manage user accounts</td><td></td><td></td><td>✓</td></tr>
+                <tr><td>View profiles & notes</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+                <tr><td>Add notes & toggle certs</td><td></td><td>✓</td><td>✓</td><td>✓</td></tr>
+                <tr><td>Nominate badges</td><td></td><td>✓</td><td>✓</td><td>✓</td></tr>
+                <tr><td>View & add credentials</td><td></td><td>✓</td><td>✓</td><td>✓</td></tr>
+                <tr><td>Delete notes</td><td></td><td></td><td>✓</td><td>✓</td></tr>
+                <tr><td>View private watch notes</td><td></td><td></td><td>✓</td><td>✓</td></tr>
+                <tr><td>Approve/reject badges</td><td></td><td></td><td></td><td>✓</td></tr>
+                <tr><td>Delete credentials</td><td></td><td></td><td></td><td>✓</td></tr>
+                <tr><td>Manage user accounts</td><td></td><td></td><td></td><td>✓</td></tr>
               </tbody>
             </table>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- CROSS TRAINING MATRIX VIEW -->
+    <div id="matrixView" class="view d-none">
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h1 class="page-title"><i class="fas fa-table me-2" style="color:var(--orange)"></i>Cross Training Matrix</h1>
+        <div class="d-flex gap-2 flex-wrap align-items-center">
+          <select class="form-select form-select-sm" id="matrixShift" onchange="renderMatrix()" style="width:auto">
+            <option value="">All Shifts</option>
+            <option value="A1">A1</option>
+            <option value="A2">A2</option>
+            <option value="B1">B1</option>
+          </select>
+          <select class="form-select form-select-sm" id="matrixStatus" onchange="renderMatrix()" style="width:auto">
+            <option value="active">Active Only</option>
+            <option value="">All</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Recommendations panel -->
+      <div id="matrixRecommendations" class="mb-4"></div>
+
+      <!-- Coverage summary bar -->
+      <div class="admin-card mb-3 p-3">
+        <div class="fw-semibold mb-2" style="font-size:0.8rem;color:var(--navy)"><i class="fas fa-chart-bar me-2" style="color:var(--orange)"></i>Certification Coverage by Role</div>
+        <div id="matrixCoverageBar"></div>
+      </div>
+
+      <!-- Matrix table -->
+      <div class="admin-card p-0" style="overflow:auto">
+        <div id="matrixTable"></div>
       </div>
     </div>
 
@@ -2355,6 +2634,30 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   </div></div>
 </div>
 
+<!-- Certification Status -->
+<div class="modal fade" id="certModal" tabindex="-1">
+  <div class="modal-dialog modal-sm"><div class="modal-content">
+    <div class="modal-header border-0 pb-0">
+      <h5 class="modal-title fw-bold" id="certModalTitle"></h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body pt-2">
+      <p class="text-muted small mb-3">Select the certification status for this associate:</p>
+      <div class="d-grid gap-2">
+        <button id="certBtnCertified" class="btn btn-outline-success" onclick="setCertStatus('certified')">
+          <i class="fas fa-check-circle me-2"></i>Certified
+        </button>
+        <button id="certBtnTraining" class="btn btn-outline-warning" onclick="setCertStatus('training')">
+          <i class="fas fa-clock me-2"></i>In Training
+        </button>
+        <button id="certBtnRemove" class="btn btn-outline-danger d-none" onclick="setCertStatus('remove')">
+          <i class="fas fa-times-circle me-2"></i>Remove
+        </button>
+      </div>
+    </div>
+  </div></div>
+</div>
+
 <!-- Nominate Badge -->
 <div class="modal fade" id="badgeModal" tabindex="-1">
   <div class="modal-dialog modal-sm"><div class="modal-content">
@@ -2503,13 +2806,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
         <div class="mb-3">
           <label class="form-label small fw-semibold">Email</label>
-          <input type="email" class="form-control" id="newEmail" placeholder="leader@carparts.com">
+          <input type="email" class="form-control" id="newEmail" placeholder="supervisor@carparts.com">
         </div>
         <div>
           <label class="form-label small fw-semibold">Role</label>
           <select class="form-select" id="newRole">
             <option value="viewer">Viewer — read only</option>
-            <option value="leader" selected>Leader — add associates, notes, certs, nominate badges</option>
+            <option value="lead" selected>Lead — add notes, certs, nominate badges, view/add credentials</option>
+            <option value="supervisor">Supervisor — Lead access + private watch notes + delete notes</option>
             <option value="admin">Admin — full access + user management + badge approvals</option>
           </select>
         </div>
