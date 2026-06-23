@@ -654,6 +654,108 @@ window.openProfile = async (id) => {
 };
 
 // ─── Flagging ─────────────────────────────────────────────────────────
+window.exportToClaude = async () => {
+  const assoc = allAssociates.find(a => a.id === currentAssociateId);
+  if (!assoc) return;
+  const btn = document.getElementById('exportClaudeBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Building…'; }
+
+  const attPts  = assoc.attendancePoints || 0;
+  const policy  = attPts >= 10 ? 'TERMINATION' : attPts >= 9 ? 'Final Warning' : attPts >= 6 ? 'Written Warning' : attPts >= 3 ? 'Documented Verbal' : 'Good Standing';
+  const engPts  = assoc.points || 0;
+
+  let out = `Please provide a comprehensive HR synopsis for the following associate. Highlight strengths, engagement trends, attendance patterns, areas of concern, and any leadership development or performance management recommendations.\n\n`;
+
+  out += `=== ASSOCIATE PROFILE ===\n`;
+  out += `Name: ${assoc.name}\n`;
+  if (assoc.employeeId) out += `Employee ID: ${assoc.employeeId}\n`;
+  out += `Role: ${assoc.role || 'N/A'} | Department: ${assoc.department || 'N/A'} | Shift: ${assoc.shift || 'N/A'}\n`;
+  out += `Position: ${assoc.position || 'Associate'} | Status: ${capitalize(assoc.status || 'active')}\n`;
+  if (assoc.hireDate) out += `Hire Date: ${new Date(assoc.hireDate).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}\n`;
+  if (assoc.flag) out += `Flag: ${assoc.flag}\n`;
+  if (assoc.opsManager) out += `Ops Manager: ${assoc.opsManager}\n`;
+
+  out += `\n=== ENGAGEMENT POINTS ===\n`;
+  out += `Total: ${engPts > 0 ? '+' : ''}${engPts} points\n`;
+
+  out += `\n=== ATTENDANCE ===\n`;
+  out += `Attendance Points: ${attPts} — Policy Status: ${policy}\n`;
+  if (lastAttendance && lastAttendance.length) {
+    out += `Events (${lastAttendance.length} total):\n`;
+    [...lastAttendance].sort((a,b) => new Date(b.date)-new Date(a.date)).forEach(e => {
+      const info = attTypeInfo(e.type);
+      out += `  • ${e.date} — ${info.label} (+${e.points} pts)${e.expired ? ' [expired]' : ''}${e.note ? ` — "${e.note}"` : ''}\n`;
+    });
+  } else { out += `No attendance events on record.\n`; }
+
+  out += `\n=== CERTIFICATIONS ===\n`;
+  const certSnap = await get(ref(db, `certs/${currentAssociateId}`));
+  const certsData = certSnap.exists() ? certSnap.val() : {};
+  const certified = Object.entries(certsData).filter(([,v]) => v?.status === 'certified').map(([k]) => k.replace(/_/g,' '));
+  const training  = Object.entries(certsData).filter(([,v]) => v?.status === 'training').map(([k]) => k.replace(/_/g,' '));
+  if (certified.length) out += `Certified (${certified.length}): ${certified.join(', ')}\n`;
+  else out += `No certifications held.\n`;
+  if (training.length) out += `In Training: ${training.join(', ')}\n`;
+
+  out += `\n=== ACHIEVEMENT BADGES ===\n`;
+  const approved = lastBadges.filter(b => b.status === 'approved');
+  if (approved.length) {
+    approved.forEach(b => out += `  • ${b.badge}${b.reason ? ` — "${b.reason}"` : ''}${b.awardedAt ? ` (${new Date(b.awardedAt).toLocaleDateString()})` : ''}\n`);
+  } else { out += `No approved badges.\n`; }
+  const pending = lastBadges.filter(b => b.status === 'pending');
+  if (pending.length) out += `Pending approval: ${pending.map(b=>b.badge).join(', ')}\n`;
+
+  out += `\n=== MANAGER NOTES ===\n`;
+  try {
+    const notesSnap = await get(ref(db, `notes/${currentAssociateId}`));
+    if (notesSnap.exists()) {
+      const notes = Object.entries(notesSnap.val()).map(([id,n])=>({id,...n})).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+      notes.forEach(n => {
+        out += `  [${n.type}] ${n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''} — by ${n.author||'Unknown'}:\n`;
+        out += `    "${n.text}"${n.link ? ` (${n.link})` : ''}\n`;
+      });
+    } else { out += `No manager notes.\n`; }
+  } catch(e) { out += `(Notes unavailable)\n`; }
+
+  out += `\n=== SHIFT SNAPSHOTS (Most Recent 10) ===\n`;
+  try {
+    const snapSnap = await get(ref(db, `snapshots/${currentAssociateId}`));
+    if (snapSnap.exists()) {
+      const snaps = Object.values(snapSnap.val()).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,10);
+      snaps.forEach(s => {
+        out += `  ${s.date} — UPH: ${s.uph}${s.unitsCompleted!=null?`, Units: ${s.unitsCompleted}`:''}${s.role?`, Role: ${s.role}`:''}${s.onPace?`, On Pace: ${s.onPace}`:''}\n`;
+      });
+    } else { out += `No shift snapshots.\n`; }
+  } catch(e) { out += `(Snapshots unavailable)\n`; }
+
+  if (currentUserRole === 'admin' || currentUserRole === 'supervisor') {
+    out += `\n=== PRIVATE WATCH NOTES ===\n`;
+    try {
+      const wSnap = await get(ref(db, `watchnotes/${currentAssociateId}`));
+      if (wSnap.exists()) {
+        const notes = Object.values(wSnap.val()).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+        notes.forEach(n => out += `  [${n.category||'General'}] ${n.createdAt?new Date(n.createdAt).toLocaleDateString():''} — ${n.author||'Unknown'}: "${n.text}"\n`);
+      } else { out += `No watch notes.\n`; }
+    } catch(e) { out += `(Watch notes unavailable)\n`; }
+  }
+
+  out += `\n=== END OF PROFILE DATA ===`;
+
+  try {
+    await navigator.clipboard.writeText(out);
+    window.open('https://claude.ai', '_blank');
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#1a2744;color:#fff;padding:14px 22px;border-radius:10px;z-index:9999;font-size:0.875rem;box-shadow:0 4px 20px rgba(0,0,0,0.25);display:flex;align-items:center;gap:10px';
+    toast.innerHTML = '<i class="fas fa-check-circle" style="color:#f97316;font-size:1.1rem"></i><div><div style="font-weight:600">Profile copied!</div><div style="font-size:0.78rem;opacity:0.75">Paste into Claude to start the analysis</div></div>';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 5000);
+  } catch(e) {
+    const win = window.open('', '_blank');
+    win.document.write('<pre style="white-space:pre-wrap;font-family:monospace;padding:2rem">' + out.replace(/</g,'&lt;') + '</pre>');
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-robot me-1"></i>Export to Claude'; }
+};
+
 window.openFlagModal = () => {
   const assoc = allAssociates.find(a => a.id === currentAssociateId);
   document.getElementById('flagSelect').value = assoc?.flag || '';
@@ -2984,6 +3086,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <button class="btn btn-sm btn-outline-secondary" onclick="exportProfilePDF()" id="profileExportBtn">
             <i class="fas fa-file-pdf me-1"></i>Export PDF
           </button>
+          <button class="btn btn-sm" id="exportClaudeBtn" onclick="exportToClaude()" style="background:#f97316;color:#fff;border:none">
+            <i class="fas fa-robot me-1"></i>Export to Claude
+          </button>
         </div>
       </div>
 
@@ -3953,6 +4058,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="mb-3">
           <label class="form-label small fw-semibold">Note <span class="text-danger">*</span></label>
           <textarea class="form-control" id="watchNoteText" rows="5"
+          <textarea class="form-control" id="watchNoteText" rows="5"
             placeholder="Document what you observed, when it happened, and any relevant context…"></textarea>
         </div>
       </form>
@@ -3987,7 +4093,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <option value="viewer">Viewer — read only</option>
             <option value="lead" selected>Lead — add notes, certs, nominate badges, view/add credentials</option>
             <option value="supervisor">Supervisor — Lead access + private watch notes + delete notes</option>
-            <option value="admin">Admin — full access + user management + badge approvals</option>
             <option value="admin">Admin — full access + user management + badge approvals</option>
           </select>
         </div>
