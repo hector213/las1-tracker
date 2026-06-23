@@ -2383,6 +2383,116 @@ window.resetAllAttendance = async () => {
   finally { btn.disabled = false; btn.textContent = 'Reset All Attendance'; }
 };
 
+// ─── Attendance Bulk Import ────────────────────────────────────────────
+window._attImportRows = [];
+
+window.parseAttImport = () => {
+  const raw = document.getElementById('attImportPaste').value.trim();
+  if (!raw) return;
+  window._attImportRows = [];
+  const lines = raw.split('\n').filter(l => l.trim());
+  lines.forEach(line => {
+    const cols = line.split('\t').map(c => c.trim());
+    if (cols.length < 7) return;
+    const rawDate = cols[0];
+    const rawName = cols[1];
+    const rawPts  = parseFloat(cols[6]);
+    const pts     = isNaN(rawPts) ? 0 : rawPts;
+    const note    = cols[7] || '';
+    // Parse date M/D/YY or M/D/YYYY
+    let dateStr = '';
+    const dm = rawDate.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (dm) {
+      const yr = dm[3].length === 2 ? '20' + dm[3] : dm[3];
+      dateStr = `${yr}-${dm[1].padStart(2,'0')}-${dm[2].padStart(2,'0')}`;
+    }
+    // Match associate by name (case-insensitive, partial ok)
+    const nameLower = rawName.toLowerCase();
+    const assoc = allAssociates.find(a => a.name.toLowerCase() === nameLower)
+      || allAssociates.find(a => a.name.toLowerCase().includes(nameLower) || nameLower.includes(a.name.toLowerCase().split(' ')[0]));
+    // Infer attendance type from notes + points
+    const nl = note.toLowerCase();
+    let type = 'call-out';
+    if (pts === 0) {
+      type = nl.includes('early') ? 'left-early-sick' : 'call-out-sick-full';
+    } else if (nl.includes('late') || nl.includes('tardy') || nl.includes('clock in')) {
+      type = pts >= 1 ? 'late-arrival-half' : 'late-arrival';
+    } else if (nl.includes('early') || nl.includes('left early')) {
+      type = pts >= 1 ? 'left-early-before' : 'left-early-after';
+    } else if (nl.includes('covers half') || nl.includes('covers ≥') || (nl.includes('sick time') && nl.includes('half'))) {
+      type = 'call-out-sick-half';
+    } else if (nl.includes('not enough') || (nl.includes('sick') && nl.includes('no'))) {
+      type = pts >= 1 ? 'call-out-sick-no' : 'call-out-sick-half';
+    } else {
+      type = pts >= 1 ? 'call-out' : 'late-arrival';
+    }
+    window._attImportRows.push({ rawName, assoc: assoc || null, dateStr, rawDate, pts, type, note });
+  });
+  const tbody  = document.getElementById('attImportTbody');
+  const matched   = window._attImportRows.filter(r => r.assoc).length;
+  const unmatched = window._attImportRows.length - matched;
+  document.getElementById('attImportSummary').innerHTML =
+    `<span class="text-success fw-semibold">${matched} matched</span>${unmatched ? ` &nbsp;·&nbsp; <span class="text-danger fw-semibold">${unmatched} unmatched</span>` : ''} &nbsp;·&nbsp; ${window._attImportRows.length} total rows`;
+  tbody.innerHTML = window._attImportRows.map((r, i) => {
+    const status = r.assoc
+      ? `<span class="badge bg-success" style="font-size:0.7rem">✓ matched</span>`
+      : `<span class="badge bg-danger" style="font-size:0.7rem">✗ no match</span>`;
+    return `<tr class="${!r.assoc ? 'table-danger' : ''}">
+      <td>${status}</td>
+      <td class="small">${escapeHtml(r.rawName)}</td>
+      <td class="small text-nowrap">${r.dateStr || `<span class="text-danger">${escapeHtml(r.rawDate)}</span>`}</td>
+      <td><select class="form-select form-select-sm py-0" style="min-width:200px;font-size:0.75rem" onchange="window._attImportRows[${i}].type=this.value">
+        ${ATTENDANCE_TYPES.map(t=>`<option value="${t.key}"${t.key===r.type?' selected':''}>${t.label}</option>`).join('')}
+      </select></td>
+      <td class="small text-center">${r.pts}</td>
+      <td class="small text-muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(r.note)}">${escapeHtml(r.note)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('attImportPreview').classList.remove('d-none');
+  document.getElementById('attImportSubmitBtn').disabled = matched === 0;
+};
+
+window.submitAttImport = async () => {
+  const toImport = window._attImportRows.filter(r => r.assoc && r.dateStr);
+  if (!toImport.length) return;
+  const btn = document.getElementById('attImportSubmitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Importing…';
+  try {
+    const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+    const author   = userSnap.exists() ? (userSnap.val().displayName || currentUser.email) : currentUser.email;
+    const now      = new Date().toISOString();
+    const writes   = [];
+    const ptsMap   = {};
+    toImport.forEach(r => {
+      writes.push(push(ref(db, `attendance/${r.assoc.id}`), {
+        date: r.dateStr, type: r.type, points: r.pts,
+        note: r.note, author, authorUid: currentUser.uid,
+        createdAt: now, importedAt: now
+      }));
+      ptsMap[r.assoc.id] = (ptsMap[r.assoc.id] || 0) + r.pts;
+    });
+    Object.entries(ptsMap).forEach(([id, pts]) => {
+      writes.push(update(ref(db, `associates/${id}`), { attendancePoints: increment(pts) }));
+    });
+    await Promise.all(writes);
+    btn.innerHTML = `<i class="fas fa-check me-1"></i>Imported ${toImport.length} records`;
+    btn.style.background = '#16a34a';
+    document.getElementById('attImportPaste').value = '';
+    window._attImportRows = [];
+    setTimeout(() => {
+      btn.innerHTML = '<i class="fas fa-file-import me-1"></i>Import Records';
+      btn.style.background = '';
+      btn.disabled = false;
+      document.getElementById('attImportPreview').classList.add('d-none');
+    }, 3000);
+  } catch(e) {
+    alert('Import error: ' + e.message);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-file-import me-1"></i>Import Records';
+  }
+};
+
 window.openCreateUser = () => {
   document.getElementById('newUserForm').reset();
   new bootstrap.Modal(document.getElementById('newUserModal')).show();
@@ -3758,6 +3868,31 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
       </div>
 
+      <!-- Attendance Import -->
+      <div class="admin-card" style="border-left:4px solid #f97316">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-file-import me-2" style="color:var(--orange)"></i>Attendance Import</h6>
+        </div>
+        <p class="small text-muted mb-2">Copy rows directly from Excel and paste below. Expected column order: <strong>Date · Name · [any] · [any] · [any] · [any] · Pts Assessed · Notes</strong>. Click Preview to review matches before importing.</p>
+        <textarea id="attImportPaste" class="form-control font-monospace small mb-2" rows="5" placeholder="Paste rows from Excel here (Ctrl+V)…" style="font-size:0.78rem"></textarea>
+        <button class="btn btn-sm btn-outline-secondary mb-3" onclick="parseAttImport()"><i class="fas fa-table me-1"></i>Preview</button>
+        <div id="attImportPreview" class="d-none">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="small" id="attImportSummary"></span>
+            <button class="btn btn-sm btn-orange" id="attImportSubmitBtn" onclick="submitAttImport()"><i class="fas fa-file-import me-1"></i>Import Records</button>
+          </div>
+          <div class="table-responsive border rounded" style="max-height:320px;overflow-y:auto">
+            <table class="table table-sm table-hover mb-0" style="font-size:0.8rem">
+              <thead class="table-light" style="position:sticky;top:0;z-index:1">
+                <tr><th>Status</th><th>Name</th><th>Date</th><th>Type</th><th style="text-align:center">Pts</th><th>Note</th></tr>
+              </thead>
+              <tbody id="attImportTbody"></tbody>
+            </table>
+          </div>
+          <p class="small text-muted mt-2 mb-0"><i class="fas fa-info-circle me-1"></i>Unmatched rows (red) are skipped. You can adjust the Type dropdown for any row before importing.</p>
+        </div>
+      </div>
+
       <!-- User Management -->
       <div class="admin-card">
         <h6 class="fw-bold mb-3" style="color:var(--navy)">Team Accounts</h6>
@@ -4079,6 +4214,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <button class="btn btn-orange" id="saveCredBtn" onclick="saveCred()">Save</button>
     </div>
   </div></div>
+      <button class="btn btn-orange" id="saveCredBtn" onclick="saveCred()">Save</button>
+    </div>
+  </div></div>
 </div>
 
 <!-- Add Watch Note -->
@@ -4104,11 +4242,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <option>Other</option>
           </select>
         </div>
-          </select>
-        </div>
         <div class="mb-3">
           <label class="form-label small fw-semibold">Note <span class="text-danger">*</span></label>
-          <textarea class="form-control" id="watchNoteText" rows="5"
           <textarea class="form-control" id="watchNoteText" rows="5"
             placeholder="Document what you observed, when it happened, and any relevant context…"></textarea>
         </div>
