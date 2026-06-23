@@ -55,7 +55,7 @@ const FLAGS  = {
 const NOTE_TYPES = ['All','General','Coaching','Recognition','Warning','PIP','Leadership'];
 const POINT_VALUES = {
   badge:  { standard: 25, elite: 100, 'elite-plus': 200 },
-  note:   { Recognition: 10, Leadership: 15, Coaching: 0, Warning: -10, PIP: -25, General: 0 }
+  note:   { Recognition: 10, Leadership: 15, Coaching: 0, Warning: -10, PIP: -150, General: 0 }
 };
 function badgePoints(badgeLabel) {
   const def = BADGES.find(b => b.label === badgeLabel);
@@ -227,11 +227,12 @@ function renderDashboard() {
   document.getElementById('statFlagged').textContent = allAssociates.filter(a => a.flag && a.flag !== '').length;
 
   // Leadership section
+  const posOrder = { 'ops-manager': 0, 'supervisor': 1, 'lead': 2 };
   allLeaders = allAssociates
-    .filter(a => a.position === 'supervisor' || a.position === 'lead')
+    .filter(a => a.position === 'supervisor' || a.position === 'lead' || a.position === 'ops-manager')
     .sort((a, b) => {
-      if (a.position !== b.position) return a.position === 'supervisor' ? -1 : 1;
-      return a.name.localeCompare(b.name);
+      const diff = (posOrder[a.position] ?? 9) - (posOrder[b.position] ?? 9);
+      return diff !== 0 ? diff : a.name.localeCompare(b.name);
     });
   const leaderSection = document.getElementById('leadershipSection');
   if (allLeaders.length) {
@@ -250,8 +251,9 @@ function renderDashboard() {
   }
 
   const positionBadge = (pos) => {
-    if (pos === 'supervisor') return `<span class="position-badge pos-supervisor"><i class="fas fa-shield-alt me-1"></i>Supervisor</span>`;
-    if (pos === 'lead')       return `<span class="position-badge pos-lead"><i class="fas fa-star me-1"></i>Lead</span>`;
+    if (pos === 'ops-manager') return `<span class="position-badge pos-om"><i class="fas fa-user-tie me-1"></i>Operations Manager</span>`;
+    if (pos === 'supervisor')  return `<span class="position-badge pos-supervisor"><i class="fas fa-shield-alt me-1"></i>Supervisor</span>`;
+    if (pos === 'lead')        return `<span class="position-badge pos-lead"><i class="fas fa-star me-1"></i>Lead</span>`;
     return '';
   };
 
@@ -268,7 +270,7 @@ function renderDashboard() {
     const ptsColor = pts > 0 ? '#f97316' : pts < 0 ? '#dc2626' : '#d1d5db';
     const ptsBg    = pts > 0 ? 'rgba(249,115,22,0.10)' : pts < 0 ? 'rgba(220,38,38,0.08)' : 'rgba(0,0,0,0.04)';
     return `<div class="col-xl-3 col-lg-4 col-md-6">
-      <div class="associate-card ${a.position === 'supervisor' ? 'card-supervisor' : a.position === 'lead' ? 'card-lead' : ''}" onclick="openProfile('${a.id}')">
+      <div class="associate-card ${a.position === 'ops-manager' ? 'card-om' : a.position === 'supervisor' ? 'card-supervisor' : a.position === 'lead' ? 'card-lead' : ''}" onclick="openProfile('${a.id}')">
         <div class="card-body p-3">
           <div class="d-flex align-items-start gap-3 mb-2">
             <div class="avatar-circle">${initials}</div>
@@ -362,11 +364,15 @@ function renderLeaders() {
   }
   roster.innerHTML = filtered.map(a => {
     const initials = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
-    const isSup    = a.position === 'supervisor';
+    const isOM  = a.position === 'ops-manager';
+    const isSup = a.position === 'supervisor';
+    const avatarCls = isOM ? 'avatar-om' : isSup ? 'avatar-supervisor' : 'avatar-lead';
+    const icon      = isOM ? 'fa-user-tie' : isSup ? 'fa-shield-alt' : 'fa-star';
+    const label     = isOM ? 'Operations Manager' : isSup ? 'Supervisor' : 'Lead';
     return `<div class="leader-card" onclick="openProfile('${a.id}')">
-      <div class="leader-avatar ${isSup ? 'avatar-supervisor' : 'avatar-lead'}">${initials}</div>
+      <div class="leader-avatar ${avatarCls}">${initials}</div>
       <div class="leader-name">${escapeHtml(a.name)}</div>
-      <div class="leader-pos"><i class="fas ${isSup ? 'fa-shield-alt' : 'fa-star'} me-1"></i>${isSup ? 'Supervisor' : 'Lead'}</div>
+      <div class="leader-pos"><i class="fas ${icon} me-1"></i>${label}</div>
       <div class="leader-shift">${escapeHtml(a.shift || '—')} Shift</div>
     </div>`;
   }).join('');
@@ -409,7 +415,8 @@ window.openProfile = async (id) => {
   statusEl.className   = 'badge ' + (a.status === 'active' ? 'bg-success' : a.status === 'inactive' ? 'bg-secondary' : 'bg-warning text-dark');
 
   const posEl = document.getElementById('profilePosition');
-  if (a.position === 'supervisor') posEl.innerHTML = `<span class="position-badge pos-supervisor"><i class="fas fa-shield-alt me-1"></i>Supervisor</span>`;
+  if (a.position === 'ops-manager') posEl.innerHTML = `<span class="position-badge pos-om"><i class="fas fa-user-tie me-1"></i>Operations Manager</span>`;
+  else if (a.position === 'supervisor') posEl.innerHTML = `<span class="position-badge pos-supervisor"><i class="fas fa-shield-alt me-1"></i>Supervisor</span>`;
   else if (a.position === 'lead') posEl.innerHTML  = `<span class="position-badge pos-lead"><i class="fas fa-star me-1"></i>Lead</span>`;
   else posEl.innerHTML = '';
 
@@ -1507,37 +1514,27 @@ window.openCreateUser = () => {
   document.getElementById('newUserForm').reset();
   new bootstrap.Modal(document.getElementById('newUserModal')).show();
 };
-function genTempPassword() {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-}
 window.createUser = async () => {
-  const email = document.getElementById('newEmail').value.trim();
-  const name  = document.getElementById('newDisplayName').value.trim();
-  const role  = document.getElementById('newRole').value;
+  const email    = document.getElementById('newEmail').value.trim();
+  const name     = document.getElementById('newDisplayName').value.trim();
+  const password = document.getElementById('newPassword').value;
+  const role     = document.getElementById('newRole').value;
   if (!email || !name) { alert('Name and email are required.'); return; }
-  const tempPw = genTempPassword();
+  if (!password || password.length < 6) { alert('Password must be at least 6 characters.'); return; }
   const btn = document.getElementById('createUserBtn');
   btn.disabled = true; btn.textContent = 'Creating…';
   try {
     const adminEmail = currentUser.email;
     const adminPw    = prompt(`Re-enter YOUR password (${adminEmail}) to continue:`);
     if (!adminPw) { btn.disabled = false; btn.textContent = 'Create Account'; return; }
-    const cred = await createUserWithEmailAndPassword(auth, email, tempPw);
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
     await set(ref(db, `users/${cred.user.uid}`), {
       email, displayName: name, role,
       createdAt: new Date().toISOString(), createdBy: adminEmail
     });
     await signInWithEmailAndPassword(auth, adminEmail, adminPw);
     bootstrap.Modal.getInstance(document.getElementById('newUserModal')).hide();
-    // Show credentials in a styled alert
-    setTimeout(() => {
-      const msg = `Account created for ${name}\n\n` +
-                  `Email:    ${email}\n` +
-                  `Password: ${tempPw}\n\n` +
-                  `Share these credentials with ${name}. They can change their password after logging in.`;
-      alert(msg);
-    }, 300);
+    setTimeout(() => alert(`Account created for ${name}.\n\nEmail: ${email}\n\nShare the password you set with them directly.`), 300);
   } catch (e) {
     alert('Error: ' + e.message);
   } finally {
@@ -1948,6 +1945,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 }
 .leader-card:hover { background:rgba(255,255,255,0.13); transform:translateY(-2px); }
 .leader-avatar { width:52px; height:52px; border-radius:50%; font-weight:700; font-size:1rem; display:flex; align-items:center; justify-content:center; margin-bottom:0.5rem; }
+.avatar-om         { background:linear-gradient(135deg,#ea580c,#f97316); color:#fff; box-shadow:0 0 0 3px rgba(249,115,22,0.35); }
 .avatar-supervisor { background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; box-shadow:0 0 0 3px rgba(124,58,237,0.35); }
 .avatar-lead       { background:linear-gradient(135deg,#0369a1,#0891b2); color:#fff; box-shadow:0 0 0 3px rgba(8,145,178,0.35); }
 .leader-name  { color:#fff; font-weight:600; font-size:0.85rem; line-height:1.2; }
@@ -1956,8 +1954,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
 /* Position badges */
 .position-badge { display:inline-flex; align-items:center; border-radius:20px; padding:2px 8px; font-size:0.68rem; font-weight:700; letter-spacing:0.02em; }
+.pos-om         { background:linear-gradient(135deg,#ea580c,#f97316); color:#fff; }
 .pos-supervisor { background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; }
 .pos-lead       { background:linear-gradient(135deg,#0369a1,#0891b2); color:#fff; }
+.card-om         { border-top-color:#f97316!important; border-top-width:3px!important; }
 .card-supervisor { border-top-color:#7c3aed!important; }
 .card-lead       { border-top-color:#0891b2!important; }
 
@@ -2346,7 +2346,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
                 <tr><td>Coaching note</td><td class="text-end text-muted">0</td></tr>
                 <tr><td>General note</td><td class="text-end text-muted">0</td></tr>
                 <tr><td>Warning note added</td><td class="text-end fw-bold text-danger">-10</td></tr>
-                <tr><td>PIP note added</td><td class="text-end fw-bold text-danger">-25</td></tr>
+                <tr><td>PIP note added</td><td class="text-end fw-bold text-danger">-150</td></tr>
                 <tr><td>Certification removed</td><td class="text-end fw-bold text-danger">-10</td></tr>
                 <tr><td>Badge removed</td><td class="text-end fw-bold text-danger">Reversed</td></tr>
                 <tr><td>Note deleted</td><td class="text-end fw-bold text-danger">Reversed</td></tr>
@@ -2362,21 +2362,21 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <h6 class="fw-bold mb-2 mt-3" style="color:var(--navy)"><i class="fas fa-user me-2" style="color:var(--orange)"></i>Associate Profiles</h6>
             <p class="small text-muted">Click any card to open a profile. From there you can add manager notes, toggle certifications, nominate badges, and view the private watch notes section (supervisors/admins only). Use the Export PDF button to generate a printable summary for HR records.</p>
             <h6 class="fw-bold mb-2 mt-3" style="color:var(--navy)"><i class="fas fa-sticky-note me-2" style="color:var(--orange)"></i>Note Types</h6>
-            <p class="small text-muted"><strong>Coaching:</strong> performance conversations, no point impact. <strong>Recognition:</strong> positive callouts, +10 pts. <strong>Leadership:</strong> leadership potential observations, +15 pts. <strong>Warning:</strong> formal warnings, -10 pts. <strong>PIP:</strong> performance improvement plan entries, -25 pts. <strong>General:</strong> misc notes, no point impact.</p>
+            <p class="small text-muted"><strong>Coaching:</strong> performance conversations, no point impact. <strong>Recognition:</strong> positive callouts, +10 pts. <strong>Leadership:</strong> leadership potential observations, +15 pts. <strong>Warning:</strong> formal warnings, -10 pts. <strong>PIP:</strong> performance improvement plan entries, -150 pts. <strong>General:</strong> misc notes, no point impact.</p>
           </div>
         </div>
 
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-trophy me-2" style="color:var(--orange)"></i>Achievement Badges</h6>
-            <p class="small text-muted">Leads, Supervisors, and Admins can nominate associates for badges. Each nomination requires a reason. Nominations show as <em>Pending</em> until an Admin approves them in the Admin panel. Once approved, points are awarded automatically. Badges stack — an associate can earn the same badge multiple times. Hover over a badge to see the nomination reason.</p>
+            <p class="small text-muted">Leads, Supervisors, and Admins can nominate associates for badges. Each nomination requires a reason. Nominations show as <em>Pending</em> until an Admin approves them in the Admin panel. Once approved, points are awarded automatically. Badges stack; an associate can earn the same badge multiple times. Hover over a badge to see the nomination reason.</p>
           </div>
         </div>
 
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-certificate me-2" style="color:var(--orange)"></i>Certifications</h6>
-            <p class="small text-muted">Leads, Supervisors, and Admins can toggle certifications on each profile. Each cert earned adds +10 points; removing one deducts 10. There are 25 certifications available covering all major warehouse roles — use the cert filter on the dashboard to see who is qualified for a specific role.</p>
+            <p class="small text-muted">Leads, Supervisors, and Admins can toggle certifications on each profile. Each cert earned adds +10 points; removing one deducts 10. There are 26 certifications available covering all major warehouse roles. Use the cert filter on the dashboard to see who is qualified for a specific role.</p>
           </div>
         </div>
 
@@ -2542,6 +2542,45 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
 <!-- ═══════ MODALS ═══════ -->
 
+<!-- Create User Account -->
+<div class="modal fade" id="newUserModal" tabindex="-1">
+  <div class="modal-dialog modal-sm"><div class="modal-content">
+    <div class="modal-header border-0 pb-0">
+      <h5 class="modal-title fw-bold"><i class="fas fa-user-plus me-2" style="color:var(--orange)"></i>Create Account</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <form id="newUserForm" class="d-flex flex-column gap-3">
+        <div>
+          <label class="form-label small fw-semibold">Full Name <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="newDisplayName" placeholder="First Last">
+        </div>
+        <div>
+          <label class="form-label small fw-semibold">Email <span class="text-danger">*</span></label>
+          <input type="email" class="form-control" id="newEmail" placeholder="user@carparts.com">
+        </div>
+        <div>
+          <label class="form-label small fw-semibold">Password <span class="text-danger">*</span></label>
+          <input type="password" class="form-control" id="newPassword" placeholder="Set their password" autocomplete="new-password">
+        </div>
+        <div>
+          <label class="form-label small fw-semibold">Role</label>
+          <select class="form-select" id="newRole">
+            <option value="viewer">Viewer — read only</option>
+            <option value="lead" selected>Lead — add notes, certs, nominate badges, view/add credentials</option>
+            <option value="supervisor">Supervisor — Lead access + private watch notes + delete notes</option>
+            <option value="admin">Admin — full access + user management + badge approvals</option>
+          </select>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer border-0 pt-0">
+      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-orange" id="createUserBtn" onclick="createUser()">Create Account</button>
+    </div>
+  </div></div>
+</div>
+
 <!-- Add/Edit Associate -->
 <div class="modal fade" id="assocModal" tabindex="-1">
   <div class="modal-dialog"><div class="modal-content">
@@ -2590,6 +2629,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <option value="">Associate</option>
               <option value="lead">Lead</option>
               <option value="supervisor">Supervisor</option>
+              <option value="ops-manager">Operations Manager</option>
             </select>
           </div>
           <div class="col-6">
