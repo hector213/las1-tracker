@@ -1487,6 +1487,29 @@ function renderMatrix() {
 }
 
 // ─── Attendance ────────────────────────────────────────────────────────
+// 3-6-9-10 policy: Doc. Verbal / Written Warning / Final Warning / Termination
+function attColorForPts(pts) {
+  if (pts >= 6)  return { bg: '#fee2e2', border: '#dc2626', text: '#991b1b' }; // red
+  if (pts >= 3)  return { bg: '#fef9c3', border: '#ca8a04', text: '#713f12' }; // yellow
+  return           { bg: '#dcfce7', border: '#16a34a', text: '#14532d' };       // green
+}
+
+window.updateAttFilterColor = () => {
+  const sel = document.getElementById('attFilterAssoc');
+  if (!sel) return;
+  if (!sel.value) {
+    sel.style.background = ''; sel.style.borderColor = ''; sel.style.color = ''; sel.style.fontWeight = '';
+    return;
+  }
+  const assoc = allAssociates.find(a => a.id === sel.value);
+  const pts   = assoc?.attendancePoints || 0;
+  const c     = attColorForPts(pts);
+  sel.style.background  = c.bg;
+  sel.style.borderColor = c.border;
+  sel.style.color       = c.text;
+  sel.style.fontWeight  = '600';
+};
+
 let lastAttendance = [];
 
 function attTypeInfo(key) {
@@ -1646,15 +1669,17 @@ function renderTeamAttendance(entries) {
     if (!sorted.length) { riskEl.innerHTML = '<div class="text-muted small">No attendance data for this period.</div>'; }
     else {
       riskEl.innerHTML = sorted.slice(0, 8).map(([id, d]) => {
-        const cls  = d.total >= 5 ? 'att-risk-critical' : d.total >= 3 ? 'att-risk-warning' : 'att-risk-ok';
-        const icon = d.total >= 5 ? '🚨' : d.total >= 3 ? '⚠️' : '✅';
+        const cls    = d.total >= 6 ? 'att-risk-critical' : d.total >= 3 ? 'att-risk-warning' : 'att-risk-ok';
+        const icon   = d.total >= 10 ? '🔴' : d.total >= 6 ? '🚨' : d.total >= 3 ? '⚠️' : '✅';
+        const color  = d.total >= 6 ? '#dc2626' : d.total >= 3 ? '#d97706' : '#059669';
+        const policy = d.total >= 10 ? 'Termination' : d.total >= 9 ? 'Final Warning' : d.total >= 6 ? 'Written Warning' : d.total >= 3 ? 'Doc. Verbal' : 'Good Standing';
         return `<div class="att-risk-card ${cls}" onclick="openProfile('${id}')">
           <span style="font-size:1.1rem">${icon}</span>
           <div class="flex-grow-1">
             <div class="fw-semibold small" style="color:var(--navy)">${escapeHtml(d.name)}</div>
-            <div class="text-muted" style="font-size:0.72rem">${d.count} event${d.count !== 1 ? 's' : ''}</div>
+            <div style="font-size:0.7rem;color:${color};font-weight:600">${policy}</div>
           </div>
-          <div class="fw-bold" style="color:${d.total >= 5 ? '#dc2626' : d.total >= 3 ? '#d97706' : '#059669'}">${d.total % 1 === 0 ? d.total : d.total.toFixed(1)} pts</div>
+          <div class="fw-bold" style="color:${color}">${d.total % 1 === 0 ? d.total : d.total.toFixed(1)} pts</div>
         </div>`;
       }).join('');
     }
@@ -1688,10 +1713,13 @@ function renderTeamAttendance(entries) {
   if (!tbody) return;
   if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No entries match.</td></tr>'; return; }
   tbody.innerHTML = filtered.map(e => {
-    const info = attTypeInfo(e.type);
+    const info  = attTypeInfo(e.type);
+    const assoc = allAssociates.find(a => a.id === e.assocId);
+    const pts   = assoc?.attendancePoints || 0;
+    const nc    = attColorForPts(pts);
     return `<tr style="cursor:pointer" onclick="openProfile('${e.assocId}')">
       <td>${formatDate(e.date)}</td>
-      <td class="fw-semibold" style="color:var(--navy)">${escapeHtml(e.assocName)}</td>
+      <td><span class="fw-semibold px-2 py-1 rounded" style="background:${nc.bg};color:${nc.text};border:1px solid ${nc.border}">${escapeHtml(e.assocName)}</span></td>
       <td><span style="color:${info.color}"><i class="fas ${info.icon} me-1"></i>${info.label}</span></td>
       <td class="text-muted small">${escapeHtml(e.note || '—')}</td>
       <td class="fw-bold text-end" style="color:${info.color}">+${info.points % 1 === 0 ? info.points : info.points.toFixed(1)}</td>
@@ -2631,7 +2659,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <i class="fas fa-shield-alt"></i><span>Admin</span>
       </a>
       <a class="nav-link" data-view="matrix" onclick="loadMatrix()">
-        <i class="fas fa-table"></i><span>Matrix</span>
+        <i class="fas fa-table"></i><span>Training Matrix</span>
       </a>
       <a class="nav-link" data-view="attendance" onclick="loadAttendance()">
         <i class="fas fa-calendar-alt"></i><span>Attendance</span>
@@ -2692,7 +2720,23 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="col-md-4"><div class="stat-card"><div class="val" id="statFlagged">—</div><div class="lbl">Flagged</div></div></div>
       </div>
 
-      <div class="d-flex gap-2 mb-4 flex-wrap">
+      <!-- Leaderboard & Milestones -->
+      <div class="row g-3 mb-4">
+        <div class="col-lg-6" id="leaderboardSection">
+          <div class="dashboard-widget-panel">
+            <div class="widget-header"><i class="fas fa-trophy me-2" style="color:#f97316"></i>Points Leaderboard</div>
+            <div id="leaderboardList"></div>
+          </div>
+        </div>
+        <div class="col-lg-6" id="milestonesSection">
+          <div class="dashboard-widget-panel">
+            <div class="widget-header"><i class="fas fa-calendar-star me-2" style="color:#f97316"></i>Upcoming Events</div>
+            <div id="milestonesList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2 mb-3 flex-wrap">
         <div class="search-wrap flex-grow-1" style="max-width:360px">
           <i class="fas fa-search"></i>
           <input type="text" id="searchInput" class="form-control search-bar" placeholder="Search name or employee ID…" oninput="renderDashboard()">
@@ -2716,22 +2760,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <option value="">All Certs</option>
           <!-- JS will populate this -->
         </select>
-      </div>
-
-      <!-- Leaderboard & Milestones -->
-      <div class="row g-3 mb-4">
-        <div class="col-lg-6" id="leaderboardSection">
-          <div class="dashboard-widget-panel">
-            <div class="widget-header"><i class="fas fa-trophy me-2" style="color:#f97316"></i>Points Leaderboard</div>
-            <div id="leaderboardList"></div>
-          </div>
-        </div>
-        <div class="col-lg-6" id="milestonesSection">
-          <div class="dashboard-widget-panel">
-            <div class="widget-header"><i class="fas fa-calendar-star me-2" style="color:#f97316"></i>Upcoming Events</div>
-            <div id="milestonesList"></div>
-          </div>
-        </div>
       </div>
 
       <div class="row g-3" id="associateGrid">
@@ -2959,7 +2987,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="d-flex gap-2 mb-3 flex-wrap align-items-end">
           <div>
             <label class="form-label small fw-semibold mb-1">Associate</label>
-            <select class="form-select form-select-sm" id="attFilterAssoc" onchange="loadAttendance()" style="min-width:160px">
+            <select class="form-select form-select-sm" id="attFilterAssoc" onchange="updateAttFilterColor();loadAttendance()" style="min-width:160px;transition:background .2s,border-color .2s">
               <option value="">All Associates</option>
             </select>
           </div>
@@ -3088,7 +3116,80 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
                 </tbody>
               </table>
             </div>
-            <p class="small text-muted mt-2 mb-0"><i class="fas fa-info-circle me-1" style="color:var(--orange)"></i>Associates with <strong>3+ points</strong> are flagged as a warning; <strong>5+ points</strong> are flagged as critical on the Attendance tracker.</p>
+            <p class="small text-muted mt-2 mb-0"><i class="fas fa-info-circle me-1" style="color:var(--orange)"></i>Color coding: <span style="color:#059669;font-weight:600">Green 0–2.9</span> · <span style="color:#ca8a04;font-weight:600">Yellow 3–5.9</span> · <span style="color:#dc2626;font-weight:600">Red 6+</span>. See the Attendance Policy card below for disciplinary thresholds.</p>
+          </div>
+        </div>
+
+        <!-- Attendance Policy -->
+        <div class="col-12">
+          <div class="admin-card" style="border-left:4px solid #dc2626">
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-gavel me-2" style="color:#dc2626"></i>Attendance Policy — 3 / 6 / 9 / 10</h6>
+            <div class="table-responsive">
+              <table class="table table-sm small mb-0">
+                <thead class="table-light"><tr><th>Points</th><th>Step</th><th>Action</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="fw-bold" style="color:#059669">0 – 2.9</span></td><td>Good Standing</td><td class="text-muted">No action required. Green indicator.</td></tr>
+                  <tr><td><span class="fw-bold" style="color:#ca8a04">3 – 5.9</span></td><td>Documented Verbal</td><td class="text-muted">Issue a documented verbal warning. Yellow indicator.</td></tr>
+                  <tr><td><span class="fw-bold" style="color:#dc2626">6 – 8.9</span></td><td>Written Warning</td><td class="text-muted">Issue a written warning. Red indicator.</td></tr>
+                  <tr><td><span class="fw-bold" style="color:#dc2626">9 – 9.9</span></td><td>Final Warning</td><td class="text-muted">Issue a final written warning. Red indicator.</td></tr>
+                  <tr style="background:#fee2e2"><td><span class="fw-bold" style="color:#7f1d1d">10+</span></td><td><strong>Termination</strong></td><td class="text-muted">Associate has reached the termination threshold.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="small text-muted mt-2 mb-0"><i class="fas fa-info-circle me-1" style="color:var(--orange)"></i>Points accumulate across all attendance events. The Associate filter on the Attendance tracker and the name badge in the log table both reflect the associate's current color/status automatically.</p>
+          </div>
+        </div>
+
+        <!-- Flags -->
+        <div class="col-lg-6">
+          <div class="admin-card">
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-flag me-2" style="color:var(--orange)"></i>Associate Flags</h6>
+            <p class="small text-muted mb-2">Leads, Supervisors, and Admins can set a flag on any associate profile to indicate their current situation. Flags appear on the associate card on the dashboard.</p>
+            <table class="table table-sm small mb-0">
+              <tbody>
+                <tr><td><span class="badge bg-success">Active</span></td><td class="text-muted small">Default — no special flag set.</td></tr>
+                <tr><td><span class="badge bg-warning text-dark">Needs Support</span></td><td class="text-muted small">Associate may need additional coaching or resources.</td></tr>
+                <tr><td><span class="badge bg-danger">Attendance Issue</span></td><td class="text-muted small">Ongoing attendance concerns; see attendance log.</td></tr>
+                <tr><td><span class="badge bg-info text-dark">Leadership Track</span></td><td class="text-muted small">Associate is being developed for a leadership role.</td></tr>
+                <tr><td><span class="badge bg-secondary">Transitioning</span></td><td class="text-muted small">Role change, department transfer, or status change in progress.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Shift Snapshots -->
+        <div class="col-lg-6">
+          <div class="admin-card">
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-camera me-2" style="color:var(--orange)"></i>Shift Snapshots</h6>
+            <p class="small text-muted mb-2">Leads, Supervisors, and Admins can import productivity snapshots via the <strong>Import Snapshot</strong> button on the dashboard. Three methods are available:</p>
+            <ul class="small text-muted ps-3 mb-0">
+              <li><strong>Upload Image:</strong> Take a screenshot of the shift report — OCR will extract the data automatically.</li>
+              <li><strong>Paste Snapshot:</strong> Select all and copy the shift report, then paste it into the text box.</li>
+              <li><strong>Manual Entry:</strong> Type in the Employee ID, date, UPH, and other fields directly.</li>
+            </ul>
+            <p class="small text-muted mt-2 mb-0">Snapshots appear on the associate's profile under the <em>Shift Snapshots</em> tab, showing UPH, units, target, and on-pace status over time.</p>
+          </div>
+        </div>
+
+        <!-- Team Attendance Tracker -->
+        <div class="col-lg-6">
+          <div class="admin-card">
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-calendar-alt me-2" style="color:var(--orange)"></i>Team Attendance Tracker</h6>
+            <p class="small text-muted mb-2">The <strong>Attendance</strong> sidebar tab shows a team-wide view of all logged attendance events. Features include:</p>
+            <ul class="small text-muted ps-3 mb-0">
+              <li><strong>At-Risk Panel:</strong> Shows up to 8 associates with the most points in the selected period, with policy step labels.</li>
+              <li><strong>Period Filter:</strong> Scope the view to This Week, This Month, This Year, or All Time.</li>
+              <li><strong>Log Table:</strong> Filter by associate, shift, event type, and date range. Associate names are color-coded by policy status.</li>
+              <li><strong>Calendar:</strong> Visual month calendar showing which days had events.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Credentials -->
+        <div class="col-lg-6">
+          <div class="admin-card">
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-key me-2" style="color:#6366f1"></i>System Credentials</h6>
+            <p class="small text-muted mb-0">The <strong>System Credentials</strong> panel on each profile stores system logins (WMS, scheduler, etc.) tied to that associate. Leads and above can add entries; only Admins can delete them. Passwords are masked by default — click the eye icon to reveal or the copy icon to copy without displaying. Credentials are stored in Firebase and are not visible to Viewer-role accounts.</p>
           </div>
         </div>
 
@@ -3604,6 +3705,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <option>Performance Concern</option>
             <option>Positive Observation</option>
             <option>Other</option>
+          </select>
+        </div>
           </select>
         </div>
         <div class="mb-3">
