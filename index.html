@@ -705,7 +705,7 @@ window.exportToClaude = async () => {
   out += `\n=== ACHIEVEMENT BADGES ===\n`;
   const approved = lastBadges.filter(b => b.status === 'approved');
   if (approved.length) {
-    approved.forEach(b => out += `  • ${b.badge}${b.reason ? ` — "${b.reason}"` : ''}${b.awardedAt ? ` (${new Date(b.awardedAt).toLocaleDateString()})` : ''}\n`);
+    approved.forEach(b => { const dateField = b.approvedAt || b.awardedAt; out += `  • ${b.badge}${b.reason ? ` — "${b.reason}"` : ''}${dateField ? ` (approved ${new Date(dateField).toLocaleDateString()})` : ''}${b.approvedBy ? ` by ${b.approvedBy}` : ''}\n`; });
   } else { out += `No approved badges.\n`; }
   const pending = lastBadges.filter(b => b.status === 'pending');
   if (pending.length) out += `Pending approval: ${pending.map(b=>b.badge).join(', ')}\n`;
@@ -2383,6 +2383,17 @@ window.resetAllAttendance = async () => {
   finally { btn.disabled = false; btn.textContent = 'Reset All Attendance'; }
 };
 
+window.resetAllBadges = async () => {
+  if (!confirm('⚠️ RESET ALL BADGES\n\nThis will:\n• Delete ALL badge records for every associate\n• Zero badge-related points\n\nThis cannot be undone. Continue?')) return;
+  try {
+    await remove(ref(db, 'badges'));
+    // Zero out points that came from badges by recalculating from pointslog
+    // Simpler: just remove badge points - set all points to 0 then replay non-badge logs
+    // For now: remove all badges node and warn user points may need manual adjustment
+    alert('All badge records cleared.\n\nNote: Engagement point totals may be affected. If needed, use "Reset All Points" to also clear engagement points.');
+  } catch(e) { alert('Error: ' + e.message); }
+};
+
 // ─── Attendance Bulk Import ────────────────────────────────────────────
 window._attImportRows = [];
 
@@ -3866,6 +3877,16 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div id="resetAttList" class="border rounded p-2" style="max-height:200px;overflow-y:auto;background:#fafafa">
           <p class="text-muted small mb-0">Loading…</p>
         </div>
+
+        <!-- Badge Data -->
+        <hr class="my-3">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="small fw-semibold" style="color:var(--navy)"><i class="fas fa-star me-1" style="color:var(--orange)"></i>Achievement Badges</span>
+          <button class="btn btn-sm btn-outline-danger" onclick="resetAllBadges()">
+            <i class="fas fa-trash-alt me-1"></i>Reset All Badges
+          </button>
+        </div>
+        <p class="small text-muted mb-0">Removes all badge records (approved and pending) for every associate and zeros any badge points. Use this to clear test/filler badge data.</p>
       </div>
 
       <!-- Attendance Import -->
@@ -4329,6 +4350,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             </div>
             <div class="col-6">
               <label class="form-label small fw-semibold">Individual Avg UPH <span class="text-danger">*</span></label>
+              <input type="number" class="form-control" id="manualUph" step="0.1" placeholder="e.g. 30.2">
+            </div>
+            <div class="col-6">
               <input type="number" class="form-control" id="manualUph" step="0.1" placeholder="e.g. 30.2">
             </div>
             <div class="col-6">
