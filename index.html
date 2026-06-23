@@ -382,7 +382,7 @@ function renderLeaderboard() {
   const el = document.getElementById('leaderboardList');
   if (!el) return;
   const ranked = [...allAssociates]
-    .filter(a => a.status === 'active')
+    .filter(a => a.status === 'active' && a.position !== 'supervisor' && a.position !== 'ops-manager')
     .sort((a, b) => (b.points || 0) - (a.points || 0))
     .slice(0, 10);
   if (!ranked.length) { el.innerHTML = '<div class="text-muted small py-2">No data yet.</div>'; return; }
@@ -3523,9 +3523,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
         <div class="mt-3 p-3 bg-light rounded small text-muted">
           <strong>Roles:</strong>
-          <span class="badge bg-danger ms-1">Admin</span> full access + user management + badge approvals.
-          <span class="badge bg-primary ms-1">Leader</span> add associates, add notes, nominate badges, manage certs.
-          <span class="badge bg-secondary ms-1">Viewer</span> read-only. Click "Role" to cycle.
+          <span class="badge bg-danger ms-1">Admin</span> full access + user management + badge approvals + data management.
+          <span class="badge ms-1" style="background:#1a2744">Supervisor</span> Lead access + private watch notes + delete notes + attendance logging.
+          <span class="badge bg-primary ms-1">Lead</span> add/edit associates, add notes, nominate badges, manage certs, log attendance, add credentials.
+          <span class="badge bg-secondary ms-1">Viewer</span> read-only. Click the role dropdown to change.
         </div>
       </div>
     </div>
