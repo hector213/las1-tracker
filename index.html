@@ -10,7 +10,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getDatabase, ref, set, get, push, update, remove, onValue, off } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, set, get, push, update, remove, onValue, off, onDisconnect } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMPDpzhZEWZjP9SptREKVSB4dmdhY5cpM",
@@ -86,6 +86,12 @@ onAuthStateChanged(auth, async (user) => {
         document.getElementById('currentUserRole').textContent = 'Admin';
       }
     }
+    // ── Presence tracking ──
+    const presRef = ref(db, `presence/${user.uid}`);
+    const displayName = (await get(ref(db, `users/${user.uid}`))).val()?.displayName || user.email;
+    await set(presRef, { name: displayName, role: currentUserRole, online: true, since: new Date().toISOString() });
+    onDisconnect(presRef).remove();
+
     showApp();
     if (currentUserRole === 'admin') document.getElementById('navAdmin').classList.remove('d-none');
     if (currentUserRole !== 'viewer') document.getElementById('addAssocBtn').classList.remove('d-none');
@@ -852,9 +858,25 @@ window.exportForClaude = async () => {
 };
 
 // ─── Admin Panel ──────────────────────────────────────────────────────
+let activeUsersListOpen = false;
 window.loadAdminPanel = () => {
   showView('admin');
   detachAll();
+
+  // Live presence listener
+  const presRef = ref(db, 'presence');
+  activeListeners['presence'] = presRef;
+  onValue(presRef, (snap) => {
+    const online = [];
+    if (snap.exists()) Object.values(snap.val()).forEach(u => online.push(u));
+    document.getElementById('activeUsersCount').textContent = online.length;
+    const listEl = document.getElementById('activeUsersList');
+    listEl.innerHTML = online.length
+      ? `<div class="fw-semibold small mb-2" style="color:var(--navy)"><i class="fas fa-circle text-success me-1" style="font-size:0.6rem"></i>Currently Online</div>` +
+        online.map(u => `<div class="active-user-row"><span class="active-user-dot"></span><span class="fw-semibold">${escapeHtml(u.name)}</span><span class="badge ${u.role==='admin'?'bg-danger':u.role==='leader'?'bg-primary':'bg-secondary'} ms-1">${capitalize(u.role||'viewer')}</span><span class="text-muted ms-auto">since ${formatTime(u.since)}</span></div>`).join('')
+      : '<div class="text-muted small">No users currently online.</div>';
+  });
+
   const usersRef = ref(db, 'users');
   activeListeners['users'] = usersRef;
   onValue(usersRef, (snap) => {
@@ -921,26 +943,37 @@ window.openCreateUser = () => {
   document.getElementById('newUserForm').reset();
   new bootstrap.Modal(document.getElementById('newUserModal')).show();
 };
+function genTempPassword() {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
 window.createUser = async () => {
   const email = document.getElementById('newEmail').value.trim();
-  const pw    = document.getElementById('newPw').value.trim();
   const name  = document.getElementById('newDisplayName').value.trim();
   const role  = document.getElementById('newRole').value;
-  if (!email || !pw || !name) { alert('All fields are required'); return; }
+  if (!email || !name) { alert('Name and email are required.'); return; }
+  const tempPw = genTempPassword();
   const btn = document.getElementById('createUserBtn');
   btn.disabled = true; btn.textContent = 'Creating…';
   try {
     const adminEmail = currentUser.email;
-    const adminPw    = prompt(`To create an account, re-enter YOUR password (${adminEmail}):`);
+    const adminPw    = prompt(`Re-enter YOUR password (${adminEmail}) to continue:`);
     if (!adminPw) { btn.disabled = false; btn.textContent = 'Create Account'; return; }
-    const cred = await createUserWithEmailAndPassword(auth, email, pw);
+    const cred = await createUserWithEmailAndPassword(auth, email, tempPw);
     await set(ref(db, `users/${cred.user.uid}`), {
       email, displayName: name, role,
       createdAt: new Date().toISOString(), createdBy: adminEmail
     });
     await signInWithEmailAndPassword(auth, adminEmail, adminPw);
     bootstrap.Modal.getInstance(document.getElementById('newUserModal')).hide();
-    alert(`✓ Account created!\n\nShare with ${name}:\nEmail: ${email}\nPassword: ${pw}`);
+    // Show credentials in a styled alert
+    setTimeout(() => {
+      const msg = `Account created for ${name}\n\n` +
+                  `Email:    ${email}\n` +
+                  `Password: ${tempPw}\n\n` +
+                  `Share these credentials with ${name}. They can change their password after logging in.`;
+      alert(msg);
+    }, 300);
   } catch (e) {
     alert('Error: ' + e.message);
   } finally {
@@ -1180,6 +1213,11 @@ function formatDateTime(str) {
   try { return new Date(str).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }); }
   catch { return str; }
 }
+function formatTime(str) {
+  if (!str) return '—';
+  try { return new Date(str).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }); }
+  catch { return str; }
+}
 function escapeHtml(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -1361,6 +1399,17 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 /* Buttons */
 .btn-orange { background:var(--orange); color:#fff; border:none; }
 .btn-orange:hover { background:#ea6c0a; color:#fff; }
+
+/* Active users indicator */
+.active-users-pill { display:inline-flex; align-items:center; gap:6px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:20px; padding:4px 12px; font-size:0.8rem; font-weight:600; color:#065f46; cursor:pointer; user-select:none; }
+.active-users-pill:hover { background:#d1fae5; }
+.active-dot { width:9px; height:9px; background:#10b981; border-radius:50%; display:inline-block; box-shadow:0 0 0 2px #a7f3d0; animation:pulse-green 2s infinite; }
+@keyframes pulse-green { 0%,100%{box-shadow:0 0 0 2px #a7f3d0} 50%{box-shadow:0 0 0 5px #6ee7b7} }
+.active-users-label { color:#6b7280; font-weight:400; }
+.active-users-list { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:0.75rem 1rem; }
+.active-user-row { display:flex; align-items:center; gap:8px; font-size:0.82rem; padding:4px 0; border-bottom:1px solid #f3f4f6; }
+.active-user-row:last-child { border-bottom:none; }
+.active-user-dot { width:7px; height:7px; background:#10b981; border-radius:50%; flex-shrink:0; }
 
 /* Admin */
 .admin-card { background:#fff; border-radius:12px; padding:1.5rem; border:1px solid #e5e7eb; margin-bottom:1.5rem; }
@@ -1616,10 +1665,19 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
     <!-- ADMIN VIEW -->
     <div id="adminView" class="view d-none">
-      <div class="d-flex justify-content-between align-items-center mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <h1 class="page-title"><i class="fas fa-shield-alt me-2" style="color:var(--orange)"></i>Admin Panel</h1>
-        <button class="btn btn-sm btn-orange" onclick="openCreateUser()"><i class="fas fa-user-plus me-1"></i>Create Account</button>
+        <div class="d-flex align-items-center gap-2">
+          <div class="active-users-pill" id="activeUsersPill" title="Users currently online" onclick="document.getElementById('activeUsersList').classList.toggle('d-none')">
+            <span class="active-dot"></span>
+            <span id="activeUsersCount">—</span>
+            <span class="active-users-label">online</span>
+          </div>
+          <button class="btn btn-sm btn-orange" onclick="openCreateUser()"><i class="fas fa-user-plus me-1"></i>Create Account</button>
+        </div>
       </div>
+      <!-- Active users popover list -->
+      <div id="activeUsersList" class="d-none active-users-list mb-3"></div>
 
       <!-- Pending Badge Approvals -->
       <div class="admin-card">
@@ -1890,10 +1948,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="mb-3">
           <label class="form-label small fw-semibold">Email</label>
           <input type="email" class="form-control" id="newEmail" placeholder="leader@carparts.com">
-        </div>
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">Temporary Password</label>
-          <input type="text" class="form-control" id="newPw" placeholder="Min 6 characters">
         </div>
         <div>
           <label class="form-label small fw-semibold">Role</label>
