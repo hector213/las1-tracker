@@ -307,6 +307,9 @@ window.openProfile = async (id) => {
   // Reset note filter UI
   document.querySelectorAll('.note-filter-btn').forEach(b => b.classList.toggle('filter-active', b.dataset.type === 'All'));
 
+  // Reset badge expand state
+  badgesExpanded = false;
+
   // Reset credentials panel state
   credsOpen = false;
   document.getElementById('credsBody').classList.add('d-none');
@@ -608,53 +611,113 @@ window.deleteWatchNote = async (noteId) => {
 };
 
 // ─── Badges ───────────────────────────────────────────────────────────
+let lastBadges = [];
 function listenBadges(associateId) {
   const badgeRef = ref(db, `badges/${associateId}`);
   activeListeners['badges'] = badgeRef;
   onValue(badgeRef, (snap) => {
     const badges = [];
     if (snap.exists()) Object.entries(snap.val()).forEach(([id, b]) => badges.push({ id, ...b }));
+    lastBadges = badges;
     renderBadges(badges);
   });
 }
 
+const BADGE_SHOW_LIMIT = 25;
+let badgesExpanded = false;
+
 function renderBadges(badges) {
   const container   = document.getElementById('badgesContainer');
   const canNominate = currentUserRole === 'admin' || currentUserRole === 'leader';
-  const approvedMap = {};
-  const pendingMap  = {};
+
+  // Group approved by type (array), collect pending by type
+  const approvedByType = {}; // label → [badge, ...]
+  const pendingByType  = {}; // label → badge (first pending per type)
   badges.forEach(b => {
-    if (b.status === 'approved') approvedMap[b.badge] = b;
-    if (b.status === 'pending')  pendingMap[b.badge]  = b;
+    if (b.status === 'approved') {
+      if (!approvedByType[b.badge]) approvedByType[b.badge] = [];
+      approvedByType[b.badge].push(b);
+    }
+    if (b.status === 'pending' && !pendingByType[b.badge]) pendingByType[b.badge] = b;
   });
 
-  // Only show approved badges (and pending ones to the nominator/admin)
-  const visibleBadges = BADGES.filter(def =>
-    approvedMap[def.label] || (canNominate && pendingMap[def.label])
-  );
+  // Sort each group newest first
+  Object.values(approvedByType).forEach(arr => arr.sort((a, b) => new Date(b.approvedAt) - new Date(a.approvedAt)));
+
+  // Build ordered list of groups (BADGES order), only groups with something to show
+  const groups = BADGES
+    .filter(def => approvedByType[def.label]?.length || (canNominate && pendingByType[def.label]))
+    .map(def => ({ def, approved: approvedByType[def.label] || [], pending: pendingByType[def.label] }));
+
+  // Flatten all approved instances for the 25-limit count
+  const totalApproved = groups.reduce((n, g) => n + g.approved.length, 0);
 
   let html = '';
-  if (visibleBadges.length) {
-    html += '<div class="badge-shelf">';
-    visibleBadges.forEach(def => {
-      const awarded = approvedMap[def.label];
-      const pending = pendingMap[def.label];
-      const isElite = def.tier === 'elite';
-      const cardClass = awarded ? (isElite ? 'badge-card-elite' : 'badge-card-active') : 'badge-card-pending-view';
-      const title = awarded
-        ? `Awarded ${formatDate(awarded.approvedAt)} by ${escapeHtml(awarded.approvedBy || '?')}`
-        : `Pending approval — nominated by ${escapeHtml(pending?.nominatedBy || '?')}`;
-      html += `<div class="badge-card ${cardClass}" title="${title}">
-        <div class="badge-emoji">${def.emoji}</div>
-        <div class="badge-label">${escapeHtml(def.label)}</div>
-        ${awarded ? `<div class="badge-date">${formatDate(awarded.approvedAt)}</div>` : ''}
-        ${!awarded && pending ? `<div class="badge-pending-tag">Pending Approval</div>` : ''}
-        ${awarded && currentUserRole === 'admin' ? `<button class="badge-remove-btn" onclick="removeBadge('${awarded.id}')" title="Remove badge">×</button>` : ''}
-      </div>`;
-    });
-    html += '</div>';
+
+  if (!groups.length) {
+    html = '<span class="text-muted small">No badges earned yet.</span>';
   } else {
-    html += '<span class="text-muted small">No badges earned yet.</span>';
+    // Render groups; track how many approved cards shown
+    let shownCount = 0;
+    let hiddenHtml = '';
+    let visibleHtml = '';
+
+    groups.forEach(({ def, approved, pending }) => {
+      const isElite = def.tier === 'elite';
+      let groupHtml = `<div class="badge-group mb-3">
+        <div class="badge-group-header">
+          <span class="badge-group-emoji">${def.emoji}</span>
+          <span class="badge-group-name">${escapeHtml(def.label)}</span>
+          ${approved.length > 1 ? `<span class="badge-group-count">×${approved.length}</span>` : ''}
+          ${isElite ? '<span class="badge-elite-tag">⭐ Elite</span>' : ''}
+        </div>
+        <div class="badge-shelf badge-shelf-compact">`;
+
+      approved.forEach(b => {
+        const cardClass = isElite ? 'badge-card-elite' : 'badge-card-active';
+        const tooltip = [
+          `Awarded by ${b.approvedBy||'?'} on ${formatDate(b.approvedAt)}`,
+          b.reason ? `\n"${b.reason}"` : ''
+        ].join('');
+        const card = `<div class="badge-card ${cardClass}" title="${escapeHtml(tooltip)}">
+          <div class="badge-emoji">${def.emoji}</div>
+          <div class="badge-date">${formatDate(b.approvedAt)}</div>
+          ${currentUserRole === 'admin' ? `<button class="badge-remove-btn" onclick="removeBadge('${b.id}')" title="Remove">×</button>` : ''}
+        </div>`;
+        if (!badgesExpanded && shownCount >= BADGE_SHOW_LIMIT) {
+          hiddenHtml += card;
+        } else {
+          groupHtml += card;
+        }
+        shownCount++;
+      });
+
+      // Pending card
+      if (pending) {
+        const pendingTooltip = [`Pending — nominated by ${pending.nominatedBy||'?'}`, pending.reason ? `\n"${pending.reason}"` : ''].join('');
+        groupHtml += `<div class="badge-card badge-card-pending-view" title="${escapeHtml(pendingTooltip)}">
+          <div class="badge-emoji">${def.emoji}</div>
+          <div class="badge-pending-tag">Pending</div>
+        </div>`;
+      }
+
+      groupHtml += `</div></div>`;
+      visibleHtml += groupHtml;
+    });
+
+    html = `<div class="badge-groups-wrap">${visibleHtml}</div>`;
+
+    // Show all / collapse button
+    const hidden = totalApproved - Math.min(totalApproved, BADGE_SHOW_LIMIT);
+    if (!badgesExpanded && totalApproved > BADGE_SHOW_LIMIT) {
+      html += `<button class="btn btn-sm btn-outline-secondary mt-1" onclick="expandBadges()">
+        <i class="fas fa-chevron-down me-1"></i>Show all ${totalApproved} badges
+      </button>`;
+    } else if (badgesExpanded && totalApproved > BADGE_SHOW_LIMIT) {
+      html += `<button class="btn btn-sm btn-outline-secondary mt-1" onclick="collapseBadges()">
+        <i class="fas fa-chevron-up me-1"></i>Show less
+      </button>`;
+    }
   }
 
   if (canNominate) {
@@ -664,6 +727,9 @@ function renderBadges(badges) {
   }
   container.innerHTML = html;
 }
+
+window.expandBadges   = () => { badgesExpanded = true;  renderBadges(lastBadges); };
+window.collapseBadges = () => { badgesExpanded = false; renderBadges(lastBadges); };
 
 window.openNominateBadge = () => {
   const sel = document.getElementById('badgeSelect');
@@ -1285,9 +1351,17 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
 /* Badge shelf */
 .badge-shelf { display:flex; flex-wrap:wrap; gap:0.75rem; }
+.badge-shelf-compact { gap:0.5rem; }
+.badge-group { border-bottom:1px solid #f3f4f6; padding-bottom:0.75rem; }
+.badge-group:last-child { border-bottom:none; padding-bottom:0; }
+.badge-group-header { display:flex; align-items:center; gap:0.4rem; margin-bottom:0.5rem; }
+.badge-group-emoji { font-size:1.1rem; }
+.badge-group-name { font-size:0.8rem; font-weight:700; color:var(--navy); }
+.badge-group-count { background:var(--orange); color:#fff; font-size:0.65rem; font-weight:700; border-radius:20px; padding:1px 7px; }
+.badge-elite-tag { background:#fbbf24; color:#78350f; font-size:0.65rem; font-weight:700; border-radius:20px; padding:1px 7px; }
 .badge-card {
   position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center;
-  width:110px; min-height:110px; border-radius:14px; padding:0.75rem 0.5rem 0.6rem;
+  width:90px; min-height:90px; border-radius:14px; padding:0.6rem 0.4rem 0.5rem;
   border:2px solid #e5e7eb; background:#f9fafb; transition:all .2s; text-align:center;
 }
 .badge-card-active {
