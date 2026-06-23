@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LAS1 Associate Performance Tracker</title>
+<title>LAS1 Engagement Tracker</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 
@@ -36,6 +36,7 @@ const BADGES = [
   { key: 'leadership-qualities',label: 'Leadership Qualities',      emoji: '👑', tier: 'standard' },
   { key: 'always-helpful',      label: 'Always Helpful',            emoji: '🙌', tier: 'standard' },
   { key: 'leadership-list',     label: 'Leadership List',           emoji: '⭐', tier: 'elite'    },
+  { key: 'employee-of-month',   label: 'Employee of the Month',     emoji: '🏅', tier: 'elite-plus' },
 ];
 const CERTS = [
   'OP Pick','Walkie Rider','Counter Balance','Reach Truck','Yard Truck',
@@ -53,7 +54,7 @@ const FLAGS  = {
 };
 const NOTE_TYPES = ['All','General','Coaching','Recognition','Warning','PIP','Leadership'];
 const POINT_VALUES = {
-  badge:  { standard: 25, elite: 100 },
+  badge:  { standard: 25, elite: 100, 'elite-plus': 200 },
   note:   { Recognition: 10, Leadership: 15, Coaching: 0, Warning: -10, PIP: -25, General: 0 }
 };
 function badgePoints(badgeLabel) {
@@ -1053,7 +1054,7 @@ window.exportProfilePDF = async () => {
   ${certs.length ? `<h2>Certifications (${certs.length})</h2><div class="chips">${certs.map(c => `<span class="chip">${c}</span>`).join('')}</div>` : ''}
   ${badges.length ? `<h2>Achievement Badges</h2>${badges.map(b => `<span class="badge-item">${b.badge} — ${new Date(b.approvedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>`).join('<br>')}` : ''}
   ${notes.length ? `<h2>Manager Notes (${notes.length})</h2>${notes.map(n => `<div class="note"><div class="note-type">${n.type || 'General'}</div><div>${n.text}</div><div class="note-meta">${n.author} · ${new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div></div>`).join('')}` : ''}
-  <div style="margin-top:32px;font-size:0.72rem;color:#9ca3af">Exported ${new Date().toLocaleString()} · LAS1 Associate Performance Tracker</div>
+  <div style="margin-top:32px;font-size:0.72rem;color:#9ca3af">Exported ${new Date().toLocaleString()} · LAS1 Engagement Tracker</div>
   </body></html>`;
 
   const win = window.open('', '_blank');
@@ -1071,7 +1072,7 @@ window.exportForClaude = async () => {
     const assocSnap = await get(ref(db, 'associates'));
     if (!assocSnap.exists()) { alert('No data to export'); return; }
 
-    let out = `LAS1 ASSOCIATE PERFORMANCE INTELLIGENCE REPORT\n`;
+    let out = `LAS1 ENGAGEMENT TRACKER REPORT\n`;
     out += `Generated: ${new Date().toLocaleString()}\n${'═'.repeat(60)}\n\n`;
     out += `INSTRUCTIONS FOR CLAUDE:\nReview associate profiles below. Each entry includes role, shift, flag status, achievements, certifications, shift snapshots, and manager notes. Use this to identify leadership potential, coaching needs, and top performers.\n\n${'═'.repeat(60)}\n\n`;
 
@@ -1814,7 +1815,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   <div class="login-card">
     <div class="text-center mb-4">
       <div class="login-logo">LAS1</div>
-      <div class="text-muted small">Associate Performance Tracker</div>
+      <div class="text-muted small">Engagement Tracker</div>
     </div>
     <div id="loginError" class="alert alert-danger py-2 d-none small"></div>
     <div class="mb-3">
@@ -1836,7 +1837,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   <!-- Sidebar -->
   <nav id="sidebar">
     <div class="sidebar-brand">
-      <div class="brand-name">LAS1 Tracker</div>
+      <div class="brand-name">LAS1 Engagement Tracker</div>
       <div class="brand-sub">Performance Intelligence</div>
     </div>
     <div class="sidebar-nav">
@@ -1875,6 +1876,24 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <button class="btn btn-sm btn-orange d-none" id="addAssocBtn" onclick="openAddAssociate()">
             <i class="fas fa-plus me-1"></i>Add Associate
           </button>
+        </div>
+      </div>
+
+      <!-- Leadership Team -->
+      <div id="leadershipSection" class="d-none mb-4">
+        <div class="leadership-panel">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div class="leadership-header mb-0">
+              <i class="fas fa-shield-alt me-2"></i>Meet Your Leadership Team
+            </div>
+            <div class="d-flex gap-1">
+              <button class="leader-filter-btn filter-active" data-shift="All" onclick="setLeaderFilter('All')">All</button>
+              <button class="leader-filter-btn" data-shift="A1" onclick="setLeaderFilter('A1')">A1</button>
+              <button class="leader-filter-btn" data-shift="A2" onclick="setLeaderFilter('A2')">A2</button>
+              <button class="leader-filter-btn" data-shift="B1" onclick="setLeaderFilter('B1')">B1</button>
+            </div>
+          </div>
+          <div class="leadership-roster" id="leadershipRoster"></div>
         </div>
       </div>
 
@@ -1923,24 +1942,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <div class="widget-header"><i class="fas fa-birthday-cake me-2" style="color:#f97316"></i>Upcoming Milestones</div>
             <div id="milestonesList"></div>
           </div>
-        </div>
-      </div>
-
-      <!-- Leadership Team -->
-      <div id="leadershipSection" class="d-none mb-4">
-        <div class="leadership-panel">
-          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-            <div class="leadership-header mb-0">
-              <i class="fas fa-shield-alt me-2"></i>Meet Your Leadership Team
-            </div>
-            <div class="d-flex gap-1">
-              <button class="leader-filter-btn filter-active" data-shift="All" onclick="setLeaderFilter('All')">All</button>
-              <button class="leader-filter-btn" data-shift="A1" onclick="setLeaderFilter('A1')">A1</button>
-              <button class="leader-filter-btn" data-shift="A2" onclick="setLeaderFilter('A2')">A2</button>
-              <button class="leader-filter-btn" data-shift="B1" onclick="setLeaderFilter('B1')">B1</button>
-            </div>
-          </div>
-          <div class="leadership-roster" id="leadershipRoster"></div>
         </div>
       </div>
 
@@ -2093,6 +2094,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <tbody>
                 <tr><td>Standard Badge approved (Top Performer, Team Player, etc.)</td><td class="text-end fw-bold text-success">+25</td></tr>
                 <tr><td>Elite Badge approved (Leadership List)</td><td class="text-end fw-bold text-success">+100</td></tr>
+                <tr><td>Employee of the Month badge approved</td><td class="text-end fw-bold text-success">+200</td></tr>
                 <tr><td>Recognition note added</td><td class="text-end fw-bold text-success">+10</td></tr>
                 <tr><td>Leadership note added</td><td class="text-end fw-bold text-success">+15</td></tr>
                 <tr><td>Certification earned</td><td class="text-end fw-bold text-success">+10</td></tr>
