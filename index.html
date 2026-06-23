@@ -1595,8 +1595,111 @@ function renderTeamAttendance(entries) {
       const opt = document.createElement('option'); opt.value = a.id; opt.textContent = a.name; assocSel.appendChild(opt);
     });
   }
+  // Update calendar
+  renderAttCalendar();
 }
 window.renderTeamAttendance = () => window.loadAttendance();
+
+// ─── Attendance Calendar ──────────────────────────────────────────────
+let _attCalYear  = new Date().getFullYear();
+let _attCalMonth = new Date().getMonth(); // 0-indexed
+
+window.shiftAttCalMonth = (dir) => {
+  _attCalMonth += dir;
+  if (_attCalMonth > 11) { _attCalMonth = 0;  _attCalYear++; }
+  if (_attCalMonth < 0)  { _attCalMonth = 11; _attCalYear--; }
+  renderAttCalendar();
+};
+
+function renderAttCalendar() {
+  const assocId = document.getElementById('attFilterAssoc')?.value;
+  const calEl   = document.getElementById('attCalendar');
+  const sumEl   = document.getElementById('attPeriodSummary');
+  const navEl   = document.getElementById('attCalNav');
+  if (!calEl) return;
+
+  if (!assocId) {
+    calEl.classList.add('d-none');
+    sumEl.classList.remove('d-none');
+    navEl.classList.add('d-none');
+    return;
+  }
+
+  // Switch to calendar mode
+  sumEl.classList.add('d-none');
+  calEl.classList.remove('d-none');
+  navEl.classList.remove('d-none');
+
+  // Sync calendar month to period if period is month/week
+  const now = new Date();
+  if (_attActivePeriod === 'week' || _attActivePeriod === 'month') {
+    _attCalYear  = now.getFullYear();
+    _attCalMonth = now.getMonth();
+  }
+
+  // Label
+  const label = new Date(_attCalYear, _attCalMonth, 1)
+    .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  document.getElementById('attCalMonthLabel').textContent = label;
+
+  // Build date → events map for this associate
+  const dateMap = {};
+  _allAttEntries.filter(e => e.assocId === assocId).forEach(e => {
+    if (!dateMap[e.date]) dateMap[e.date] = [];
+    dateMap[e.date].push(e);
+  });
+
+  // Build calendar grid
+  const firstDay = new Date(_attCalYear, _attCalMonth, 1).getDay();
+  const daysInMonth = new Date(_attCalYear, _attCalMonth + 1, 0).getDate();
+  const todayStr = now.toISOString().split('T')[0];
+  const body = document.getElementById('attCalBody');
+  const cells = [];
+
+  // Leading blanks from previous month
+  const prevDays = new Date(_attCalYear, _attCalMonth, 0).getDate();
+  for (let i = firstDay - 1; i >= 0; i--) {
+    cells.push(`<div class="att-cal-day other-month"><span class="cal-date">${prevDays - i}</span></div>`);
+  }
+  // Current month days
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${_attCalYear}-${String(_attCalMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const evts = dateMap[dateStr] || [];
+    const isToday = dateStr === todayStr;
+    const hasEvt  = evts.length > 0;
+    const dots = evts.map(e => {
+      const info = ATTENDANCE_TYPES.find(t => t.key === e.type) || { color: '#6b7280' };
+      return `<span class="att-cal-dot" style="background:${info.color}" title="${info.label || e.type}"></span>`;
+    }).join('');
+    const tooltip = evts.map(e => {
+      const info = ATTENDANCE_TYPES.find(t => t.key === e.type) || { label: e.type };
+      return info.label;
+    }).join(', ');
+    cells.push(`<div class="att-cal-day${isToday ? ' today' : ''}${hasEvt ? ' has-event' : ''}" title="${tooltip}">
+      <span class="cal-date">${d}</span>
+      ${hasEvt ? `<div class="cal-dots">${dots}</div>` : ''}
+    </div>`);
+  }
+  // Trailing blanks
+  const trailing = 42 - cells.length;
+  for (let d = 1; d <= trailing; d++) {
+    cells.push(`<div class="att-cal-day other-month"><span class="cal-date">${d}</span></div>`);
+  }
+  body.innerHTML = cells.join('');
+
+  // Legend — unique types seen this month
+  const typesInMonth = new Set();
+  Object.entries(dateMap).forEach(([date, evts]) => {
+    if (date.startsWith(`${_attCalYear}-${String(_attCalMonth+1).padStart(2,'0')}`)) {
+      evts.forEach(e => typesInMonth.add(e.type));
+    }
+  });
+  const legend = document.getElementById('attCalLegend');
+  legend.innerHTML = [...typesInMonth].map(key => {
+    const info = ATTENDANCE_TYPES.find(t => t.key === key) || { label: key, color: '#6b7280' };
+    return `<span style="display:flex;align-items:center;gap:4px"><span class="att-cal-dot" style="background:${info.color}"></span>${info.label}</span>`;
+  }).join('');
+}
 
 // ─── Points Log ───────────────────────────────────────────────────────
 let allPointsLog = [];
@@ -2304,6 +2407,18 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .att-period-btn    { border:2px solid #d1d5db; background:#fff; color:#374151; border-radius:8px; font-weight:600; transition:.15s; }
 .att-period-btn:hover { border-color:var(--orange); color:var(--orange); background:#fff; }
 .att-period-btn.active { border-color:var(--navy); background:var(--navy); color:#fff; }
+/* Attendance Calendar */
+.att-cal-grid   { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+.att-cal-header { margin-bottom:4px; }
+.att-cal-header > div { text-align:center; font-size:0.7rem; font-weight:700; color:#9ca3af; padding:2px 0; }
+.att-cal-day    { min-height:38px; border-radius:7px; padding:3px 4px; background:#f9fafb; display:flex; flex-direction:column; align-items:center; font-size:0.72rem; }
+.att-cal-day.today { background:#eff6ff; outline:2px solid #93c5fd; }
+.att-cal-day.other-month { opacity:0.3; }
+.att-cal-day .cal-date { font-weight:600; color:#374151; line-height:1.2; }
+.att-cal-day .cal-dots { display:flex; flex-wrap:wrap; gap:2px; justify-content:center; margin-top:2px; }
+.att-cal-dot    { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.att-cal-day.has-event { background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.08); cursor:pointer; }
+.att-cal-day.has-event:hover { box-shadow:0 2px 8px rgba(0,0,0,.15); }
 
 /* Cross Training Matrix */
 .matrix-wrap { overflow-x:auto; }
@@ -2680,16 +2795,25 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <div id="attRiskList"><div class="text-muted small">Loading…</div></div>
           </div>
         </div>
-        <!-- Period filter -->
+        <!-- Period filter / calendar -->
         <div class="col-lg-8">
           <div class="admin-card h-100">
-            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-calendar-week me-2" style="color:var(--orange)"></i>Time Period</h6>
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-calendar-week me-2" style="color:var(--orange)"></i>Time Period</h6>
+              <!-- Calendar nav (shown only when associate selected) -->
+              <div id="attCalNav" class="d-none d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="shiftAttCalMonth(-1)"><i class="fas fa-chevron-left"></i></button>
+                <span class="fw-semibold small" id="attCalMonthLabel" style="min-width:110px;text-align:center"></span>
+                <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="shiftAttCalMonth(1)"><i class="fas fa-chevron-right"></i></button>
+              </div>
+            </div>
             <div class="d-flex flex-wrap gap-2 mb-3">
               <button class="btn btn-sm att-period-btn active" data-period="week" onclick="setAttPeriod('week', this)">This Week</button>
               <button class="btn btn-sm att-period-btn" data-period="month" onclick="setAttPeriod('month', this)">This Month</button>
               <button class="btn btn-sm att-period-btn" data-period="year" onclick="setAttPeriod('year', this)">This Year</button>
               <button class="btn btn-sm att-period-btn" data-period="all" onclick="setAttPeriod('all', this)">All Time</button>
             </div>
+            <!-- Summary stats (shown when no associate selected) -->
             <div id="attPeriodSummary" class="row g-3 text-center">
               <div class="col-4">
                 <div class="fw-bold fs-4" id="attSumEvents" style="color:var(--navy)">—</div>
@@ -2703,6 +2827,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
                 <div class="fw-bold fs-4" id="attSumAssocs" style="color:var(--orange)">—</div>
                 <div class="text-muted small">Associates Affected</div>
               </div>
+            </div>
+            <!-- Calendar (shown when associate selected) -->
+            <div id="attCalendar" class="d-none">
+              <div class="att-cal-grid att-cal-header">
+                <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
+              </div>
+              <div class="att-cal-grid" id="attCalBody"></div>
+              <div id="attCalLegend" class="d-flex flex-wrap gap-2 mt-2" style="font-size:0.72rem"></div>
             </div>
           </div>
         </div>
