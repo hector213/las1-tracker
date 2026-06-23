@@ -404,6 +404,32 @@ async function renderMilestones() {
     }
   } catch(e) { /* points log unavailable */ }
 
+  // ── Attendance point expirations (each entry drops off at 1-year mark) ──
+  try {
+    const attSnap = await get(ref(db, 'attendance'));
+    if (attSnap.exists()) {
+      Object.entries(attSnap.val()).forEach(([assocId, entries]) => {
+        const assoc = allAssociates.find(a => a.id === assocId && a.status === 'active');
+        if (!assoc) return;
+        Object.values(entries)
+          .filter(e => (e.points || 0) > 0 && e.date)
+          .forEach(e => {
+            // date field is YYYY-MM-DD; expiry is exactly 1 year later
+            const expiry = new Date(e.date + 'T00:00:00');
+            expiry.setFullYear(expiry.getFullYear() + 1);
+            const diff = dayDiff(expiry);
+            if (inWindow(diff)) {
+              const info = ATTENDANCE_TYPES.find(t => t.key === e.type) || { label: e.type || 'Attendance event' };
+              events.push({ diff, id: assocId, name: assoc.name,
+                icon: 'fa-calendar-minus', color: '#dc2626',
+                detail: `Losing +${e.points} att. pt — ${info.label}`,
+                dateStr: expiry.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
+            }
+          });
+      });
+    }
+  } catch(e) { /* attendance unavailable */ }
+
   events.sort((a, b) => a.diff - b.diff);
 
   if (!events.length) {
@@ -2494,12 +2520,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .att-cal-grid   { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
 .att-cal-header { margin-bottom:6px; }
 .att-cal-header > div { text-align:center; font-size:0.75rem; font-weight:700; color:#9ca3af; padding:4px 0; }
-.att-cal-day    { min-height:58px; border-radius:8px; padding:5px 4px 4px; background:#f9fafb; display:flex; flex-direction:column; align-items:center; }
+.att-cal-day    { min-height:66px; border-radius:8px; padding:5px 4px 4px; background:#f9fafb; display:flex; flex-direction:column; align-items:center; }
 .att-cal-day.today { background:#eff6ff; outline:2px solid #93c5fd; }
 .att-cal-day.other-month { opacity:0.25; }
 .att-cal-day .cal-date { font-weight:700; font-size:0.78rem; color:#374151; line-height:1.3; }
 .att-cal-day .cal-icons { display:flex; flex-wrap:wrap; gap:3px; justify-content:center; margin-top:4px; }
-.att-cal-icon   { font-size:0.78rem; line-height:1; }
+.att-cal-icon   { font-size:1.1rem; line-height:1; }
 .att-cal-day.has-event { background:#fff; box-shadow:0 1px 5px rgba(0,0,0,.1); cursor:pointer; }
 .att-cal-day.has-event:hover { box-shadow:0 3px 10px rgba(0,0,0,.15); transform:translateY(-1px); transition:.1s; }
 
