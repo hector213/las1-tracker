@@ -137,6 +137,7 @@ onAuthStateChanged(auth, async (user) => {
     showApp();
     if (currentUserRole === 'admin') document.getElementById('navAdmin').classList.remove('d-none');
     if (currentUserRole !== 'viewer') document.getElementById('addAssocBtn').classList.remove('d-none');
+    applyTabVisibility();
     loadDashboard();
   } else {
     currentUser = null;
@@ -1655,7 +1656,50 @@ window.loadAdminPanel = () => {
     </tr>`).join('');
   });
   loadPendingBadges();
+  loadTabToggles();
 };
+
+// ─── Tab Visibility ───────────────────────────────────────────────────
+const CONTROLLABLE_TABS = ['matrix', 'attendance', 'pointslog', 'help'];
+
+async function loadTabToggles() {
+  const snap = await get(ref(db, 'settings/tabs'));
+  const settings = snap.exists() ? snap.val() : {};
+  CONTROLLABLE_TABS.forEach(key => {
+    const el = document.getElementById(`tabToggle_${key}`);
+    if (el) el.checked = settings[key] !== false; // default on
+  });
+}
+
+window.saveTabVisibility = async (key, enabled) => {
+  await update(ref(db, 'settings/tabs'), { [key]: enabled });
+  applyTabVisibility();
+};
+
+async function applyTabVisibility() {
+  const isAdmin = currentUserRole === 'admin';
+  if (isAdmin) {
+    // Ensure all tabs visible for admin
+    CONTROLLABLE_TABS.forEach(key => {
+      const navLink = document.querySelector(`.nav-link[data-view="${key}"]`);
+      if (navLink) navLink.classList.remove('d-none');
+    });
+    return;
+  }
+  const snap = await get(ref(db, 'settings/tabs'));
+  const settings = snap.exists() ? snap.val() : {};
+  CONTROLLABLE_TABS.forEach(key => {
+    const navLink = document.querySelector(`.nav-link[data-view="${key}"]`);
+    if (!navLink) return;
+    const visible = settings[key] !== false;
+    navLink.classList.toggle('d-none', !visible);
+    // If currently on a now-hidden view, redirect to dashboard
+    if (!visible) {
+      const activeView = document.getElementById(key + 'View');
+      if (activeView && !activeView.classList.contains('d-none')) loadDashboard();
+    }
+  });
+}
 
 async function loadPendingBadges() {
   const allBadgesSnap = await get(ref(db, 'badges'));
@@ -2823,6 +2867,47 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       </div>
       <!-- Active users popover list -->
       <div id="activeUsersList" class="d-none active-users-list mb-3"></div>
+
+      <!-- Tab Visibility -->
+      <div class="admin-card mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-eye me-2" style="color:var(--orange)"></i>Tab Visibility <span class="text-muted fw-normal small">(admin always sees all)</span></h6>
+        </div>
+        <div class="row g-2" id="tabTogglesContainer">
+          <div class="col-6 col-md-3">
+            <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#f8f9fa">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="tabToggle_matrix" onchange="saveTabVisibility('matrix', this.checked)">
+                <label class="form-check-label small fw-semibold" for="tabToggle_matrix"><i class="fas fa-table me-1" style="color:var(--navy)"></i>Matrix</label>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#f8f9fa">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="tabToggle_attendance" onchange="saveTabVisibility('attendance', this.checked)">
+                <label class="form-check-label small fw-semibold" for="tabToggle_attendance"><i class="fas fa-calendar-alt me-1" style="color:var(--navy)"></i>Attendance</label>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#f8f9fa">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="tabToggle_pointslog" onchange="saveTabVisibility('pointslog', this.checked)">
+                <label class="form-check-label small fw-semibold" for="tabToggle_pointslog"><i class="fas fa-star me-1" style="color:var(--navy)"></i>Points Log</label>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#f8f9fa">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="tabToggle_help" onchange="saveTabVisibility('help', this.checked)">
+                <label class="form-check-label small fw-semibold" for="tabToggle_help"><i class="fas fa-question-circle me-1" style="color:var(--navy)"></i>Help</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Pending Badge Approvals -->
       <div class="admin-card">
