@@ -1088,6 +1088,13 @@ window.exportProfilePDF = async () => {
   const certsSnap = await get(ref(db, `certs/${currentAssociateId}`));
   const certs = certsSnap.exists() ? Object.keys(certsSnap.val()).filter(k => certsSnap.val()[k]).map(k => k.replace(/_/g,' ')) : [];
 
+  // Gather attendance
+  const attSnap = await get(ref(db, `attendance/${currentAssociateId}`));
+  const attEntries = [];
+  if (attSnap.exists()) Object.values(attSnap.val()).forEach(e => attEntries.push(e));
+  attEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
+  const attTotal = attEntries.reduce((s, e) => s + (e.points || 0), 0);
+
   const pts = assoc.points || 0;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${assoc.name} — Profile</title>
   <style>
@@ -1102,16 +1109,34 @@ window.exportProfilePDF = async () => {
     .chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .chip { background: #1a2744; color: #fff; border-radius: 20px; padding: 3px 10px; font-size: 0.78rem; }
     .badge-item { display: inline-block; margin: 4px 6px 4px 0; font-size: 0.85rem; }
+    .att-row { display:flex; justify-content:space-between; padding: 5px 0; border-bottom: 1px solid #f3f4f6; font-size:0.85rem; }
+    .att-pts-pos { color: #dc2626; font-weight: 700; }
+    .att-pts-zero { color: #059669; font-weight: 700; }
+    .att-summary { display:flex; gap:24px; margin: 8px 0 12px; }
+    .att-stat { text-align:center; }
+    .att-stat-val { font-size:1.3rem; font-weight:800; color:#1a2744; }
+    .att-stat-lbl { font-size:0.72rem; color:#6b7280; }
     @media print { body { padding: 16px; } }
   </style></head><body>
   <h1>${assoc.name}</h1>
   <div class="meta">${[assoc.role, assoc.department, assoc.shift ? assoc.shift + ' Shift' : null, assoc.employeeId ? 'ID: ' + assoc.employeeId : null].filter(Boolean).join(' · ')}</div>
   ${assoc.hireDate ? `<div class="meta">Hired: ${new Date(assoc.hireDate).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>` : ''}
   ${assoc.opsManager ? `<div class="meta">Ops Manager: ${assoc.opsManager}</div>` : ''}
-  <div class="pts">⭐ ${pts > 0 ? '+' : ''}${pts} Points</div>
+  <div class="pts">⭐ ${pts > 0 ? '+' : ''}${pts} Engagement Points</div>
   ${certs.length ? `<h2>Certifications (${certs.length})</h2><div class="chips">${certs.map(c => `<span class="chip">${c}</span>`).join('')}</div>` : ''}
   ${badges.length ? `<h2>Achievement Badges</h2>${badges.map(b => `<span class="badge-item">${b.badge} — ${new Date(b.approvedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>`).join('<br>')}` : ''}
   ${notes.length ? `<h2>Manager Notes (${notes.length})</h2>${notes.map(n => `<div class="note"><div class="note-type">${n.type || 'General'}</div><div>${n.text}</div><div class="note-meta">${n.author} · ${new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div></div>`).join('')}` : ''}
+  <h2>Attendance Log (${attEntries.length} event${attEntries.length !== 1 ? 's' : ''})</h2>
+  <div class="att-summary">
+    <div class="att-stat"><div class="att-stat-val">${attEntries.length}</div><div class="att-stat-lbl">Total Events</div></div>
+    <div class="att-stat"><div class="att-stat-val" style="color:${attTotal > 0 ? '#dc2626' : '#1a2744'}">${attTotal % 1 === 0 ? attTotal : attTotal.toFixed(1)}</div><div class="att-stat-lbl">Total Points</div></div>
+    <div class="att-stat"><div class="att-stat-val">${attEntries.filter(e => (e.points||0) === 0).length}</div><div class="att-stat-lbl">No-Point Events</div></div>
+  </div>
+  ${attEntries.length ? attEntries.map(e => {
+    const info = ATTENDANCE_TYPES.find(t => t.key === e.type) || { label: e.type };
+    const ptsStr = (e.points || 0) === 0 ? '<span class="att-pts-zero">0 pts</span>' : `<span class="att-pts-pos">+${e.points} pts</span>`;
+    return `<div class="att-row"><span>${new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} — ${info.label}${e.note ? ' <em style="color:#9ca3af">(' + e.note + ')</em>' : ''}</span>${ptsStr}</div>`;
+  }).join('') : '<div style="color:#9ca3af;font-size:0.85rem">No attendance events recorded.</div>'}
   <div style="margin-top:32px;font-size:0.72rem;color:#9ca3af">Exported ${new Date().toLocaleString()} · LAS1 Engagement Tracker</div>
   </body></html>`;
 
