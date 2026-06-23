@@ -46,11 +46,15 @@ const CERTS = [
   'Inventory Control','Large Consolidator','Small Consolidator','Inbound Profiler','Maintenance','Pack Size Operator'
 ];
 const FLAGS  = {
-  '':               { label: 'No Flag',        cls: 'bg-secondary' },
-  'high-potential': { label: 'High Potential', cls: 'bg-success' },
-  'watch':          { label: 'Watch',           cls: 'bg-warning text-dark' },
-  'pip':            { label: 'PIP Track',       cls: 'bg-danger' },
-  'low-uph':        { label: 'Low UPH',         cls: 'bg-flag-orange' }
+  '':                  { label: 'No Flag',          cls: 'bg-secondary' },
+  'high-potential':    { label: 'High Potential',   cls: 'bg-success' },
+  'needs-support':     { label: 'Needs Support',    cls: 'bg-warning text-dark' },
+  'attendance-issue':  { label: 'Attendance Issue', cls: 'bg-danger' },
+  'leadership-track':  { label: 'Leadership Track', cls: 'bg-info text-dark' },
+  'transitioning':     { label: 'Transitioning',    cls: 'bg-secondary' },
+  'watch':             { label: 'Watch',             cls: 'bg-warning text-dark' },
+  'pip':               { label: 'PIP Track',         cls: 'bg-danger' },
+  'low-uph':           { label: 'Low UPH',           cls: 'bg-flag-orange' }
 };
 const NOTE_TYPES = ['All','General','Coaching','Recognition','Warning','PIP','Leadership'];
 const ATTENDANCE_TYPES = [
@@ -3052,6 +3056,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <select class="form-select" style="width:auto" id="filterFlag" onchange="renderDashboard()">
           <option value="">All Flags</option>
           <option value="high-potential">High Potential</option>
+          <option value="needs-support">Needs Support</option>
+          <option value="attendance-issue">Attendance Issue</option>
+          <option value="leadership-track">Leadership Track</option>
+          <option value="transitioning">Transitioning</option>
           <option value="watch">Watch</option>
           <option value="pip">PIP Track</option>
           <option value="low-uph">Low UPH</option>
@@ -3450,11 +3458,15 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <p class="small text-muted mb-2">Leads, Supervisors, and Admins can set a flag on any associate profile to indicate their current situation. Flags appear on the associate card on the dashboard.</p>
             <table class="table table-sm small mb-0">
               <tbody>
-                <tr><td><span class="badge bg-success">Active</span></td><td class="text-muted small">Default — no special flag set.</td></tr>
+                <tr><td><span class="badge bg-secondary">No Flag</span></td><td class="text-muted small">Default — no special flag set.</td></tr>
+                <tr><td><span class="badge bg-success">High Potential</span></td><td class="text-muted small">Top performer showing leadership and growth potential.</td></tr>
                 <tr><td><span class="badge bg-warning text-dark">Needs Support</span></td><td class="text-muted small">Associate may need additional coaching or resources.</td></tr>
                 <tr><td><span class="badge bg-danger">Attendance Issue</span></td><td class="text-muted small">Ongoing attendance concerns; see attendance log.</td></tr>
                 <tr><td><span class="badge bg-info text-dark">Leadership Track</span></td><td class="text-muted small">Associate is being developed for a leadership role.</td></tr>
                 <tr><td><span class="badge bg-secondary">Transitioning</span></td><td class="text-muted small">Role change, department transfer, or status change in progress.</td></tr>
+                <tr><td><span class="badge bg-warning text-dark">Watch</span></td><td class="text-muted small">Associate is being monitored for performance or conduct concerns.</td></tr>
+                <tr><td><span class="badge bg-danger">PIP Track</span></td><td class="text-muted small">Associate is on a formal Performance Improvement Plan.</td></tr>
+                <tr><td><span class="badge" style="background:#f97316;color:#fff">Low UPH</span></td><td class="text-muted small">Associate is consistently below target UPH for their role.</td></tr>
               </tbody>
             </table>
           </div>
@@ -3859,6 +3871,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <select class="form-select" id="flagSelect">
         <option value="">No Flag</option>
         <option value="high-potential">⭐ High Potential</option>
+        <option value="needs-support">🤝 Needs Support</option>
+        <option value="attendance-issue">🚨 Attendance Issue</option>
+        <option value="leadership-track">🔵 Leadership Track</option>
+        <option value="transitioning">🔄 Transitioning</option>
         <option value="watch">👁 Watch</option>
         <option value="pip">⚠️ PIP Track</option>
         <option value="low-uph">📉 Low UPH</option>
@@ -4142,6 +4158,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <input type="date" class="form-control" id="manualDate">
             </div>
             <div class="col-6">
+              <label class="form-label small fw-semibold">Individual Avg UPH <span class="text-danger">*</span></label>
               <label class="form-label small fw-semibold">Individual Avg UPH <span class="text-danger">*</span></label>
               <input type="number" class="form-control" id="manualUph" step="0.1" placeholder="e.g. 30.2">
             </div>
