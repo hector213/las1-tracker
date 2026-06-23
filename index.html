@@ -6,12 +6,7 @@
 <title>LAS1 Associate Performance Tracker</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
-<!-- ═══════════════════════════════════════════════════════════════════
-     STEP 1: PASTE YOUR FIREBASE CONFIG HERE
-     Get it from: Firebase Console → Project Settings → Your Apps → Web App
-     ═══════════════════════════════════════════════════════════════════ -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -31,16 +26,26 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
 
+// ─── Constants ────────────────────────────────────────────────────────
+const BADGES = ['Top Performer','Most Improved','Team Player','Perfect Attendance','Safety Champion','Above & Beyond'];
+const CERTS  = ['Certified Packer','Certified Picker','Certified Stower','Certified Receiver','Certified Trainer','Forklift Certified','Hazmat Certified'];
+const FLAGS  = {
+  '':               { label: 'No Flag',        cls: 'bg-secondary' },
+  'high-potential': { label: 'High Potential', cls: 'bg-success' },
+  'watch':          { label: 'Watch',           cls: 'bg-warning text-dark' },
+  'pip':            { label: 'PIP Track',       cls: 'bg-danger' },
+  'low-uph':        { label: 'Low UPH',         cls: 'bg-flag-orange' }
+};
+const NOTE_TYPES = ['All','General','Coaching','Recognition','Warning','PIP','Leadership'];
+
 // ─── State ────────────────────────────────────────────────────────────
 let currentUser = null;
 let currentUserRole = 'viewer';
 let currentAssociateId = null;
-let uphChart = null;
-let roleChart = null;
 let activeListeners = {};
 let allAssociates = [];
-let currentDateRange = 30; // days; 0 = all time
-let allProductivityLogs = [];
+let lastNotes = [];
+let currentNoteFilter = 'All';
 
 // ─── Auth ─────────────────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
@@ -53,7 +58,6 @@ onAuthStateChanged(auth, async (user) => {
       document.getElementById('currentUserName').textContent = data.displayName || user.email;
       document.getElementById('currentUserRole').textContent = capitalize(currentUserRole);
     } else {
-      // First-time admin bootstrap — if no users exist yet, make this user admin
       const allUsers = await get(ref(db, 'users'));
       if (!allUsers.exists()) {
         currentUserRole = 'admin';
@@ -77,8 +81,8 @@ onAuthStateChanged(auth, async (user) => {
 
 window.doLogin = async () => {
   const email = document.getElementById('loginEmail').value.trim();
-  const pw = document.getElementById('loginPw').value;
-  const err = document.getElementById('loginError');
+  const pw    = document.getElementById('loginPw').value;
+  const err   = document.getElementById('loginError');
   err.classList.add('d-none');
   const btn = document.getElementById('loginBtn');
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Signing in…';
@@ -91,7 +95,6 @@ window.doLogin = async () => {
     btn.innerHTML = 'Sign In'; btn.disabled = false;
   }
 };
-
 window.doLogout = () => signOut(auth);
 document.getElementById('loginPw').addEventListener('keydown', e => { if (e.key === 'Enter') window.doLogin(); });
 
@@ -119,19 +122,11 @@ function loadDashboard() {
   detachAll();
   const assocRef = ref(db, 'associates');
   activeListeners['associates'] = assocRef;
-  onValue(assocRef, async (snap) => {
+  onValue(assocRef, (snap) => {
     allAssociates = [];
     if (snap.exists()) {
       for (const [id, a] of Object.entries(snap.val())) {
-        const uphSnap = await get(ref(db, `productivity/${id}`));
-        let avgUph = null;
-        if (uphSnap.exists()) {
-          const logs = Object.values(uphSnap.val());
-          const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
-          const recent = logs.filter(l => new Date(l.date) >= cutoff);
-          if (recent.length) avgUph = (recent.reduce((s, l) => s + l.uph, 0) / recent.length).toFixed(1);
-        }
-        allAssociates.push({ id, ...a, avgUph });
+        allAssociates.push({ id, ...a });
       }
     }
     renderDashboard();
@@ -140,22 +135,21 @@ function loadDashboard() {
 window.loadDashboard = loadDashboard;
 
 function renderDashboard() {
-  const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
-  const shift = document.getElementById('filterShift')?.value || '';
-  const status = document.getElementById('filterStatus')?.value || '';
+  const search     = (document.getElementById('searchInput')?.value || '').toLowerCase();
+  const shift      = document.getElementById('filterShift')?.value  || '';
+  const status     = document.getElementById('filterStatus')?.value || '';
+  const flagFilter = document.getElementById('filterFlag')?.value   || '';
 
   const filtered = allAssociates.filter(a =>
-    (!search || a.name.toLowerCase().includes(search) || (a.employeeId || '').toLowerCase().includes(search)) &&
-    (!shift || a.shift === shift) &&
-    (!status || a.status === status)
+    (!search     || a.name.toLowerCase().includes(search) || (a.employeeId || '').toLowerCase().includes(search)) &&
+    (!shift      || a.shift === shift) &&
+    (!status     || a.status === status) &&
+    (!flagFilter || a.flag === flagFilter)
   );
 
-  document.getElementById('statTotal').textContent = allAssociates.length;
-  document.getElementById('statActive').textContent = allAssociates.filter(a => a.status === 'active').length;
-  const uphVals = allAssociates.filter(a => a.avgUph).map(a => parseFloat(a.avgUph));
-  document.getElementById('statAvgUph').textContent = uphVals.length
-    ? (uphVals.reduce((s, v) => s + v, 0) / uphVals.length).toFixed(1) : '—';
-  renderRoleChart(allAssociates);
+  document.getElementById('statTotal').textContent   = allAssociates.length;
+  document.getElementById('statActive').textContent  = allAssociates.filter(a => a.status === 'active').length;
+  document.getElementById('statFlagged').textContent = allAssociates.filter(a => a.flag && a.flag !== '').length;
 
   const grid = document.getElementById('associateGrid');
   if (!filtered.length) {
@@ -166,24 +160,24 @@ function renderDashboard() {
   }
 
   grid.innerHTML = filtered.map(a => {
-    const initials = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
+    const initials    = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
     const statusColor = a.status === 'active' ? 'bg-success' : a.status === 'inactive' ? 'bg-secondary' : 'bg-warning text-dark';
+    const flagInfo    = FLAGS[a.flag || ''];
+    const flagBadge   = (a.flag && a.flag !== '')
+      ? `<span class="badge ${flagInfo.cls} mt-1" style="font-size:0.65rem">${flagInfo.label}</span>` : '';
     return `<div class="col-xl-3 col-lg-4 col-md-6">
       <div class="associate-card" onclick="openProfile('${a.id}')">
         <div class="card-body p-3">
-          <div class="d-flex align-items-center gap-3 mb-3">
+          <div class="d-flex align-items-start gap-3 mb-2">
             <div class="avatar-circle">${initials}</div>
             <div class="flex-grow-1" style="min-width:0">
               <div class="assoc-name">${escapeHtml(a.name)}</div>
               <div class="assoc-sub">${escapeHtml(a.role || '—')} · ${escapeHtml(a.shift || '—')}</div>
+              ${flagBadge}
             </div>
             <span class="badge ${statusColor}">${capitalize(a.status || 'active')}</span>
           </div>
-          <div class="d-flex justify-content-between align-items-end">
-            <div>
-              <div class="uph-value">${a.avgUph || '—'}</div>
-              <div class="uph-label">Avg UPH (30d)</div>
-            </div>
+          <div class="d-flex justify-content-end mt-2">
             <i class="fas fa-chevron-right text-muted opacity-50"></i>
           </div>
         </div>
@@ -193,53 +187,10 @@ function renderDashboard() {
 }
 window.renderDashboard = renderDashboard;
 
-async function renderRoleChart(associates) {
-  const section = document.getElementById('roleChartSection');
-  const withRoles = associates.filter(a => a.role && a.avgUph);
-  if (!withRoles.length) { section.style.display = 'none'; return; }
-
-  // Group by role
-  const roleMap = {};
-  for (const a of withRoles) {
-    const role = a.role.trim();
-    if (!roleMap[role]) roleMap[role] = [];
-    roleMap[role].push(parseFloat(a.avgUph));
-  }
-  const roles = Object.keys(roleMap).sort();
-  const avgs = roles.map(r => parseFloat((roleMap[r].reduce((s,v)=>s+v,0)/roleMap[r].length).toFixed(1)));
-  const counts = roles.map(r => roleMap[r].length);
-
-  section.style.display = 'block';
-  if (roleChart) { roleChart.destroy(); roleChart = null; }
-  const ctx = document.getElementById('roleChartCanvas');
-  roleChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: roles.map((r, i) => `${r} (${counts[i]})`),
-      datasets: [{
-        label: 'Avg UPH',
-        data: avgs,
-        backgroundColor: avgs.map(v => v >= Math.max(...avgs) * 0.9 ? '#f97316' : '#1a2744'),
-        borderRadius: 6
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.raw} UPH avg` } }
-      },
-      scales: {
-        y: { beginAtZero: false, grid: { color: 'rgba(0,0,0,0.05)' } },
-        x: { grid: { display: false } }
-      }
-    }
-  });
-}
-
 // ─── Profile ──────────────────────────────────────────────────────────
 window.openProfile = async (id) => {
   currentAssociateId = id;
+  currentNoteFilter  = 'All';
   detachAll();
   showView('profile');
 
@@ -249,131 +200,81 @@ window.openProfile = async (id) => {
 
   const initials = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
   document.getElementById('profileAvatar').textContent = initials;
-  document.getElementById('profileName').textContent = a.name;
-  document.getElementById('profileMeta').textContent =
+  document.getElementById('profileName').textContent   = a.name;
+  document.getElementById('profileMeta').textContent   =
     [a.role, a.department, a.shift ? a.shift + ' Shift' : null, a.employeeId ? 'ID: ' + a.employeeId : null]
       .filter(Boolean).join(' · ');
+
   const statusEl = document.getElementById('profileStatus');
   statusEl.textContent = capitalize(a.status || 'active');
-  statusEl.className = 'badge ' + (a.status === 'active' ? 'bg-success' : a.status === 'inactive' ? 'bg-secondary' : 'bg-warning text-dark');
+  statusEl.className   = 'badge ' + (a.status === 'active' ? 'bg-success' : a.status === 'inactive' ? 'bg-secondary' : 'bg-warning text-dark');
+
+  // Flag display
+  const flagEl = document.getElementById('profileFlag');
+  flagEl.innerHTML = (a.flag && a.flag !== '')
+    ? `<span class="badge ${FLAGS[a.flag].cls}">${FLAGS[a.flag].label}</span>` : '';
 
   const canEdit = currentUserRole === 'admin' || currentUserRole === 'leader';
   document.getElementById('profileEditBtn').classList.toggle('d-none', !canEdit);
   document.getElementById('profileEditBtn').onclick = () => openEditAssociate(id, a);
+  document.getElementById('profileFlagBtn').classList.toggle('d-none', !canEdit);
 
-  listenProductivity(id);
+  // Reset note filter UI
+  document.querySelectorAll('.note-filter-btn').forEach(b => b.classList.toggle('filter-active', b.dataset.type === 'All'));
+
+  listenSnapshots(id);
   listenNotes(id);
+  listenBadges(id);
+  listenCerts(id);
 };
 
-function listenProductivity(associateId) {
-  const prodRef = ref(db, `productivity/${associateId}`);
-  activeListeners['productivity'] = prodRef;
-  onValue(prodRef, (snap) => {
-    allProductivityLogs = [];
-    if (snap.exists()) Object.entries(snap.val()).forEach(([id, l]) => allProductivityLogs.push({ id, ...l }));
-    allProductivityLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
-    document.getElementById('statTotalUnits').textContent = allProductivityLogs.reduce((s, l) => s + (l.unitsCompleted || 0), 0).toLocaleString();
-    document.getElementById('statLogCount').textContent = allProductivityLogs.length;
-    applyDateRange();
-  });
-}
-
-function applyDateRange() {
-  const logs = allProductivityLogs;
-  let filtered = logs;
-  if (currentDateRange > 0) {
-    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - currentDateRange);
-    filtered = logs.filter(l => new Date(l.date) >= cutoff);
-  }
-  const avgUph = filtered.length ? (filtered.reduce((s, l) => s + l.uph, 0) / filtered.length).toFixed(1) : '—';
-  document.getElementById('statAvgUphProfile').textContent = avgUph;
-  const chartLogs = filtered.slice(0, 30).reverse();
-  renderUphChart(chartLogs);
-  renderProductivityTable(filtered);
-}
-
-window.setDateRange = (days) => {
-  currentDateRange = days;
-  document.querySelectorAll('.range-btn').forEach(b => {
-    b.classList.toggle('active', parseInt(b.dataset.days) === days);
-    b.classList.toggle('btn-orange', parseInt(b.dataset.days) === days);
-    b.classList.toggle('btn-outline-secondary', parseInt(b.dataset.days) !== days);
-  });
-  applyDateRange();
+// ─── Flagging ─────────────────────────────────────────────────────────
+window.openFlagModal = () => {
+  const assoc = allAssociates.find(a => a.id === currentAssociateId);
+  document.getElementById('flagSelect').value = assoc?.flag || '';
+  new bootstrap.Modal(document.getElementById('flagModal')).show();
+};
+window.saveFlag = async () => {
+  const flag = document.getElementById('flagSelect').value;
+  await update(ref(db, `associates/${currentAssociateId}`), { flag });
+  const a = allAssociates.find(x => x.id === currentAssociateId);
+  if (a) a.flag = flag;
+  const flagEl = document.getElementById('profileFlag');
+  flagEl.innerHTML = (flag && flag !== '')
+    ? `<span class="badge ${FLAGS[flag].cls}">${FLAGS[flag].label}</span>` : '';
+  bootstrap.Modal.getInstance(document.getElementById('flagModal')).hide();
 };
 
-function renderUphChart(logs) {
-  if (uphChart) { uphChart.destroy(); uphChart = null; }
-  const canvas = document.getElementById('uphChartCanvas');
-  if (!canvas) return;
-  if (!logs.length) {
-    canvas.style.display = 'none';
-    document.getElementById('noChartMsg').classList.remove('d-none');
-    return;
-  }
-  canvas.style.display = '';
-  document.getElementById('noChartMsg').classList.add('d-none');
-  uphChart = new Chart(canvas, {
-    type: 'line',
-    data: {
-      labels: logs.map(l => formatDateShort(l.date)),
-      datasets: [{
-        label: 'UPH',
-        data: logs.map(l => l.uph),
-        borderColor: '#f97316',
-        backgroundColor: 'rgba(249,115,22,0.08)',
-        tension: 0.3, fill: true,
-        pointBackgroundColor: '#f97316', pointRadius: 5
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { beginAtZero: false, grid: { color: 'rgba(0,0,0,0.05)' } },
-        x: { grid: { display: false } }
-      }
-    }
-  });
-}
-
-function renderProductivityTable(logs) {
-  const tbody = document.getElementById('productivityTbody');
-  if (!logs.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No entries yet</td></tr>';
-    return;
-  }
-  tbody.innerHTML = logs.map(l => `<tr>
-    <td>${formatDate(l.date)}</td>
-    <td><strong>${l.uph}</strong></td>
-    <td>${l.unitsCompleted?.toLocaleString() || '—'}</td>
-    <td>${escapeHtml(l.loggedBy || '—')}</td>
-    <td>${(currentUserRole === 'admin' || l.loggedByUid === currentUser?.uid)
-      ? `<button class="btn btn-sm btn-link text-danger p-0" onclick="deleteProductivityLog('${l.id}')"><i class="fas fa-times"></i></button>` : ''}</td>
-  </tr>`).join('');
-}
-
+// ─── Notes ───────────────────────────────────────────────────────────
 function listenNotes(associateId) {
   const notesRef = ref(db, `notes/${associateId}`);
   activeListeners['notes'] = notesRef;
   onValue(notesRef, (snap) => {
-    const notes = [];
-    if (snap.exists()) Object.entries(snap.val()).forEach(([id, n]) => notes.push({ id, ...n }));
-    notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    renderNotes(notes);
+    lastNotes = [];
+    if (snap.exists()) Object.entries(snap.val()).forEach(([id, n]) => lastNotes.push({ id, ...n }));
+    lastNotes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    document.getElementById('statNoteCount').textContent = lastNotes.length;
+    renderNotes(lastNotes);
   });
 }
 
+window.setNoteFilter = (type) => {
+  currentNoteFilter = type;
+  document.querySelectorAll('.note-filter-btn').forEach(b => b.classList.toggle('filter-active', b.dataset.type === type));
+  renderNotes(lastNotes);
+};
+
 function renderNotes(notes) {
+  const filtered  = currentNoteFilter === 'All' ? notes : notes.filter(n => n.type === currentNoteFilter);
   const container = document.getElementById('notesContainer');
-  if (!notes.length) {
+  if (!filtered.length) {
     container.innerHTML = `<div class="text-center text-muted py-5">
       <i class="fas fa-comment-alt fa-2x mb-3 d-block opacity-25"></i>
-      No notes yet. Add the first one to build this associate's profile.</div>`;
+      ${notes.length ? 'No notes of this type.' : 'No notes yet. Add the first one to build this associate\'s profile.'}</div>`;
     return;
   }
   const typeColors = { General:'bg-secondary', Coaching:'bg-warning text-dark', Recognition:'bg-success', Warning:'bg-danger', PIP:'bg-dark', Leadership:'bg-primary' };
-  container.innerHTML = notes.map(n => `
+  container.innerHTML = filtered.map(n => `
     <div class="note-card mb-3">
       <div class="d-flex justify-content-between align-items-start mb-2">
         <div class="d-flex gap-2 align-items-center flex-wrap">
@@ -390,6 +291,193 @@ function renderNotes(notes) {
     </div>`).join('');
 }
 
+window.openAddNote = () => {
+  document.getElementById('noteForm').reset();
+  new bootstrap.Modal(document.getElementById('noteModal')).show();
+};
+window.saveNote = async () => {
+  const text = document.getElementById('noteText').value.trim();
+  const type = document.getElementById('noteType').value;
+  if (!text) { alert('Note text is required'); return; }
+
+  const btn = document.getElementById('saveNoteBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+    const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+    await push(ref(db, `notes/${currentAssociateId}`), {
+      text, type,
+      author: displayName, authorUid: currentUser.uid,
+      createdAt: new Date().toISOString()
+    });
+    bootstrap.Modal.getInstance(document.getElementById('noteModal')).hide();
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Note';
+  }
+};
+window.deleteNote = async (noteId) => {
+  if (!confirm('Delete this note?')) return;
+  await remove(ref(db, `notes/${currentAssociateId}/${noteId}`));
+};
+
+// ─── Snapshots ────────────────────────────────────────────────────────
+function listenSnapshots(associateId) {
+  const snapRef = ref(db, `snapshots/${associateId}`);
+  activeListeners['snapshots'] = snapRef;
+  onValue(snapRef, (snap) => {
+    const snapshots = [];
+    if (snap.exists()) Object.entries(snap.val()).forEach(([id, s]) => snapshots.push({ id, ...s }));
+    snapshots.sort((a, b) => new Date(b.date) - new Date(a.date));
+    document.getElementById('statSnapCount').textContent = snapshots.length;
+    renderSnapshots(snapshots);
+  });
+}
+
+function renderSnapshots(snapshots) {
+  const tbody = document.getElementById('snapshotsTbody');
+  if (!snapshots.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No snapshots yet — import one using the Import button</td></tr>';
+    return;
+  }
+  const onPaceColor = (val) => {
+    if (!val) return '';
+    const v = val.toLowerCase();
+    if (v.includes('crush') || v === 'yes' || v === 'on pace') return 'text-success fw-semibold';
+    if (v.includes('behind') || v === 'no') return 'text-danger fw-semibold';
+    return 'text-warning fw-semibold';
+  };
+  tbody.innerHTML = snapshots.map(s => `
+    <tr>
+      <td>${s.date || '—'}</td>
+      <td>${escapeHtml(s.role || '—')}</td>
+      <td class="fw-semibold">${s.uph != null ? s.uph : '—'}</td>
+      <td>${s.unitsCompleted != null ? s.unitsCompleted.toLocaleString() : '—'}</td>
+      <td>${escapeHtml(s.uphTarget || '—')}</td>
+      <td>${escapeHtml(s.variance || '—')}</td>
+      <td class="${onPaceColor(s.onPace)}">${escapeHtml(s.onPace || '—')}</td>
+      <td class="text-muted small">${escapeHtml(s.importedBy || '—')}</td>
+    </tr>`).join('');
+}
+
+// ─── Badges ───────────────────────────────────────────────────────────
+function listenBadges(associateId) {
+  const badgeRef = ref(db, `badges/${associateId}`);
+  activeListeners['badges'] = badgeRef;
+  onValue(badgeRef, (snap) => {
+    const badges = [];
+    if (snap.exists()) Object.entries(snap.val()).forEach(([id, b]) => badges.push({ id, ...b }));
+    renderBadges(badges);
+  });
+}
+
+function renderBadges(badges) {
+  const container  = document.getElementById('badgesContainer');
+  const canNominate = currentUserRole === 'admin' || currentUserRole === 'leader';
+  const approved   = badges.filter(b => b.status === 'approved');
+  const pending    = badges.filter(b => b.status === 'pending');
+
+  let html = '';
+  approved.forEach(b => {
+    html += `<span class="chip chip-badge" title="Awarded ${formatDate(b.approvedAt)} by ${escapeHtml(b.approvedBy || '?')}">
+      <i class="fas fa-star me-1" style="color:#fbbf24"></i>${escapeHtml(b.badge)}
+      ${currentUserRole === 'admin' ? `<button class="chip-remove" onclick="removeBadge('${b.id}')">×</button>` : ''}
+    </span>`;
+  });
+  if (canNominate) {
+    pending.forEach(b => {
+      html += `<span class="chip chip-pending" title="Nominated by ${escapeHtml(b.nominatedBy || '?')} — awaiting admin approval">
+        <i class="fas fa-hourglass-half me-1"></i>${escapeHtml(b.badge)} <em class="small">(pending)</em>
+      </span>`;
+    });
+  }
+  if (!approved.length && !(canNominate && pending.length)) {
+    html += '<span class="text-muted small">No badges yet</span>';
+  }
+  if (canNominate) {
+    html += `<button class="btn btn-sm btn-outline-secondary" style="font-size:0.75rem;padding:2px 10px" onclick="openNominateBadge()">
+      <i class="fas fa-plus me-1"></i>Nominate
+    </button>`;
+  }
+  container.innerHTML = html;
+}
+
+window.openNominateBadge = () => {
+  document.getElementById('badgeSelect').value = BADGES[0];
+  new bootstrap.Modal(document.getElementById('badgeModal')).show();
+};
+window.saveBadgeNomination = async () => {
+  const badge    = document.getElementById('badgeSelect').value;
+  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+  const assoc    = allAssociates.find(a => a.id === currentAssociateId);
+  await push(ref(db, `badges/${currentAssociateId}`), {
+    badge, status: 'pending',
+    nominatedBy: displayName, nominatedByUid: currentUser.uid,
+    nominatedAt: new Date().toISOString(),
+    associateId: currentAssociateId, associateName: assoc?.name || ''
+  });
+  bootstrap.Modal.getInstance(document.getElementById('badgeModal')).hide();
+  alert(`"${badge}" nomination submitted — an admin will review it.`);
+};
+window.approveBadge = async (associateId, badgeId) => {
+  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+  await update(ref(db, `badges/${associateId}/${badgeId}`), {
+    status: 'approved', approvedBy: displayName, approvedAt: new Date().toISOString()
+  });
+};
+window.rejectBadge = async (associateId, badgeId) => {
+  if (!confirm('Reject and remove this nomination?')) return;
+  await remove(ref(db, `badges/${associateId}/${badgeId}`));
+};
+window.removeBadge = async (badgeId) => {
+  if (!confirm('Remove this badge?')) return;
+  await remove(ref(db, `badges/${currentAssociateId}/${badgeId}`));
+};
+
+// ─── Certifications ───────────────────────────────────────────────────
+function listenCerts(associateId) {
+  const certRef = ref(db, `certs/${associateId}`);
+  activeListeners['certs'] = certRef;
+  onValue(certRef, (snap) => {
+    const certs = snap.exists() ? snap.val() : {};
+    const count = Object.keys(certs).length;
+    document.getElementById('statCertCount').textContent = count;
+    renderCerts(certs);
+  });
+}
+
+function renderCerts(certs) {
+  const container = document.getElementById('certsContainer');
+  const canEdit   = currentUserRole === 'admin' || currentUserRole === 'leader';
+  container.innerHTML = CERTS.map(cert => {
+    const key  = cert.replace(/\s+/g, '_');
+    const held = certs[key];
+    const tip  = held
+      ? `Certified ${formatDate(held.certifiedAt)} by ${escapeHtml(held.certifiedBy || '?')}`
+      : 'Not certified — click to certify';
+    return `<span class="chip ${held ? 'chip-cert' : 'chip-cert-empty'}"
+      title="${tip}"
+      ${canEdit ? `onclick="toggleCert('${key}', '${cert.replace(/'/g,"\\'")}' )"` : ''}
+      style="${canEdit ? 'cursor:pointer' : ''}">
+      <i class="fas ${held ? 'fa-check-circle' : 'fa-circle'} me-1"></i>${cert}
+    </span>`;
+  }).join('');
+}
+
+window.toggleCert = async (key, label) => {
+  const certRef  = ref(db, `certs/${currentAssociateId}/${key}`);
+  const existing = await get(certRef);
+  if (existing.exists()) {
+    if (!confirm(`Remove "${label}" certification?`)) return;
+    await remove(certRef);
+  } else {
+    const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+    const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+    await set(certRef, { certifiedAt: new Date().toISOString(), certifiedBy: displayName });
+  }
+};
+
 // ─── Add/Edit Associate ───────────────────────────────────────────────
 window.openAddAssociate = () => {
   document.getElementById('assocModalTitle').textContent = 'Add Associate';
@@ -404,20 +492,20 @@ window.openEditAssociate = (id, data) => {
     const key = f === 'EmployeeId' ? 'employeeId' : f === 'Dept' ? 'department' : f.toLowerCase();
     document.getElementById('assoc' + f).value = data[key] || '';
   });
-  document.getElementById('assocShift').value = data.shift || '';
+  document.getElementById('assocShift').value  = data.shift  || '';
   document.getElementById('assocStatus').value = data.status || 'active';
   new bootstrap.Modal(document.getElementById('assocModal')).show();
 };
 window.saveAssociate = async () => {
-  const id = document.getElementById('assocId').value;
+  const id   = document.getElementById('assocId').value;
   const data = {
-    name: document.getElementById('assocName').value.trim(),
+    name:       document.getElementById('assocName').value.trim(),
     employeeId: document.getElementById('assocEmployeeId').value.trim(),
-    role: document.getElementById('assocRole').value.trim(),
-    shift: document.getElementById('assocShift').value,
+    role:       document.getElementById('assocRole').value.trim(),
+    shift:      document.getElementById('assocShift').value,
     department: document.getElementById('assocDept').value.trim(),
-    status: document.getElementById('assocStatus').value,
-    updatedAt: new Date().toISOString(), updatedBy: currentUser?.email
+    status:     document.getElementById('assocStatus').value,
+    updatedAt:  new Date().toISOString(), updatedBy: currentUser?.email
   };
   if (!data.name) { alert('Name is required'); return; }
   if (id) {
@@ -429,91 +517,45 @@ window.saveAssociate = async () => {
   bootstrap.Modal.getInstance(document.getElementById('assocModal')).hide();
 };
 
-// ─── Log UPH ─────────────────────────────────────────────────────────
-window.openLogUph = () => {
-  document.getElementById('uphDate').value = new Date().toISOString().split('T')[0];
-  document.getElementById('uphValue').value = '';
-  document.getElementById('uphUnits').value = '';
-  new bootstrap.Modal(document.getElementById('uphModal')).show();
-};
-window.saveUphLog = async () => {
-  const date = document.getElementById('uphDate').value;
-  const uph = parseFloat(document.getElementById('uphValue').value);
-  const units = parseInt(document.getElementById('uphUnits').value) || null;
-  if (!date || isNaN(uph)) { alert('Date and UPH are required'); return; }
-  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
-  await push(ref(db, `productivity/${currentAssociateId}`), {
-    date, uph, unitsCompleted: units,
-    loggedBy: displayName, loggedByUid: currentUser.uid,
-    createdAt: new Date().toISOString()
-  });
-  bootstrap.Modal.getInstance(document.getElementById('uphModal')).hide();
-};
-window.deleteProductivityLog = async (logId) => {
-  if (!confirm('Delete this entry?')) return;
-  await remove(ref(db, `productivity/${currentAssociateId}/${logId}`));
-};
-
-// ─── Notes ───────────────────────────────────────────────────────────
-window.openAddNote = () => {
-  document.getElementById('noteForm').reset();
-  new bootstrap.Modal(document.getElementById('noteModal')).show();
-};
-window.saveNote = async () => {
-  const text = document.getElementById('noteText').value.trim();
-  const type = document.getElementById('noteType').value;
-  if (!text) { alert('Note text is required'); return; }
-  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
-  await push(ref(db, `notes/${currentAssociateId}`), {
-    text, type,
-    author: displayName, authorUid: currentUser.uid,
-    createdAt: new Date().toISOString()
-  });
-  bootstrap.Modal.getInstance(document.getElementById('noteModal')).hide();
-};
-window.deleteNote = async (noteId) => {
-  if (!confirm('Delete this note?')) return;
-  await remove(ref(db, `notes/${currentAssociateId}/${noteId}`));
-};
-
 // ─── Export for Claude ────────────────────────────────────────────────
 window.exportForClaude = async () => {
   const btn = document.getElementById('exportBtn');
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Exporting…';
   btn.disabled = true;
-
   try {
     const assocSnap = await get(ref(db, 'associates'));
     if (!assocSnap.exists()) { alert('No data to export'); return; }
 
     let out = `LAS1 ASSOCIATE PERFORMANCE INTELLIGENCE REPORT\n`;
-    out += `Generated: ${new Date().toLocaleString()}\n`;
-    out += `${'═'.repeat(60)}\n\n`;
-    out += `INSTRUCTIONS FOR CLAUDE:\nReview the associate profiles below. Each entry includes role, shift, UPH performance history, and manager notes. Use this data to:\n- Identify leadership potential based on performance trends and notes\n- Flag associates who may benefit from coaching\n- Highlight top performers for recognition or advancement\n\n${'═'.repeat(60)}\n\n`;
+    out += `Generated: ${new Date().toLocaleString()}\n${'═'.repeat(60)}\n\n`;
+    out += `INSTRUCTIONS FOR CLAUDE:\nReview associate profiles below. Each entry includes role, shift, flag status, achievements, certifications, shift snapshots, and manager notes. Use this to identify leadership potential, coaching needs, and top performers.\n\n${'═'.repeat(60)}\n\n`;
 
     for (const [id, a] of Object.entries(assocSnap.val())) {
       out += `ASSOCIATE: ${a.name}\n`;
-      out += `  Employee ID: ${a.employeeId || 'N/A'}\n`;
-      out += `  Role: ${a.role || 'N/A'}  |  Shift: ${a.shift || 'N/A'}  |  Dept: ${a.department || 'N/A'}\n`;
-      out += `  Status: ${a.status || 'N/A'}\n\n`;
+      out += `  Employee ID: ${a.employeeId || 'N/A'}  |  Role: ${a.role || 'N/A'}  |  Shift: ${a.shift || 'N/A'}\n`;
+      out += `  Status: ${a.status || 'N/A'}`;
+      if (a.flag && a.flag !== '') out += `  |  FLAG: ${FLAGS[a.flag]?.label || a.flag}`;
+      out += '\n\n';
 
-      const prodSnap = await get(ref(db, `productivity/${id}`));
-      if (prodSnap.exists()) {
-        const logs = Object.values(prodSnap.val()).sort((a, b) => new Date(b.date) - new Date(a.date));
-        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
-        const recent = logs.filter(l => new Date(l.date) >= cutoff);
-        const avg30 = recent.length ? (recent.reduce((s, l) => s + l.uph, 0) / recent.length).toFixed(1) : 'N/A';
-        const avgAll = logs.length ? (logs.reduce((s, l) => s + l.uph, 0) / logs.length).toFixed(1) : 'N/A';
-        out += `  PRODUCTIVITY:\n`;
-        out += `    30-day avg UPH: ${avg30}  |  All-time avg UPH: ${avgAll}  |  Total entries: ${logs.length}\n`;
-        out += `    Recent entries:\n`;
-        logs.slice(0, 8).forEach(l => {
-          out += `      ${l.date}: ${l.uph} UPH${l.unitsCompleted ? ' (' + l.unitsCompleted + ' units)' : ''} — ${l.loggedBy || '?'}\n`;
+      const badgeSnap = await get(ref(db, `badges/${id}`));
+      if (badgeSnap.exists()) {
+        const approved = Object.values(badgeSnap.val()).filter(b => b.status === 'approved').map(b => b.badge);
+        if (approved.length) out += `  BADGES: ${approved.join(', ')}\n`;
+      }
+
+      const certSnap = await get(ref(db, `certs/${id}`));
+      if (certSnap.exists()) {
+        const certNames = Object.keys(certSnap.val()).map(k => k.replace(/_/g, ' '));
+        out += `  CERTIFICATIONS: ${certNames.join(', ')}\n`;
+      }
+
+      const snapSnap = await get(ref(db, `snapshots/${id}`));
+      if (snapSnap.exists()) {
+        const snaps = Object.values(snapSnap.val()).sort((a, b) => new Date(b.date) - new Date(a.date));
+        out += `\n  SHIFT SNAPSHOTS (${snaps.length} total):\n`;
+        snaps.slice(0, 10).forEach(s => {
+          out += `    ${s.date}: UPH ${s.uph ?? '—'}, Units ${s.unitsCompleted ?? '—'}, Role ${s.role || '—'}, On Pace: ${s.onPace || '—'}\n`;
         });
-      } else {
-        out += `  PRODUCTIVITY: No data logged\n`;
       }
 
       const notesSnap = await get(ref(db, `notes/${id}`));
@@ -522,38 +564,36 @@ window.exportForClaude = async () => {
         out += `\n  MANAGER NOTES (${notes.length} total):\n`;
         notes.forEach(n => {
           out += `    [${n.type}] ${formatDateTime(n.createdAt)} — ${n.author || 'Unknown'}\n`;
-          out += `    "${n.text}"\n\n`;
+          out += `    "${n.text}"\n`;
+          if (n.attachmentUrl) out += `    Attachment: ${n.attachmentUrl}\n`;
+          out += '\n';
         });
       } else {
-        out += `\n  MANAGER NOTES: None on record\n`;
+        out += `\n  MANAGER NOTES: None\n`;
       }
       out += `${'─'.repeat(60)}\n\n`;
     }
 
     const blob = new Blob([out], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `LAS1_Performance_Export_${new Date().toISOString().split('T')[0]}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `LAS1_Export_${new Date().toISOString().split('T')[0]}.txt`;
+    a.click(); URL.revokeObjectURL(url);
   } finally {
     btn.innerHTML = '<i class="fas fa-download me-1"></i>Export for Claude';
-    btn.disabled = false;
+    btn.disabled  = false;
   }
 };
 
 // ─── Admin Panel ──────────────────────────────────────────────────────
 window.loadAdminPanel = () => {
   showView('admin');
+  detachAll();
   const usersRef = ref(db, 'users');
   activeListeners['users'] = usersRef;
   onValue(usersRef, (snap) => {
     const tbody = document.getElementById('usersTbody');
-    if (!snap.exists()) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No users</td></tr>';
-      return;
-    }
+    if (!snap.exists()) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No users</td></tr>'; return; }
     const users = Object.entries(snap.val()).map(([uid, u]) => ({ uid, ...u }));
     tbody.innerHTML = users.map(u => `<tr>
       <td class="fw-semibold">${escapeHtml(u.displayName || '—')}</td>
@@ -561,41 +601,71 @@ window.loadAdminPanel = () => {
       <td><span class="badge ${u.role === 'admin' ? 'bg-danger' : u.role === 'leader' ? 'bg-primary' : 'bg-secondary'}">${capitalize(u.role || 'viewer')}</span></td>
       <td class="text-muted small">${formatDate(u.createdAt)}</td>
       <td>
-        <button class="btn btn-sm btn-outline-secondary me-1 py-0" onclick="cycleRole('${u.uid}', '${u.role}')">
+        <button class="btn btn-sm btn-outline-secondary me-1 py-0" onclick="cycleRole('${u.uid}','${u.role}')">
           <i class="fas fa-exchange-alt"></i> Role
         </button>
         ${u.uid !== currentUser?.uid ? `<button class="btn btn-sm btn-outline-danger py-0" onclick="removeUser('${u.uid}')"><i class="fas fa-trash-alt"></i></button>` : ''}
       </td>
     </tr>`).join('');
   });
+  loadPendingBadges();
 };
+
+async function loadPendingBadges() {
+  const allBadgesSnap = await get(ref(db, 'badges'));
+  const container     = document.getElementById('pendingBadgesContainer');
+  const pending       = [];
+  if (allBadgesSnap.exists()) {
+    for (const [assocId, assocBadges] of Object.entries(allBadgesSnap.val())) {
+      for (const [badgeId, badge] of Object.entries(assocBadges)) {
+        if (badge.status === 'pending') pending.push({ assocId, badgeId, ...badge });
+      }
+    }
+  }
+  if (!pending.length) {
+    container.innerHTML = '<p class="text-muted small mb-0">No pending nominations right now.</p>';
+    return;
+  }
+  container.innerHTML = `<div class="table-responsive"><table class="table table-sm small mb-0">
+    <thead class="table-light"><tr><th>Associate</th><th>Badge</th><th>Nominated By</th><th>Date</th><th>Actions</th></tr></thead>
+    <tbody>${pending.map(p => `<tr>
+      <td class="fw-semibold">${escapeHtml(p.associateName || p.assocId)}</td>
+      <td><i class="fas fa-star text-warning me-1"></i>${escapeHtml(p.badge)}</td>
+      <td>${escapeHtml(p.nominatedBy || '—')}</td>
+      <td>${formatDate(p.nominatedAt)}</td>
+      <td>
+        <button class="btn btn-sm btn-success py-0 me-1" onclick="approveBadge('${p.assocId}','${p.badgeId}').then(()=>loadPendingBadges())">Approve</button>
+        <button class="btn btn-sm btn-outline-danger py-0" onclick="rejectBadge('${p.assocId}','${p.badgeId}').then(()=>loadPendingBadges())">Reject</button>
+      </td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+window.loadPendingBadges = loadPendingBadges;
+
 window.openCreateUser = () => {
   document.getElementById('newUserForm').reset();
   new bootstrap.Modal(document.getElementById('newUserModal')).show();
 };
 window.createUser = async () => {
   const email = document.getElementById('newEmail').value.trim();
-  const pw = document.getElementById('newPw').value.trim();
-  const name = document.getElementById('newDisplayName').value.trim();
-  const role = document.getElementById('newRole').value;
+  const pw    = document.getElementById('newPw').value.trim();
+  const name  = document.getElementById('newDisplayName').value.trim();
+  const role  = document.getElementById('newRole').value;
   if (!email || !pw || !name) { alert('All fields are required'); return; }
   const btn = document.getElementById('createUserBtn');
   btn.disabled = true; btn.textContent = 'Creating…';
   try {
-    // Store current admin's credentials to restore session
     const adminEmail = currentUser.email;
-    const adminPw = prompt(`To create an account, re-enter YOUR password (${adminEmail}):`);
+    const adminPw    = prompt(`To create an account, re-enter YOUR password (${adminEmail}):`);
     if (!adminPw) { btn.disabled = false; btn.textContent = 'Create Account'; return; }
-
     const cred = await createUserWithEmailAndPassword(auth, email, pw);
     await set(ref(db, `users/${cred.user.uid}`), {
       email, displayName: name, role,
       createdAt: new Date().toISOString(), createdBy: adminEmail
     });
-    // Sign admin back in
     await signInWithEmailAndPassword(auth, adminEmail, adminPw);
     bootstrap.Modal.getInstance(document.getElementById('newUserModal')).hide();
-    alert(`✓ Account created!\n\nShare these credentials with ${name}:\nEmail: ${email}\nPassword: ${pw}\n\nThey should change their password after first login.`);
+    alert(`✓ Account created!\n\nShare with ${name}:\nEmail: ${email}\nPassword: ${pw}`);
   } catch (e) {
     alert('Error: ' + e.message);
   } finally {
@@ -604,39 +674,32 @@ window.createUser = async () => {
 };
 window.cycleRole = async (uid, currentRole) => {
   const roles = ['viewer', 'leader', 'admin'];
-  const next = roles[(roles.indexOf(currentRole) + 1) % roles.length];
-  if (confirm(`Change this user's role to "${next}"?`)) {
-    await update(ref(db, `users/${uid}`), { role: next });
-  }
+  const next  = roles[(roles.indexOf(currentRole) + 1) % roles.length];
+  if (confirm(`Change role to "${next}"?`)) await update(ref(db, `users/${uid}`), { role: next });
 };
 window.removeUser = async (uid) => {
-  if (!confirm('Remove this user from the tracker? (They can be re-added later)')) return;
+  if (!confirm('Remove this user?')) return;
   await remove(ref(db, `users/${uid}`));
 };
 
 // ─── Import Snapshot ──────────────────────────────────────────────────
 window.openImport = () => {
-  document.getElementById('importStatus').textContent = '';
+  ['importStatus','pasteStatus','manualStatus'].forEach(id => document.getElementById(id).textContent = '');
   document.getElementById('importPreview').innerHTML = '';
   document.getElementById('pasteArea').value = '';
-  document.getElementById('pasteStatus').textContent = '';
-  document.getElementById('manualStatus').textContent = '';
-  document.getElementById('manualEmpId').value = '';
-  document.getElementById('manualDate').value = new Date().toISOString().split('T')[0];
-  document.getElementById('manualUph').value = '';
-  document.getElementById('manualUnits').value = '';
-  document.getElementById('manualRole').value = '';
+  document.getElementById('manualEmpId').value  = '';
+  document.getElementById('manualDate').value   = new Date().toISOString().split('T')[0];
+  document.getElementById('manualUph').value    = '';
+  document.getElementById('manualUnits').value  = '';
+  document.getElementById('manualRole').value   = '';
   document.getElementById('manualOnPace').value = '';
   new bootstrap.Modal(document.getElementById('importModal')).show();
 };
 
 window.parsePastedSnapshot = async () => {
-  const text = document.getElementById('pasteArea').value;
+  const text     = document.getElementById('pasteArea').value;
   const statusEl = document.getElementById('pasteStatus');
-  statusEl.style.color = '';
-  statusEl.textContent = 'Reading…';
-
-  // Parse tab-separated key-value pairs
+  statusEl.style.color = ''; statusEl.textContent = 'Reading…';
   const kv = {};
   for (const line of text.split('\n')) {
     const parts = line.split('\t');
@@ -646,135 +709,83 @@ window.parsePastedSnapshot = async () => {
       if (key && val) kv[key] = val;
     }
   }
-
-  const empId = (kv['employee id'] || kv['employee'] || '').toUpperCase();
+  const empId       = (kv['employee id'] || kv['employee'] || '').toUpperCase();
   const shiftDateRaw = kv['shift date'] || kv['date'] || '';
-  const avgUph = parseFloat(kv['individual avg uph'] || kv['avg uph'] || kv['uph'] || '');
-  const units = parseInt(kv['units completed'] || '') || null;
-  const role = kv['role'] || null;
-  const onPace = kv['on pace?'] || kv['on pace'] || null;
-  const uphTarget = kv['uph target'] || null;
-  const variance = kv['variance vs target'] || null;
+  const avgUph       = parseFloat(kv['individual avg uph'] || kv['avg uph'] || kv['uph'] || '');
+  const units        = parseInt(kv['units completed'] || '') || null;
+  const role         = kv['role'] || null;
+  const onPace       = kv['on pace?'] || kv['on pace'] || null;
+  const uphTarget    = kv['uph target'] || null;
+  const variance     = kv['variance vs target'] || null;
 
   if (!empId || !shiftDateRaw || isNaN(avgUph)) {
     statusEl.textContent = 'Could not find Employee Id, Shift Date, or Individual Avg UPH. Check your paste.';
-    statusEl.style.color = 'red';
-    return;
+    statusEl.style.color = 'red'; return;
   }
-
-  // Convert date
   let isoDate = shiftDateRaw;
   const dParts = shiftDateRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (dParts) isoDate = `${dParts[3]}-${dParts[1].padStart(2,'0')}-${dParts[2].padStart(2,'0')}`;
 
-  // Match associate
   const assocSnap = await get(ref(db, 'associates'));
-  if (!assocSnap.exists()) {
-    statusEl.textContent = 'No associates yet. Add the associate first.';
-    statusEl.style.color = 'red';
-    return;
-  }
+  if (!assocSnap.exists()) { statusEl.textContent = 'No associates yet.'; statusEl.style.color = 'red'; return; }
   const associates = assocSnap.val();
-  const matchId = Object.keys(associates).find(id =>
+  const matchId    = Object.keys(associates).find(id =>
     (associates[id].employeeId || '').toUpperCase() === empId ||
     associates[id].name.toUpperCase().replace(/[^A-Z]/g,'').includes(empId.replace(/[^A-Z]/g,''))
   );
   if (!matchId) {
-    statusEl.textContent = `No associate found with ID "${empId}". Add them to the tracker first.`;
-    statusEl.style.color = 'orange';
-    return;
+    statusEl.textContent = `No associate found with ID "${empId}". Add them first.`;
+    statusEl.style.color = 'orange'; return;
   }
-
-  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+  const userSnap    = await get(ref(db, `users/${currentUser.uid}`));
   const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
-
-  // Log productivity entry
-  await push(ref(db, `productivity/${matchId}`), {
+  await push(ref(db, `snapshots/${matchId}`), {
     date: isoDate, uph: avgUph, unitsCompleted: units,
-    loggedBy: displayName, loggedByUid: currentUser.uid,
+    role, uphTarget: uphTarget || null, variance: variance || null, onPace: onPace || null,
+    importedBy: displayName, importedByUid: currentUser.uid,
     createdAt: new Date().toISOString()
   });
-
-  // Build a rich note with all snapshot fields
-  const noteParts = [`Shift snapshot for ${shiftDateRaw}:`];
-  if (role) noteParts.push(`Role: ${role}`);
-  if (uphTarget) noteParts.push(`UPH Target: ${uphTarget}`);
-  if (variance) noteParts.push(`Variance vs Target: ${variance}`);
-  if (onPace) noteParts.push(`On Pace: ${onPace}`);
-  await push(ref(db, `notes/${matchId}`), {
-    text: noteParts.join(' | '),
-    type: onPace && onPace.toLowerCase().includes('crush') ? 'Recognition' : 'General',
-    author: displayName, authorUid: currentUser.uid,
-    createdAt: new Date().toISOString()
-  });
-
   statusEl.textContent = `✓ Imported for ${associates[matchId].name} — UPH ${avgUph}${onPace ? ', ' + onPace : ''}`;
   statusEl.style.color = 'green';
   document.getElementById('pasteArea').value = '';
-  setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('importModal')).hide(), 2000);
+  setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('importModal'))?.hide(), 2000);
 };
 
 window.saveManualEntry = async () => {
-  const empId = document.getElementById('manualEmpId').value.trim().toUpperCase();
-  const date = document.getElementById('manualDate').value;
-  const uph = parseFloat(document.getElementById('manualUph').value);
-  const units = parseInt(document.getElementById('manualUnits').value) || null;
-  const role = document.getElementById('manualRole').value.trim() || null;
-  const onPace = document.getElementById('manualOnPace').value.trim() || null;
+  const empId    = document.getElementById('manualEmpId').value.trim().toUpperCase();
+  const date     = document.getElementById('manualDate').value;
+  const uph      = parseFloat(document.getElementById('manualUph').value);
+  const units    = parseInt(document.getElementById('manualUnits').value) || null;
+  const role     = document.getElementById('manualRole').value.trim() || null;
+  const onPace   = document.getElementById('manualOnPace').value.trim() || null;
   const statusEl = document.getElementById('manualStatus');
-
   if (!empId || !date || isNaN(uph)) {
-    statusEl.textContent = 'Employee ID, date, and UPH are required.';
-    statusEl.style.color = 'red';
-    return;
+    statusEl.textContent = 'Employee ID, date, and UPH are required.'; statusEl.style.color = 'red'; return;
   }
-
-  // Find matching associate
   const assocSnap = await get(ref(db, 'associates'));
-  if (!assocSnap.exists()) {
-    statusEl.textContent = 'No associates in the tracker yet. Add the associate first.';
-    statusEl.style.color = 'red';
-    return;
-  }
+  if (!assocSnap.exists()) { statusEl.textContent = 'No associates yet.'; statusEl.style.color = 'red'; return; }
   const associates = assocSnap.val();
-  const matchId = Object.keys(associates).find(id =>
+  const matchId    = Object.keys(associates).find(id =>
     (associates[id].employeeId || '').toUpperCase() === empId ||
     associates[id].name.toUpperCase().includes(empId)
   );
-
   if (!matchId) {
-    statusEl.textContent = `No associate found with ID "${empId}". Make sure they're added to the tracker first.`;
-    statusEl.style.color = 'orange';
-    return;
+    statusEl.textContent = `No associate found with ID "${empId}".`; statusEl.style.color = 'orange'; return;
   }
-
-  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+  const userSnap    = await get(ref(db, `users/${currentUser.uid}`));
   const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
-
-  await push(ref(db, `productivity/${matchId}`), {
+  await push(ref(db, `snapshots/${matchId}`), {
     date, uph, unitsCompleted: units,
-    loggedBy: displayName, loggedByUid: currentUser.uid,
+    role: role || null, uphTarget: null, variance: null, onPace: onPace || null,
+    importedBy: displayName, importedByUid: currentUser.uid,
     createdAt: new Date().toISOString()
   });
-
-  // Add on-pace as a note if present
-  if (onPace) {
-    await push(ref(db, `notes/${matchId}`), {
-      text: `Shift ${date}: ${onPace}. UPH: ${uph}${units ? ', Units: ' + units : ''}${role ? ', Role: ' + role : ''}`,
-      type: 'General',
-      author: displayName, authorUid: currentUser.uid,
-      createdAt: new Date().toISOString()
-    });
-  }
-
-  statusEl.textContent = `✓ Logged for ${associates[matchId].name}!`;
-  statusEl.style.color = 'green';
-  setTimeout(() => {
-    bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
-  }, 1500);
+  statusEl.textContent = `✓ Logged for ${associates[matchId].name}!`; statusEl.style.color = 'green';
+  setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('importModal'))?.hide(), 1500);
 };
+
 window.handleImportFile = async (input) => {
-  const file = input.files[0];
+  const file   = input.files[0];
   if (!file) return;
   const status = document.getElementById('importStatus');
   status.textContent = 'Loading OCR engine…';
@@ -795,132 +806,70 @@ window.handleImportFile = async (input) => {
     status.textContent = 'Error: ' + e.message;
   }
 };
-function parseOcrText(text, filename) {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  const status = document.getElementById('importStatus');
-  const preview = document.getElementById('importPreview');
-  const full = text.toLowerCase();
 
-  // ── Helper: find value near a label in raw text ──
+function parseOcrText(text, filename) {
+  const lines   = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const status  = document.getElementById('importStatus');
+  const preview = document.getElementById('importPreview');
+  const full    = text.toLowerCase();
+
   function findAfterLabel(patterns) {
     for (const pat of patterns) {
       const idx = full.indexOf(pat.toLowerCase());
       if (idx === -1) continue;
       const after = text.slice(idx + pat.length).trim();
-      // value might be on same line (after spaces) or next non-empty token
       const m = after.match(/^[\s:]*([^\n\r]+)/);
-      if (m) {
-        const val = m[1].trim();
-        if (val.length > 0 && val.length < 60) return val;
-      }
+      if (m) { const val = m[1].trim(); if (val.length > 0 && val.length < 60) return val; }
     }
     return null;
   }
 
-  // ── Strategy 1: label-then-next-line (OCR table cells on separate lines) ──
-  const kvLines = {};
+  const kvLines = {}, kvSame = {};
   for (let i = 0; i < lines.length - 1; i++) {
     const key = lines[i].toLowerCase().replace(/[^a-z\s]/g, '').trim();
-    const val = lines[i + 1];
-    if (key.length > 2 && key.length < 40 && !/^\d/.test(key)) kvLines[key] = val;
+    if (key.length > 2 && key.length < 40 && !/^\d/.test(key)) kvLines[key] = lines[i + 1];
   }
-
-  // ── Strategy 2: same-line key-value (1+ spaces) ──
-  const kvSame = {};
   for (const line of lines) {
     const m = line.match(/^(.+?)\s{1,}(\S.*)$/);
     if (m) kvSame[m[1].trim().toLowerCase()] = m[2].trim();
   }
-
   const merged = { ...kvSame, ...kvLines };
 
-  // Pull values — check both sources
-  const empId =
-    merged['employee id'] || merged['employee id:'] ||
-    findAfterLabel(['Employee Id', 'Employee ID']) ||
-    // Fallback: parse from filename e.g. Snapshot_NVTNEEL_20260619_061829.png
+  const empId = merged['employee id'] || findAfterLabel(['Employee Id','Employee ID']) ||
     (filename && filename.match(/Snapshot_([A-Z0-9]+)_/i)?.[1]) || null;
-
-  const shiftDateRaw =
-    merged['shift date'] || merged['date'] ||
-    findAfterLabel(['Shift Date']) ||
-    text.match(/(\d{1,2}\/\d{1,2}\/\d{4})/)?.[1] ||
-    // From filename: 20260619
-    (filename && filename.match(/_(\d{8})_/)?.[1]?.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')) || null;
-
-  const uphRaw =
-    merged['individual avg uph'] || merged['avg uph'] ||
-    findAfterLabel(['Individual Avg UPH', 'Avg UPH', 'Individual Avg']) || null;
+  const shiftDateRaw = merged['shift date'] || merged['date'] || findAfterLabel(['Shift Date']) ||
+    text.match(/(\d{1,2}\/\d{1,2}\/\d{4})/)?.[1] || null;
+  const uphRaw = merged['individual avg uph'] || merged['avg uph'] || findAfterLabel(['Individual Avg UPH','Avg UPH']) || null;
   const avgUph = parseFloat(uphRaw || '');
-
-  const unitsRaw = merged['units completed'] || findAfterLabel(['Units Completed']);
-  const units = parseInt(unitsRaw || '');
-  const role = merged['role'] || findAfterLabel(['Role']) || null;
+  const units  = parseInt(merged['units completed'] || findAfterLabel(['Units Completed']) || '');
+  const role   = merged['role'] || findAfterLabel(['Role']) || null;
   const onPace = merged['on pace?'] || merged['on pace'] || findAfterLabel(['On Pace']) || null;
 
   if (empId && shiftDateRaw && !isNaN(avgUph)) {
     let isoDate = shiftDateRaw;
     const dSlash = shiftDateRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (dSlash) isoDate = `${dSlash[3]}-${dSlash[1].padStart(2,'0')}-${dSlash[2].padStart(2,'0')}`;
-    const shiftDate = isoDate;
     const row = { employeeId: empId.toUpperCase(), date: isoDate, uph: avgUph, units: isNaN(units) ? null : units, role, onPace };
     const encoded = encodeURIComponent(JSON.stringify([row]));
     status.textContent = 'Snapshot read — review and confirm:';
     preview.innerHTML = `<div class="table-responsive mt-2">
       <table class="table table-sm table-bordered">
-        <thead class="table-light"><tr><th>Employee ID</th><th>Date</th><th>UPH</th><th>Units</th>${role ? '<th>Role</th>' : ''}${onPace ? '<th>On Pace</th>' : ''}</tr></thead>
-        <tbody><tr>
-          <td><strong>${empId}</strong></td><td>${shiftDate}</td>
-          <td><strong>${avgUph}</strong></td><td>${isNaN(units) ? '—' : units}</td>
-          ${role ? `<td>${role}</td>` : ''}${onPace ? `<td>${onPace}</td>` : ''}
-        </tr></tbody>
-      </table>
-    </div>
-    <button class="btn btn-success" onclick="confirmImport('${encoded}')">
-      <i class="fas fa-check me-1"></i>Import This Entry
-    </button>`;
+        <thead class="table-light"><tr><th>Employee ID</th><th>Date</th><th>UPH</th><th>Units</th></tr></thead>
+        <tbody><tr><td><strong>${empId}</strong></td><td>${isoDate}</td><td><strong>${avgUph}</strong></td><td>${isNaN(units) ? '—' : units}</td></tr></tbody>
+      </table></div>
+    <button class="btn btn-success" onclick="confirmOcrImport('${encoded}')"><i class="fas fa-check me-1"></i>Import</button>`;
     return;
   }
-
-  // ── Strategy 2: Multi-row report (line-by-line fallback) ──
-  const rows = [];
-  let currentEmployee = null;
-  for (const line of lines) {
-    const empMatch = line.match(/^([A-Z]{3,}[A-Z0-9]*)/);
-    const dateMatch = line.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
-    const uphMatch = line.match(/Individual\s+Avg\s+UPH[:\s]+(\d+\.?\d*)/i) ||
-                     line.match(/Avg\s+UPH[:\s]+(\d+\.?\d*)/i) ||
-                     line.match(/(\d+\.?\d*)\s+UPH/i);
-    const unitsMatch = line.match(/Units\s+Completed[:\s]+(\d+)/i);
-    if (empMatch && !dateMatch) currentEmployee = empMatch[1];
-    if (dateMatch && uphMatch && currentEmployee) {
-      let isoDate = dateMatch[1];
-      const dParts = dateMatch[1].match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-      if (dParts) isoDate = `${dParts[3]}-${dParts[1].padStart(2,'0')}-${dParts[2].padStart(2,'0')}`;
-      rows.push({ employeeId: currentEmployee, date: isoDate, uph: parseFloat(uphMatch[1]), units: unitsMatch ? parseInt(unitsMatch[1]) : null });
-    }
-  }
-  if (!rows.length) {
-    status.textContent = 'Could not extract data. Make sure the full snapshot table is visible and the image is clear.';
-    preview.innerHTML = '';
-    return;
-  }
-  status.textContent = `Found ${rows.length} row(s) — review and confirm:`;
-  const encoded = encodeURIComponent(JSON.stringify(rows));
-  preview.innerHTML = `<div class="table-responsive mt-2">
-    <table class="table table-sm table-bordered">
-      <thead class="table-light"><tr><th>Employee ID</th><th>Date</th><th>UPH</th><th>Units</th></tr></thead>
-      <tbody>${rows.map(r => `<tr><td>${r.employeeId}</td><td>${r.date}</td><td>${r.uph}</td><td>${r.units || '—'}</td></tr>`).join('')}</tbody>
-    </table>
-  </div>
-  <button class="btn btn-success" onclick="confirmImport('${encoded}')">
-    <i class="fas fa-check me-1"></i>Import ${rows.length} Row${rows.length > 1 ? 's' : ''}
-  </button>`;
+  status.textContent = 'Could not extract data. Try the Paste Snapshot tab instead.';
+  preview.innerHTML  = '';
 }
-window.confirmImport = async (encoded) => {
-  const rows = JSON.parse(decodeURIComponent(encoded));
+
+window.confirmOcrImport = async (encoded) => {
+  const rows      = JSON.parse(decodeURIComponent(encoded));
   const assocSnap = await get(ref(db, 'associates'));
   const associates = assocSnap.exists() ? assocSnap.val() : {};
+  const userSnap    = await get(ref(db, `users/${currentUser.uid}`));
+  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
   let matched = 0, skipped = 0;
   for (const row of rows) {
     const matchId = Object.keys(associates).find(id =>
@@ -928,16 +877,17 @@ window.confirmImport = async (encoded) => {
       associates[id].name.toLowerCase().includes(row.employeeId.toLowerCase())
     );
     if (matchId) {
-      await push(ref(db, `productivity/${matchId}`), {
+      await push(ref(db, `snapshots/${matchId}`), {
         date: row.date, uph: row.uph, unitsCompleted: row.units,
-        loggedBy: 'Import', loggedByUid: currentUser?.uid,
+        role: row.role || null, onPace: row.onPace || null,
+        importedBy: displayName, importedByUid: currentUser?.uid,
         createdAt: new Date().toISOString()
       });
       matched++;
     } else skipped++;
   }
-  document.getElementById('importStatus').textContent = `Done! ${matched} imported, ${skipped} skipped (no matching associate).`;
-  document.getElementById('importPreview').innerHTML = '';
+  document.getElementById('importStatus').textContent = `Done! ${matched} imported, ${skipped} skipped.`;
+  document.getElementById('importPreview').innerHTML  = '';
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -949,11 +899,6 @@ function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : ''; }
 function formatDate(str) {
   if (!str) return '—';
   try { return new Date(str).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); }
-  catch { return str; }
-}
-function formatDateShort(str) {
-  if (!str) return '—';
-  try { return new Date(str).toLocaleDateString('en-US', { month:'short', day:'numeric' }); }
   catch { return str; }
 }
 function formatDateTime(str) {
@@ -968,28 +913,19 @@ function escapeHtml(s) {
 
 <style>
 :root { --navy:#1a2744; --orange:#f97316; }
-* { box-sizing: border-box; }
+* { box-sizing:border-box; }
 body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
 /* Login */
-#loginScreen {
-  min-height:100vh; display:flex; align-items:center; justify-content:center;
-  background:linear-gradient(135deg, #1a2744 0%, #2d3f6b 100%);
-}
-.login-card {
-  background:#fff; border-radius:16px; padding:2.5rem 2rem;
-  width:100%; max-width:400px; box-shadow:0 20px 60px rgba(0,0,0,0.3);
-}
+#loginScreen { min-height:100vh; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#1a2744 0%,#2d3f6b 100%); }
+.login-card { background:#fff; border-radius:16px; padding:2.5rem 2rem; width:100%; max-width:400px; box-shadow:0 20px 60px rgba(0,0,0,0.3); }
 .login-logo { color:var(--orange); font-size:2rem; font-weight:700; letter-spacing:-1px; }
 
 /* Sidebar */
-#sidebar {
-  width:220px; min-height:100vh; background:var(--navy);
-  position:fixed; left:0; top:0; display:flex; flex-direction:column; z-index:100;
-}
+#sidebar { width:220px; min-height:100vh; background:var(--navy); position:fixed; left:0; top:0; display:flex; flex-direction:column; z-index:100; }
 .sidebar-brand { padding:1.25rem 1rem; border-bottom:1px solid rgba(255,255,255,0.1); }
 .brand-name { color:var(--orange); font-size:1rem; font-weight:700; }
-.brand-sub { color:rgba(255,255,255,0.45); font-size:0.7rem; }
+.brand-sub  { color:rgba(255,255,255,0.45); font-size:0.7rem; }
 .sidebar-nav { flex:1; padding:0.75rem 0.5rem; }
 .nav-link[data-view] {
   color:rgba(255,255,255,0.65)!important; border-radius:8px;
@@ -1005,7 +941,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
 /* Layout */
 #mainContent { margin-left:220px; padding:1.5rem; min-height:100vh; }
-.page-title { font-size:1.25rem; font-weight:700; color:var(--navy); margin:0; }
+.page-title  { font-size:1.25rem; font-weight:700; color:var(--navy); margin:0; }
 
 /* Stat cards */
 .stat-card { background:var(--navy); border-radius:12px; padding:1rem 1.25rem; }
@@ -1013,38 +949,40 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .stat-card .lbl { font-size:0.72rem; color:rgba(255,255,255,0.55); margin-top:4px; }
 
 /* Associate cards */
-.associate-card {
-  background:#fff; border-radius:12px; border:1px solid #e5e7eb;
-  border-top:3px solid var(--orange); cursor:pointer;
-  transition:all .15s; height:100%;
-}
+.associate-card { background:#fff; border-radius:12px; border:1px solid #e5e7eb; border-top:3px solid var(--orange); cursor:pointer; transition:all .15s; height:100%; }
 .associate-card:hover { box-shadow:0 6px 24px rgba(0,0,0,0.1); transform:translateY(-2px); }
-.avatar-circle {
-  width:42px; height:42px; border-radius:50%; background:var(--navy);
-  color:var(--orange); font-weight:700; font-size:0.875rem;
-  display:flex; align-items:center; justify-content:center; flex-shrink:0;
-}
+.avatar-circle { width:42px; height:42px; border-radius:50%; background:var(--navy); color:var(--orange); font-weight:700; font-size:0.875rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .assoc-name { font-weight:600; font-size:0.9rem; color:#1f2937; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.assoc-sub { font-size:0.75rem; color:#6b7280; }
-.uph-value { font-size:1.5rem; font-weight:700; color:var(--navy); }
-.uph-label { font-size:0.7rem; color:#9ca3af; }
+.assoc-sub  { font-size:0.75rem; color:#6b7280; }
 
 /* Profile */
 .profile-header { background:var(--navy); border-radius:16px; padding:1.5rem; color:#fff; margin-bottom:1.5rem; }
-.profile-avatar {
-  width:64px; height:64px; border-radius:50%; background:var(--orange);
-  color:#fff; font-weight:700; font-size:1.25rem;
-  display:flex; align-items:center; justify-content:center; flex-shrink:0;
-}
-.profile-name { font-size:1.5rem; font-weight:700; }
-.profile-meta { color:rgba(255,255,255,0.65); font-size:0.875rem; }
+.profile-avatar { width:64px; height:64px; border-radius:50%; background:var(--orange); color:#fff; font-weight:700; font-size:1.25rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.profile-name   { font-size:1.5rem; font-weight:700; }
+.profile-meta   { color:rgba(255,255,255,0.65); font-size:0.875rem; }
+
+/* Badges & Certs (chips) */
+.chips-section { background:#fff; border-radius:12px; border:1px solid #e5e7eb; padding:1rem 1.25rem; margin-bottom:1rem; }
+.chips-section h6 { font-size:0.8rem; font-weight:700; color:var(--navy); margin-bottom:0.6rem; }
+.chips-row { display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; }
+.chip { display:inline-flex; align-items:center; gap:2px; padding:4px 10px; border-radius:20px; font-size:0.78rem; font-weight:500; }
+.chip-badge      { background:#1a2744; color:#f97316; border:1px solid #f97316; }
+.chip-pending    { background:#f3f4f6; color:#6b7280; border:1px solid #d1d5db; font-style:italic; }
+.chip-cert       { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+.chip-cert-empty { background:#f9fafb; color:#9ca3af; border:1px solid #e5e7eb; }
+.chip-remove { background:none; border:none; color:inherit; opacity:0.6; cursor:pointer; margin-left:4px; font-size:0.9rem; line-height:1; padding:0; }
+.chip-remove:hover { opacity:1; }
 
 /* Notes */
-.note-card {
-  background:#fff; border-radius:10px; padding:1rem;
-  border:1px solid #e5e7eb; border-left:4px solid var(--orange);
-}
+.note-card { background:#fff; border-radius:10px; padding:1rem; border:1px solid #e5e7eb; border-left:4px solid var(--orange); }
 .note-text { color:#374151; font-size:0.875rem; line-height:1.6; white-space:pre-wrap; }
+
+/* Note filter pills */
+.note-filter-btn { background:#f3f4f6; border:1px solid #e5e7eb; border-radius:20px; padding:3px 12px; font-size:0.78rem; cursor:pointer; color:#374151; }
+.note-filter-btn.filter-active { background:var(--navy); color:#fff; border-color:var(--navy); }
+
+/* Flag */
+.bg-flag-orange { background:var(--orange)!important; color:#fff!important; }
 
 /* Search */
 .search-wrap { position:relative; }
@@ -1060,7 +998,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .btn-orange:hover { background:#ea6c0a; color:#fff; }
 
 /* Admin */
-.admin-card { background:#fff; border-radius:12px; padding:1.5rem; border:1px solid #e5e7eb; }
+.admin-card { background:#fff; border-radius:12px; padding:1.5rem; border:1px solid #e5e7eb; margin-bottom:1.5rem; }
 
 /* Responsive */
 @media(max-width:768px){
@@ -1073,7 +1011,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 </head>
 <body>
 
-<!-- LOGIN SCREEN -->
+<!-- LOGIN -->
 <div id="loginScreen">
   <div class="login-card">
     <div class="text-center mb-4">
@@ -1120,7 +1058,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     </div>
   </nav>
 
-  <!-- Main -->
   <main id="mainContent">
 
     <!-- DASHBOARD VIEW -->
@@ -1143,7 +1080,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <div class="row g-3 mb-4">
         <div class="col-md-4"><div class="stat-card"><div class="val" id="statTotal">—</div><div class="lbl">Total Associates</div></div></div>
         <div class="col-md-4"><div class="stat-card"><div class="val" id="statActive">—</div><div class="lbl">Active</div></div></div>
-        <div class="col-md-4"><div class="stat-card"><div class="val" id="statAvgUph">—</div><div class="lbl">Team Avg UPH (30d)</div></div></div>
+        <div class="col-md-4"><div class="stat-card"><div class="val" id="statFlagged">—</div><div class="lbl">Flagged</div></div></div>
       </div>
 
       <div class="d-flex gap-2 mb-4 flex-wrap">
@@ -1157,18 +1094,15 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </select>
         <select class="form-select" style="width:auto" id="filterStatus" onchange="renderDashboard()">
           <option value="">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="leave">On Leave</option>
+          <option value="active">Active</option><option value="inactive">Inactive</option><option value="leave">On Leave</option>
         </select>
-      </div>
-
-      <!-- Role UPH Comparison Chart -->
-      <div class="bg-white rounded-3 border p-3 mb-4" id="roleChartSection" style="display:none">
-        <h6 class="fw-bold mb-3" style="color:var(--navy)">
-          <i class="fas fa-chart-bar me-2" style="color:var(--orange)"></i>Avg UPH by Role (30d)
-        </h6>
-        <canvas id="roleChartCanvas" height="55"></canvas>
+        <select class="form-select" style="width:auto" id="filterFlag" onchange="renderDashboard()">
+          <option value="">All Flags</option>
+          <option value="high-potential">High Potential</option>
+          <option value="watch">Watch</option>
+          <option value="pip">PIP Track</option>
+          <option value="low-uph">Low UPH</option>
+        </select>
       </div>
 
       <div class="row g-3" id="associateGrid">
@@ -1185,71 +1119,101 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <button class="btn btn-sm btn-outline-secondary" onclick="loadDashboard()">
           <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
         </button>
-        <button class="btn btn-sm btn-outline-secondary d-none" id="profileEditBtn">
-          <i class="fas fa-edit me-1"></i>Edit Profile
-        </button>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-warning d-none" id="profileFlagBtn" onclick="openFlagModal()">
+            <i class="fas fa-flag me-1"></i>Set Flag
+          </button>
+          <button class="btn btn-sm btn-outline-secondary d-none" id="profileEditBtn">
+            <i class="fas fa-edit me-1"></i>Edit Profile
+          </button>
+        </div>
       </div>
 
       <div class="profile-header">
-        <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="d-flex align-items-center gap-3 mb-3">
           <div class="profile-avatar" id="profileAvatar">—</div>
           <div class="flex-grow-1">
             <div class="profile-name" id="profileName"></div>
             <div class="profile-meta" id="profileMeta"></div>
+            <div class="d-flex gap-2 align-items-center mt-1">
+              <span class="badge" id="profileStatus"></span>
+              <span id="profileFlag"></span>
+            </div>
           </div>
-          <span class="badge" id="profileStatus"></span>
         </div>
         <div class="row g-3 text-center">
           <div class="col-4">
-            <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statAvgUphProfile">—</div>
-            <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Avg UPH (30d)</div>
+            <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statSnapCount">—</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Snapshots</div>
           </div>
           <div class="col-4">
-            <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statTotalUnits">—</div>
-            <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Total Units</div>
+            <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statNoteCount">—</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Notes on File</div>
           </div>
           <div class="col-4">
-            <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statLogCount">—</div>
-            <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Log Entries</div>
+            <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statCertCount">—</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Certifications</div>
           </div>
         </div>
       </div>
 
+      <!-- Badges section -->
+      <div class="chips-section">
+        <h6><i class="fas fa-star me-1" style="color:#f97316"></i>Achievement Badges</h6>
+        <div class="chips-row" id="badgesContainer">
+          <span class="text-muted small">Loading…</span>
+        </div>
+      </div>
+
+      <!-- Certifications section -->
+      <div class="chips-section">
+        <h6><i class="fas fa-certificate me-1" style="color:#f97316"></i>Cross-Training Certifications
+          <span class="text-muted fw-normal" style="font-size:0.7rem"> — click to toggle (leaders/admins)</span>
+        </h6>
+        <div class="chips-row" id="certsContainer">
+          <span class="text-muted small">Loading…</span>
+        </div>
+      </div>
+
+      <!-- Tabs -->
       <ul class="nav nav-tabs mb-3">
-        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabProductivity"><i class="fas fa-chart-line me-1"></i>Productivity</a></li>
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabSnapshots"><i class="fas fa-camera me-1"></i>Shift Snapshots</a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabNotes"><i class="fas fa-sticky-note me-1"></i>Manager Notes</a></li>
       </ul>
 
       <div class="tab-content">
-        <div class="tab-pane fade show active" id="tabProductivity">
-          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-            <div class="btn-group btn-group-sm">
-              <button class="range-btn btn btn-outline-secondary" data-days="7" onclick="setDateRange(7)">7d</button>
-              <button class="range-btn btn btn-outline-secondary" data-days="14" onclick="setDateRange(14)">14d</button>
-              <button class="range-btn btn btn-orange active" data-days="30" onclick="setDateRange(30)">30d</button>
-              <button class="range-btn btn btn-outline-secondary" data-days="60" onclick="setDateRange(60)">60d</button>
-              <button class="range-btn btn btn-outline-secondary" data-days="90" onclick="setDateRange(90)">90d</button>
-              <button class="range-btn btn btn-outline-secondary" data-days="0" onclick="setDateRange(0)">All</button>
-            </div>
-            <button class="btn btn-sm btn-orange" onclick="openLogUph()"><i class="fas fa-plus me-1"></i>Log UPH Entry</button>
-          </div>
-          <div class="bg-white rounded-3 p-3 mb-3 border">
-            <div id="noChartMsg" class="text-center text-muted py-3 d-none">No productivity data yet</div>
-            <canvas id="uphChartCanvas" height="80"></canvas>
-          </div>
+
+        <!-- Shift Snapshots -->
+        <div class="tab-pane fade show active" id="tabSnapshots">
           <div class="bg-white rounded-3 border overflow-hidden">
             <table class="table table-hover mb-0 small">
-              <thead class="table-light"><tr><th>Date</th><th>UPH</th><th>Units</th><th>Logged By</th><th></th></tr></thead>
-              <tbody id="productivityTbody"></tbody>
+              <thead class="table-light">
+                <tr><th>Date</th><th>Role</th><th>UPH</th><th>Units</th><th>Target</th><th>Variance</th><th>On Pace</th><th>Imported By</th></tr>
+              </thead>
+              <tbody id="snapshotsTbody">
+                <tr><td colspan="8" class="text-center text-muted py-3">No snapshots yet</td></tr>
+              </tbody>
             </table>
           </div>
         </div>
+
+        <!-- Manager Notes -->
         <div class="tab-pane fade" id="tabNotes">
-          <div class="d-flex justify-content-end mb-3">
+          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div class="d-flex gap-1 flex-wrap">
+              <button class="note-filter-btn filter-active" data-type="All" onclick="setNoteFilter('All')">All</button>
+              <button class="note-filter-btn" data-type="Coaching" onclick="setNoteFilter('Coaching')">Coaching</button>
+              <button class="note-filter-btn" data-type="Recognition" onclick="setNoteFilter('Recognition')">Recognition</button>
+              <button class="note-filter-btn" data-type="Leadership" onclick="setNoteFilter('Leadership')">Leadership</button>
+              <button class="note-filter-btn" data-type="Warning" onclick="setNoteFilter('Warning')">Warning</button>
+              <button class="note-filter-btn" data-type="PIP" onclick="setNoteFilter('PIP')">PIP</button>
+              <button class="note-filter-btn" data-type="General" onclick="setNoteFilter('General')">General</button>
+            </div>
             <button class="btn btn-sm btn-orange" onclick="openAddNote()"><i class="fas fa-plus me-1"></i>Add Note</button>
           </div>
           <div id="notesContainer"></div>
         </div>
+
       </div>
     </div>
 
@@ -1259,6 +1223,17 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <h1 class="page-title"><i class="fas fa-shield-alt me-2" style="color:var(--orange)"></i>Admin Panel</h1>
         <button class="btn btn-sm btn-orange" onclick="openCreateUser()"><i class="fas fa-user-plus me-1"></i>Create Account</button>
       </div>
+
+      <!-- Pending Badge Approvals -->
+      <div class="admin-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-star text-warning me-2"></i>Pending Badge Nominations</h6>
+          <button class="btn btn-sm btn-outline-secondary py-0" onclick="loadPendingBadges()"><i class="fas fa-sync-alt"></i></button>
+        </div>
+        <div id="pendingBadgesContainer"><p class="text-muted small mb-0">Loading…</p></div>
+      </div>
+
+      <!-- User Management -->
       <div class="admin-card">
         <h6 class="fw-bold mb-3" style="color:var(--navy)">Team Accounts</h6>
         <div class="table-responsive">
@@ -1269,9 +1244,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
         <div class="mt-3 p-3 bg-light rounded small text-muted">
           <strong>Roles:</strong>
-          <span class="badge bg-danger ms-1">Admin</span> full access + user management.
-          <span class="badge bg-primary ms-1">Leader</span> add associates, log UPH, add notes.
-          <span class="badge bg-secondary ms-1">Viewer</span> read-only. Click "Role" to cycle between them.
+          <span class="badge bg-danger ms-1">Admin</span> full access + user management + badge approvals.
+          <span class="badge bg-primary ms-1">Leader</span> add associates, add notes, nominate badges, manage certs.
+          <span class="badge bg-secondary ms-1">Viewer</span> read-only. Click "Role" to cycle.
         </div>
       </div>
     </div>
@@ -1279,7 +1254,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   </main>
 </div>
 
-<!-- MODALS -->
+<!-- ═══════ MODALS ═══════ -->
 
 <!-- Add/Edit Associate -->
 <div class="modal fade" id="assocModal" tabindex="-1">
@@ -1333,30 +1308,52 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   </div></div>
 </div>
 
-<!-- Log UPH -->
-<div class="modal fade" id="uphModal" tabindex="-1">
+<!-- Set Flag -->
+<div class="modal fade" id="flagModal" tabindex="-1">
   <div class="modal-dialog modal-sm"><div class="modal-content">
     <div class="modal-header border-0 pb-0">
-      <h5 class="modal-title fw-bold">Log UPH Entry</h5>
+      <h5 class="modal-title fw-bold"><i class="fas fa-flag me-2"></i>Set Flag</h5>
       <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
     </div>
     <div class="modal-body">
-      <div class="mb-3">
-        <label class="form-label small fw-semibold">Date <span class="text-danger">*</span></label>
-        <input type="date" class="form-control" id="uphDate">
-      </div>
-      <div class="mb-3">
-        <label class="form-label small fw-semibold">UPH <span class="text-danger">*</span></label>
-        <input type="number" class="form-control" id="uphValue" step="0.1" min="0" placeholder="e.g. 18.5">
-      </div>
-      <div class="mb-2">
-        <label class="form-label small fw-semibold">Units Completed</label>
-        <input type="number" class="form-control" id="uphUnits" min="0" placeholder="Optional">
-      </div>
+      <label class="form-label small fw-semibold">Flag Status</label>
+      <select class="form-select" id="flagSelect">
+        <option value="">No Flag</option>
+        <option value="high-potential">⭐ High Potential</option>
+        <option value="watch">👁 Watch</option>
+        <option value="pip">⚠️ PIP Track</option>
+        <option value="low-uph">📉 Low UPH</option>
+      </select>
     </div>
     <div class="modal-footer border-0 pt-0">
       <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-      <button class="btn btn-orange" onclick="saveUphLog()">Save</button>
+      <button class="btn btn-orange" onclick="saveFlag()">Save Flag</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Nominate Badge -->
+<div class="modal fade" id="badgeModal" tabindex="-1">
+  <div class="modal-dialog modal-sm"><div class="modal-content">
+    <div class="modal-header border-0 pb-0">
+      <h5 class="modal-title fw-bold"><i class="fas fa-star me-2 text-warning"></i>Nominate Badge</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <label class="form-label small fw-semibold">Achievement Badge</label>
+      <select class="form-select" id="badgeSelect">
+        <option>Top Performer</option>
+        <option>Most Improved</option>
+        <option>Team Player</option>
+        <option>Perfect Attendance</option>
+        <option>Safety Champion</option>
+        <option>Above &amp; Beyond</option>
+      </select>
+      <p class="text-muted small mt-2 mb-0">Nomination will be sent to an admin for approval.</p>
+    </div>
+    <div class="modal-footer border-0 pt-0">
+      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-orange" onclick="saveBadgeNomination()">Submit Nomination</button>
     </div>
   </div></div>
 </div>
@@ -1381,7 +1378,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <option>Leadership</option>
           </select>
         </div>
-        <div>
+        <div class="mb-3">
           <label class="form-label small fw-semibold">Note <span class="text-danger">*</span></label>
           <textarea class="form-control" id="noteText" rows="5"
             placeholder="Add your observations, coaching points, recognition, or leadership potential notes…"></textarea>
@@ -1390,7 +1387,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     </div>
     <div class="modal-footer border-0 pt-0">
       <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-      <button class="btn btn-orange" onclick="saveNote()">Save Note</button>
+      <button class="btn btn-orange" id="saveNoteBtn" onclick="saveNote()">Save Note</button>
     </div>
   </div></div>
 </div>
@@ -1420,8 +1417,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <label class="form-label small fw-semibold">Role</label>
           <select class="form-select" id="newRole">
             <option value="viewer">Viewer — read only</option>
-            <option value="leader" selected>Leader — add associates, log UPH, add notes</option>
-            <option value="admin">Admin — full access + user management</option>
+            <option value="leader" selected>Leader — add associates, notes, certs, nominate badges</option>
+            <option value="admin">Admin — full access + user management + badge approvals</option>
           </select>
         </div>
       </form>
@@ -1441,25 +1438,23 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
     </div>
     <div class="modal-body">
-      <ul class="nav nav-tabs mb-3" id="importTabs">
+      <ul class="nav nav-tabs mb-3">
         <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabPaste"><i class="fas fa-paste me-1"></i>Paste Snapshot</a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabManual"><i class="fas fa-keyboard me-1"></i>Manual Entry</a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabOcr"><i class="fas fa-camera me-1"></i>OCR from Image</a></li>
       </ul>
       <div class="tab-content">
 
-        <!-- Paste Tab -->
+        <!-- Paste -->
         <div class="tab-pane fade show active" id="tabPaste">
           <p class="text-muted small mb-2">Copy the snapshot from Excel and paste it below — all fields import in one shot.</p>
           <textarea class="form-control mb-2" id="pasteArea" rows="10"
             placeholder="Paste here, e.g.:&#10;Employee Id	NVTNEEL&#10;Role	Large Pack&#10;Shift Date	6/18/2026&#10;Individual Avg UPH	30.2&#10;Units Completed	277&#10;On Pace?	Crushing It"></textarea>
           <div id="pasteStatus" class="small mb-2"></div>
-          <button class="btn btn-orange" onclick="parsePastedSnapshot()">
-            <i class="fas fa-file-import me-1"></i>Import Snapshot
-          </button>
+          <button class="btn btn-orange" onclick="parsePastedSnapshot()"><i class="fas fa-file-import me-1"></i>Import Snapshot</button>
         </div>
 
-        <!-- Manual Entry Tab -->
+        <!-- Manual -->
         <div class="tab-pane fade" id="tabManual">
           <p class="text-muted small mb-3">Enter the values directly from the Performance Snapshot.</p>
           <div class="row g-3">
@@ -1489,14 +1484,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             </div>
           </div>
           <div id="manualStatus" class="text-muted small mt-2"></div>
-          <button class="btn btn-orange mt-3" onclick="saveManualEntry()">
-            <i class="fas fa-check me-1"></i>Import Entry
-          </button>
+          <button class="btn btn-orange mt-3" onclick="saveManualEntry()"><i class="fas fa-check me-1"></i>Import Entry</button>
         </div>
 
-        <!-- OCR Tab -->
+        <!-- OCR -->
         <div class="tab-pane fade" id="tabOcr">
-          <p class="text-muted small">Upload a clear, cropped screenshot of the snapshot table. Results vary by image quality.</p>
+          <p class="text-muted small">Upload a clear, cropped screenshot. Results vary by image quality — use Paste Snapshot for best results.</p>
           <input type="file" class="form-control mb-3" accept="image/*" onchange="handleImportFile(this)">
           <div id="importStatus" class="text-muted small mb-2"></div>
           <div id="importPreview"></div>
