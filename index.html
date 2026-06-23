@@ -208,7 +208,7 @@ onAuthStateChanged(auth, async (user) => {
     if (currentUserRole === 'admin') document.getElementById('navAdmin').classList.remove('d-none');
     if (currentUserRole !== 'viewer') document.getElementById('addAssocBtn').classList.remove('d-none');
     applyTabVisibility();
-    loadDashboard();
+    restoreLastView();
   } else {
     currentUser = null;
     showLogin();
@@ -249,8 +249,24 @@ function showView(view) {
   document.querySelectorAll('.nav-link[data-view]').forEach(l => l.classList.remove('active'));
   const nav = document.querySelector(`.nav-link[data-view="${view}"]`);
   if (nav) nav.classList.add('active');
+  sessionStorage.setItem('lastView', view);
 }
 window.showView = showView;
+
+async function restoreLastView() {
+  const view = sessionStorage.getItem('lastView') || 'dashboard';
+  if (view === 'profile') {
+    const assocId = sessionStorage.getItem('lastAssocId');
+    if (assocId) { await openProfile(assocId); return; }
+  }
+  if (view === 'dashboard') { loadDashboard(); return; }
+  if (view === 'matrix')    { loadMatrix();    return; }
+  if (view === 'attendance'){ loadAttendance(); return; }
+  if (view === 'pointslog') { loadPointsLog(); return; }
+  if (view === 'admin')     { loadAdminPanel(); return; }
+  if (view === 'help')      { showView('help'); return; }
+  loadDashboard();
+}
 
 // ─── Dashboard ────────────────────────────────────────────────────────
 function loadDashboard() {
@@ -559,6 +575,7 @@ window.setLeaderFilter = (shift) => {
 // ─── Profile ──────────────────────────────────────────────────────────
 window.openProfile = async (id) => {
   currentAssociateId = id;
+  sessionStorage.setItem('lastAssocId', id);
   currentNoteFilter  = 'All';
   detachAll();
   showView('profile');
