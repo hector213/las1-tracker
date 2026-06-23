@@ -298,9 +298,23 @@ window.openProfile = async (id) => {
   // Reset note filter UI
   document.querySelectorAll('.note-filter-btn').forEach(b => b.classList.toggle('filter-active', b.dataset.type === 'All'));
 
+  // Reset credentials panel state
+  credsOpen = false;
+  document.getElementById('credsBody').classList.add('d-none');
+  document.getElementById('credsChevron').classList.remove('open');
+  document.getElementById('credsAddBtn').style.display = 'none';
+
+  // Reset watch notes panel state
+  watchNotesOpen = false;
+  document.getElementById('watchNotesBody').classList.add('d-none');
+  document.getElementById('watchChevron').classList.remove('open');
+  document.getElementById('watchAddBtn').style.display = 'none';
+
   listenNotes(id);
   listenBadges(id);
   listenCerts(id);
+  listenCreds(id);
+  listenWatchNotes(id);
 };
 
 // ─── Flagging ─────────────────────────────────────────────────────────
@@ -393,6 +407,195 @@ window.saveNote = async () => {
 window.deleteNote = async (noteId) => {
   if (!confirm('Delete this note?')) return;
   await remove(ref(db, `notes/${currentAssociateId}/${noteId}`));
+};
+
+// ─── Login Credentials (admin only) ───────────────────────────────────
+let lastCreds = [];
+let credsOpen = false;
+
+function listenCreds(associateId) {
+  const section = document.getElementById('credsSection');
+  if (currentUserRole !== 'admin') { section.classList.add('d-none'); return; }
+  section.classList.remove('d-none');
+
+  const cRef = ref(db, `credentials/${associateId}`);
+  activeListeners['credentials'] = cRef;
+  onValue(cRef, (snap) => {
+    const creds = [];
+    if (snap.exists()) Object.entries(snap.val()).forEach(([id, c]) => creds.push({ id, ...c }));
+    lastCreds = creds;
+    document.getElementById('credsCountBadge').textContent = creds.length;
+    if (credsOpen) renderCreds(creds);
+  });
+}
+
+function renderCreds(creds) {
+  const container = document.getElementById('credsContainer');
+  if (!creds.length) {
+    container.innerHTML = `<div class="text-center text-muted py-3 small"><i class="fas fa-key me-1"></i>No credentials saved yet.</div>`;
+    return;
+  }
+  container.innerHTML = creds.map(c => `
+    <div class="cred-card">
+      <div class="d-flex justify-content-between align-items-start">
+        <div class="cred-system"><i class="fas fa-desktop me-1" style="color:#6366f1"></i>${escapeHtml(c.system)}</div>
+        <button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deleteCred('${c.id}')"><i class="fas fa-trash-alt"></i></button>
+      </div>
+      <div class="cred-row"><span class="cred-label">Username</span><span>${escapeHtml(c.username)}</span>
+        <button class="btn btn-sm btn-link p-0 ms-1" style="font-size:0.75rem;color:#6366f1" onclick="copyToClipboard('${escapeHtml(c.username)}',this)" title="Copy"><i class="fas fa-copy"></i></button>
+      </div>
+      ${c.password ? `<div class="cred-row"><span class="cred-label">Password</span>
+        <span class="cred-pw" id="pw-${c.id}">••••••••</span>
+        <button class="btn btn-sm btn-link p-0 ms-1" style="font-size:0.75rem;color:#6366f1" onclick="togglePwVisibility('${c.id}','${escapeHtml(c.password)}')" title="Show/Hide"><i class="fas fa-eye"></i></button>
+        <button class="btn btn-sm btn-link p-0 ms-1" style="font-size:0.75rem;color:#6366f1" onclick="copyToClipboard('${escapeHtml(c.password)}',this)" title="Copy"><i class="fas fa-copy"></i></button>
+      </div>` : ''}
+      ${c.notes ? `<div class="cred-row"><span class="cred-label">Notes</span><span class="text-muted">${escapeHtml(c.notes)}</span></div>` : ''}
+      <div class="cred-meta">Added by ${escapeHtml(c.addedBy || '—')} · ${formatDate(c.createdAt)}</div>
+    </div>`).join('');
+}
+
+window.toggleCreds = () => {
+  credsOpen = !credsOpen;
+  document.getElementById('credsBody').classList.toggle('d-none', !credsOpen);
+  document.getElementById('credsChevron').classList.toggle('open', credsOpen);
+  document.getElementById('credsAddBtn').style.display = credsOpen ? 'inline-flex' : 'none';
+  if (credsOpen) renderCreds(lastCreds);
+};
+
+window.openAddCred = () => {
+  document.getElementById('credForm').reset();
+  // Reset password field to type=password
+  document.getElementById('credPassword').type = 'password';
+  new bootstrap.Modal(document.getElementById('credModal')).show();
+};
+
+window.toggleCredModalPw = (btn) => {
+  const input = document.getElementById('credPassword');
+  const showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  btn.innerHTML = `<i class="fas fa-eye${showing ? '' : '-slash'}"></i>`;
+};
+
+window.togglePwVisibility = (credId, pw) => {
+  const el = document.getElementById(`pw-${credId}`);
+  if (el.textContent === '••••••••') { el.textContent = pw; }
+  else { el.textContent = '••••••••'; }
+};
+
+window.copyToClipboard = async (text, btn) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-check" style="color:#16a34a"></i>';
+    setTimeout(() => { btn.innerHTML = orig; }, 1500);
+  } catch { alert('Copy failed — please copy manually.'); }
+};
+
+window.saveCred = async () => {
+  const system   = document.getElementById('credSystem').value.trim();
+  const username = document.getElementById('credUsername').value.trim();
+  const password = document.getElementById('credPassword').value;
+  const notes    = document.getElementById('credNotes').value.trim();
+  if (!system || !username) { alert('System and Username are required.'); return; }
+  const btn = document.getElementById('saveCredBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+    const addedBy  = userSnap.exists() ? (userSnap.val().displayName || currentUser.email) : currentUser.email;
+    await push(ref(db, `credentials/${currentAssociateId}`), {
+      system, username, password, notes, addedBy,
+      createdAt: new Date().toISOString()
+    });
+    bootstrap.Modal.getInstance(document.getElementById('credModal')).hide();
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+};
+
+window.deleteCred = async (credId) => {
+  if (!confirm('Delete this credential entry?')) return;
+  await remove(ref(db, `credentials/${currentAssociateId}/${credId}`));
+};
+
+// ─── Private Watch Notes ───────────────────────────────────────────────
+let lastWatchNotes = [];
+let watchNotesOpen = false;
+
+function listenWatchNotes(associateId) {
+  const canSee = currentUserRole === 'admin' || currentUserRole === 'leader';
+  const section = document.getElementById('watchSection');
+  if (!canSee) { section.classList.add('d-none'); return; }
+  section.classList.remove('d-none');
+
+  const wRef = ref(db, `watchnotes/${associateId}`);
+  activeListeners['watchnotes'] = wRef;
+  onValue(wRef, (snap) => {
+    const notes = [];
+    if (snap.exists()) Object.entries(snap.val()).forEach(([id, n]) => notes.push({ id, ...n }));
+    notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    lastWatchNotes = notes;
+    document.getElementById('watchCountBadge').textContent = notes.length;
+    if (watchNotesOpen) renderWatchNotes(notes);
+  });
+}
+
+function renderWatchNotes(notes) {
+  const container = document.getElementById('watchNotesContainer');
+  const canEdit = currentUserRole === 'admin' || currentUserRole === 'leader';
+  if (!notes.length) {
+    container.innerHTML = `<div class="text-center text-muted py-3 small"><i class="fas fa-eye-slash me-1"></i>No watch notes yet.</div>`;
+    return;
+  }
+  container.innerHTML = notes.map(n => `
+    <div class="watch-note-card">
+      <span class="watch-category-badge"><i class="fas fa-tag me-1"></i>${escapeHtml(n.category || 'General')}</span>
+      <div class="watch-note-text">${escapeHtml(n.text)}</div>
+      <div class="d-flex justify-content-between align-items-center">
+        <div class="watch-note-meta"><i class="fas fa-user-shield me-1"></i>${escapeHtml(n.author || '—')} · ${formatDate(n.createdAt)}</div>
+        ${canEdit ? `<button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deleteWatchNote('${n.id}')"><i class="fas fa-trash-alt"></i></button>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+window.toggleWatchNotes = () => {
+  watchNotesOpen = !watchNotesOpen;
+  const body    = document.getElementById('watchNotesBody');
+  const chevron = document.getElementById('watchChevron');
+  const addBtn  = document.getElementById('watchAddBtn');
+  body.classList.toggle('d-none', !watchNotesOpen);
+  chevron.classList.toggle('open', watchNotesOpen);
+  addBtn.style.display = watchNotesOpen ? 'inline-flex' : 'none';
+  if (watchNotesOpen) renderWatchNotes(lastWatchNotes);
+};
+
+window.openAddWatchNote = () => {
+  document.getElementById('watchNoteForm').reset();
+  new bootstrap.Modal(document.getElementById('watchNoteModal')).show();
+};
+
+window.saveWatchNote = async () => {
+  const text     = document.getElementById('watchNoteText').value.trim();
+  const category = document.getElementById('watchNoteCategory').value;
+  if (!text) { alert('Please enter a note.'); return; }
+  const btn = document.getElementById('saveWatchNoteBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+    const displayName = userSnap.exists() ? (userSnap.val().displayName || currentUser.email) : currentUser.email;
+    await push(ref(db, `watchnotes/${currentAssociateId}`), {
+      category, text,
+      author: displayName, authorUid: currentUser.uid,
+      createdAt: new Date().toISOString()
+    });
+    bootstrap.Modal.getInstance(document.getElementById('watchNoteModal')).hide();
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Note';
+  }
+};
+
+window.deleteWatchNote = async (noteId) => {
+  if (!confirm('Delete this watch note?')) return;
+  await remove(ref(db, `watchnotes/${currentAssociateId}/${noteId}`));
 };
 
 // ─── Badges ───────────────────────────────────────────────────────────
@@ -1081,6 +1284,35 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .note-filter-btn { background:#f3f4f6; border:1px solid #e5e7eb; border-radius:20px; padding:3px 12px; font-size:0.78rem; cursor:pointer; color:#374151; }
 .note-filter-btn.filter-active { background:var(--navy); color:#fff; border-color:var(--navy); }
 
+/* Login Credentials */
+.creds-panel { background:#f0f4ff; border:1.5px dashed #6366f1; border-radius:12px; padding:1rem 1.25rem; }
+.creds-toggle-btn { background:none; border:none; padding:0; cursor:pointer; }
+.creds-key-icon { color:#6366f1; font-size:0.95rem; }
+.creds-chevron { color:#9ca3af; font-size:0.8rem; transition:transform 0.2s; }
+.creds-chevron.open { transform:rotate(180deg); }
+.creds-add-btn { background:var(--navy); color:#fff; border:none; border-radius:8px; font-size:0.78rem; padding:4px 12px; white-space:nowrap; }
+.creds-add-btn:hover { background:#0f172a; color:#fff; }
+.cred-card { background:#fff; border-radius:8px; padding:0.85rem 1rem; border:1px solid #c7d2fe; border-left:4px solid #6366f1; margin-bottom:0.6rem; }
+.cred-system { font-weight:700; font-size:0.85rem; color:var(--navy); margin-bottom:0.4rem; }
+.cred-row { display:flex; align-items:center; gap:0.5rem; font-size:0.82rem; color:#374151; margin-bottom:0.2rem; }
+.cred-label { color:#6b7280; font-size:0.75rem; min-width:72px; }
+.cred-pw { font-family:monospace; letter-spacing:0.1em; }
+.cred-meta { font-size:0.72rem; color:#9ca3af; margin-top:0.35rem; }
+
+/* Private Watch Notes */
+.watch-panel { background:#fffbeb; border:1.5px dashed #f59e0b; border-radius:12px; padding:1rem 1.25rem; }
+.watch-toggle-btn { background:none; border:none; padding:0; cursor:pointer; }
+.watch-toggle-btn:hover .watch-lock-icon { color:var(--orange); }
+.watch-lock-icon { color:#f59e0b; font-size:0.95rem; }
+.watch-chevron { color:#9ca3af; font-size:0.8rem; transition:transform 0.2s; }
+.watch-chevron.open { transform:rotate(180deg); }
+.watch-add-btn { background:var(--navy); color:#fff; border:none; border-radius:8px; font-size:0.78rem; padding:4px 12px; white-space:nowrap; }
+.watch-add-btn:hover { background:#0f172a; color:#fff; }
+.watch-note-card { background:#fff; border-radius:8px; padding:0.85rem 1rem; border:1px solid #fde68a; border-left:4px solid #f59e0b; margin-bottom:0.6rem; }
+.watch-category-badge { display:inline-block; background:#fef3c7; color:#92400e; border-radius:20px; padding:2px 10px; font-size:0.73rem; font-weight:600; margin-bottom:0.4rem; }
+.watch-note-text { color:#374151; font-size:0.875rem; line-height:1.6; white-space:pre-wrap; margin-bottom:0.35rem; }
+.watch-note-meta { font-size:0.72rem; color:#9ca3af; }
+
 /* Leadership panel */
 .leadership-panel { background:linear-gradient(135deg,#1a2744 0%,#2d3f6b 100%); border-radius:14px; padding:1.25rem 1.5rem; }
 .leadership-header { color:var(--orange); font-weight:700; font-size:0.9rem; letter-spacing:0.04em; text-transform:uppercase; }
@@ -1334,6 +1566,46 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <button class="btn btn-sm btn-orange" onclick="openAddNote()"><i class="fas fa-plus me-1"></i>Add Note</button>
       </div>
       <div id="notesContainer"></div>
+
+      <!-- Login Credentials (admins only) -->
+      <div id="credsSection" class="d-none mt-4">
+        <div class="creds-panel">
+          <div class="d-flex justify-content-between align-items-center mb-0">
+            <button class="creds-toggle-btn d-flex align-items-center gap-2 w-100 text-start" onclick="toggleCreds()" id="credsToggleBtn">
+              <span class="creds-key-icon"><i class="fas fa-key"></i></span>
+              <span class="fw-bold" style="color:var(--navy)">Login Credentials</span>
+              <span class="badge bg-secondary ms-1" id="credsCountBadge">0</span>
+              <i class="fas fa-chevron-down ms-auto creds-chevron" id="credsChevron"></i>
+            </button>
+            <button class="btn btn-sm creds-add-btn ms-2" id="credsAddBtn" onclick="openAddCred()" style="display:none">
+              <i class="fas fa-plus me-1"></i>Add
+            </button>
+          </div>
+          <div id="credsBody" class="d-none mt-3">
+            <div id="credsContainer"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Private Watch Notes (leaders/admins only) -->
+      <div id="watchSection" class="d-none mt-4">
+        <div class="watch-panel">
+          <div class="d-flex justify-content-between align-items-center mb-0">
+            <button class="watch-toggle-btn d-flex align-items-center gap-2 w-100 text-start" onclick="toggleWatchNotes()" id="watchToggleBtn">
+              <span class="watch-lock-icon"><i class="fas fa-lock"></i></span>
+              <span class="fw-bold" style="color:var(--navy)">Private Watch Notes</span>
+              <span class="badge bg-secondary ms-1" id="watchCountBadge">0</span>
+              <i class="fas fa-chevron-down ms-auto watch-chevron" id="watchChevron"></i>
+            </button>
+            <button class="btn btn-sm watch-add-btn ms-2" id="watchAddBtn" onclick="openAddWatchNote()" style="display:none">
+              <i class="fas fa-plus me-1"></i>Add
+            </button>
+          </div>
+          <div id="watchNotesBody" class="d-none mt-3">
+            <div id="watchNotesContainer"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ADMIN VIEW -->
@@ -1513,6 +1785,81 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     <div class="modal-footer border-0 pt-0">
       <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
       <button class="btn btn-orange" id="saveNoteBtn" onclick="saveNote()">Save Note</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Add Credential -->
+<div class="modal fade" id="credModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header border-0 pb-0" style="background:var(--navy);border-radius:0.5rem 0.5rem 0 0">
+      <h5 class="modal-title fw-bold text-white"><i class="fas fa-key me-2" style="color:var(--orange)"></i>Add Login Credentials</h5>
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <p class="small text-muted mb-3"><i class="fas fa-shield-alt me-1"></i>Visible to Admins only. Passwords are stored as entered.</p>
+      <form id="credForm">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">System / Application <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="credSystem" placeholder="e.g. WMS, UKG, Kronos, Email…">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Username / Login ID <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="credUsername" placeholder="e.g. jsmith or employee ID">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Password</label>
+          <div class="input-group">
+            <input type="password" class="form-control" id="credPassword" placeholder="Password">
+            <button type="button" class="btn btn-outline-secondary" onclick="toggleCredModalPw(this)"><i class="fas fa-eye"></i></button>
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Notes</label>
+          <input type="text" class="form-control" id="credNotes" placeholder="e.g. temp password, reset on first login…">
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer border-0 pt-0">
+      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-orange" id="saveCredBtn" onclick="saveCred()">Save</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Add Watch Note -->
+<div class="modal fade" id="watchNoteModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header border-0 pb-0" style="background:var(--navy);border-radius:0.5rem 0.5rem 0 0">
+      <h5 class="modal-title fw-bold text-white"><i class="fas fa-lock me-2" style="color:var(--orange)"></i>Add Private Watch Note</h5>
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <p class="small text-muted mb-3"><i class="fas fa-eye-slash me-1"></i>This note is only visible to Leaders and Admins.</p>
+      <form id="watchNoteForm">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Category</label>
+          <select class="form-select" id="watchNoteCategory">
+            <option>Attendance</option>
+            <option>Leaving Early</option>
+            <option>Tardiness</option>
+            <option>Points</option>
+            <option>Behavioral</option>
+            <option>Performance Concern</option>
+            <option>Positive Observation</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Note <span class="text-danger">*</span></label>
+          <textarea class="form-control" id="watchNoteText" rows="5"
+            placeholder="Document what you observed, when it happened, and any relevant context…"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer border-0 pt-0">
+      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-orange" id="saveWatchNoteBtn" onclick="saveWatchNote()">Save Note</button>
     </div>
   </div></div>
 </div>
