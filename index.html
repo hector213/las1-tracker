@@ -10,7 +10,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getDatabase, ref, set, get, push, update, remove, onValue, off, onDisconnect } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, set, get, push, update, remove, onValue, off, onDisconnect, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMPDpzhZEWZjP9SptREKVSB4dmdhY5cpM",
@@ -52,6 +52,22 @@ const FLAGS  = {
   'low-uph':        { label: 'Low UPH',         cls: 'bg-flag-orange' }
 };
 const NOTE_TYPES = ['All','General','Coaching','Recognition','Warning','PIP','Leadership'];
+const POINT_VALUES = {
+  badge:  { standard: 25, elite: 100 },
+  note:   { Recognition: 10, Leadership: 15, Coaching: 0, Warning: -10, PIP: -25, General: 0 }
+};
+function badgePoints(badgeLabel) {
+  const def = BADGES.find(b => b.label === badgeLabel);
+  return def ? POINT_VALUES.badge[def.tier] : POINT_VALUES.badge.standard;
+}
+function notePoints(noteType) {
+  return POINT_VALUES.note[noteType] ?? 0;
+}
+function pointsColor(pts) {
+  if (pts > 0)  return '#16a34a';
+  if (pts < 0)  return '#dc2626';
+  return '#6b7280';
+}
 
 // ─── State ────────────────────────────────────────────────────────────
 let currentUser = null;
@@ -59,6 +75,7 @@ let currentUserRole = 'viewer';
 let currentAssociateId = null;
 let activeListeners = {};
 let allAssociates = [];
+let allCertsMap = {}; // { associateId: Set of cert keys }
 let lastNotes = [];
 let currentNoteFilter   = 'All';
 let leaderShiftFilter   = 'All';
@@ -154,6 +171,18 @@ function loadDashboard() {
     }
     renderDashboard();
   });
+
+  const certsGlobalRef = ref(db, 'certs');
+  activeListeners['certsGlobal'] = certsGlobalRef;
+  onValue(certsGlobalRef, (snap) => {
+    allCertsMap = {};
+    if (snap.exists()) {
+      Object.entries(snap.val()).forEach(([uid, certs]) => {
+        allCertsMap[uid] = new Set(Object.keys(certs).filter(k => certs[k]));
+      });
+    }
+    renderDashboard();
+  });
 }
 window.loadDashboard = loadDashboard;
 
@@ -162,12 +191,19 @@ function renderDashboard() {
   const shift      = document.getElementById('filterShift')?.value  || '';
   const status     = document.getElementById('filterStatus')?.value || '';
   const flagFilter = document.getElementById('filterFlag')?.value   || '';
+  const certFilter = document.getElementById('filterCert')?.value || '';
+  // Populate cert options if empty
+  const certSel = document.getElementById('filterCert');
+  if (certSel && certSel.options.length <= 1) {
+    CERTS.forEach(c => { const o = document.createElement('option'); o.value = c.replace(/\s+/g,'_'); o.textContent = c; certSel.appendChild(o); });
+  }
 
   const filtered = allAssociates.filter(a =>
     (!search     || a.name.toLowerCase().includes(search) || (a.employeeId || '').toLowerCase().includes(search)) &&
     (!shift      || a.shift === shift) &&
     (!status     || a.status === status) &&
-    (!flagFilter || a.flag === flagFilter)
+    (!flagFilter || a.flag === flagFilter) &&
+    (!certFilter || (allCertsMap[a.id] && allCertsMap[a.id].has(certFilter)))
   );
 
   document.getElementById('statTotal').textContent   = allAssociates.length;
@@ -203,6 +239,9 @@ function renderDashboard() {
     return '';
   };
 
+  renderLeaderboard();
+  renderMilestones();
+
   grid.innerHTML = filtered.map(a => {
     const initials    = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
     const statusColor = a.status === 'active' ? 'bg-success' : a.status === 'inactive' ? 'bg-secondary' : 'bg-warning text-dark';
@@ -224,7 +263,10 @@ function renderDashboard() {
             </div>
             <span class="badge ${statusColor}">${capitalize(a.status || 'active')}</span>
           </div>
-          <div class="d-flex justify-content-end mt-2">
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            ${(a.points != null && a.points !== 0)
+              ? `<span class="pts-pill" style="color:${pointsColor(a.points||0)}"><i class="fas fa-star me-1" style="font-size:0.65rem"></i>${a.points > 0 ? '+' : ''}${a.points} pts</span>`
+              : `<span class="pts-pill" style="color:#9ca3af">0 pts</span>`}
             <i class="fas fa-chevron-right text-muted opacity-50"></i>
           </div>
         </div>
@@ -233,6 +275,61 @@ function renderDashboard() {
   }).join('');
 }
 window.renderDashboard = renderDashboard;
+
+function renderLeaderboard() {
+  const el = document.getElementById('leaderboardList');
+  if (!el) return;
+  const ranked = [...allAssociates]
+    .filter(a => a.status === 'active')
+    .sort((a, b) => (b.points || 0) - (a.points || 0))
+    .slice(0, 10);
+  if (!ranked.length) { el.innerHTML = '<div class="text-muted small py-2">No data yet.</div>'; return; }
+  const medals = ['🥇','🥈','🥉'];
+  el.innerHTML = ranked.map((a, i) => {
+    const pts = a.points || 0;
+    const color = pts > 0 ? '#16a34a' : pts < 0 ? '#dc2626' : '#6b7280';
+    return `<div class="lb-row" onclick="openProfile('${a.id}')">
+      <span class="lb-rank">${medals[i] || (i+1)}</span>
+      <span class="lb-name">${escapeHtml(a.name)}</span>
+      <span class="lb-pts" style="color:${color}">${pts > 0 ? '+' : ''}${pts} pts</span>
+    </div>`;
+  }).join('');
+}
+
+function renderMilestones() {
+  const el = document.getElementById('milestonesList');
+  if (!el) return;
+  const today = new Date();
+  const milestones = [];
+  allAssociates.filter(a => a.hireDate && a.status === 'active').forEach(a => {
+    const hire = new Date(a.hireDate);
+    const yearsThisYear = today.getFullYear() - hire.getFullYear();
+    for (let y = yearsThisYear; y <= yearsThisYear + 1; y++) {
+      if (y < 1) continue;
+      const anniv = new Date(hire);
+      anniv.setFullYear(today.getFullYear() + (y - yearsThisYear));
+      const diff = Math.ceil((anniv - today) / (1000 * 60 * 60 * 24));
+      if (diff >= 0 && diff <= 60) {
+        milestones.push({ name: a.name, id: a.id, years: y, date: anniv, diff });
+      }
+    }
+  });
+  milestones.sort((a, b) => a.diff - b.diff);
+  if (!milestones.length) { el.innerHTML = '<div class="text-muted small py-2">No anniversaries in the next 60 days.</div>'; return; }
+  el.innerHTML = milestones.map(m => {
+    const label = m.diff === 0 ? '🎉 Today!' : m.diff === 1 ? 'Tomorrow' : `In ${m.diff} days`;
+    const yr = m.years === 1 ? '1 Year' : `${m.years} Years`;
+    return `<div class="ms-row" onclick="openProfile('${m.id}')">
+      <div>
+        <div class="ms-name">${escapeHtml(m.name)}</div>
+        <div class="ms-detail">${yr} Anniversary · ${m.date.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+      </div>
+      <span class="ms-when ${m.diff === 0 ? 'ms-today' : ''}">${label}</span>
+    </div>`;
+  }).join('');
+}
+window.renderLeaderboard = renderLeaderboard;
+window.renderMilestones  = renderMilestones;
 
 function renderLeaders() {
   const roster   = document.getElementById('leadershipRoster');
@@ -278,9 +375,12 @@ window.openProfile = async (id) => {
   const initials = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
   document.getElementById('profileAvatar').textContent = initials;
   document.getElementById('profileName').textContent   = a.name;
-  document.getElementById('profileMeta').textContent   =
-    [a.role, a.department, a.shift ? a.shift + ' Shift' : null, a.employeeId ? 'ID: ' + a.employeeId : null]
-      .filter(Boolean).join(' · ');
+  document.getElementById('profileMeta').textContent = [a.role, a.department, a.shift ? a.shift + ' Shift' : null, a.employeeId ? 'ID: ' + a.employeeId : null, a.hireDate ? 'Hired ' + new Date(a.hireDate).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : null].filter(Boolean).join(' · ');
+  const pts    = a.points || 0;
+  const ptsStat = document.getElementById('statPoints');
+  ptsStat.textContent = (pts > 0 ? '+' : '') + pts;
+  ptsStat.style.color = pointsColor(pts);
+
   const omEl = document.getElementById('profileOpsManager');
   if (a.opsManager) { omEl.textContent = ''; omEl.innerHTML = `<i class="fas fa-user-tie me-1" style="color:var(--orange)"></i>Ops Manager: <strong>${escapeHtml(a.opsManager)}</strong>`; omEl.classList.remove('d-none'); }
   else { omEl.classList.add('d-none'); }
@@ -411,6 +511,8 @@ window.saveNote = async () => {
       author: displayName, authorUid: currentUser.uid,
       createdAt: new Date().toISOString()
     });
+    const pts = notePoints(type);
+    if (pts !== 0) await update(ref(db, `associates/${currentAssociateId}`), { points: increment(pts) });
     bootstrap.Modal.getInstance(document.getElementById('noteModal')).hide();
   } finally {
     btn.disabled = false; btn.textContent = 'Save Note';
@@ -418,6 +520,11 @@ window.saveNote = async () => {
 };
 window.deleteNote = async (noteId) => {
   if (!confirm('Delete this note?')) return;
+  const noteSnap = await get(ref(db, `notes/${currentAssociateId}/${noteId}`));
+  if (noteSnap.exists()) {
+    const pts = notePoints(noteSnap.val().type);
+    if (pts !== 0) await update(ref(db, `associates/${currentAssociateId}`), { points: increment(-pts) });
+  }
   await remove(ref(db, `notes/${currentAssociateId}/${noteId}`));
 };
 
@@ -427,7 +534,7 @@ let credsOpen = false;
 
 function listenCreds(associateId) {
   const section = document.getElementById('credsSection');
-  if (currentUserRole !== 'admin') { section.classList.add('d-none'); return; }
+  if (currentUserRole === 'viewer') { section.classList.add('d-none'); return; }
   section.classList.remove('d-none');
 
   const cRef = ref(db, `credentials/${associateId}`);
@@ -464,6 +571,11 @@ function renderCreds(creds) {
       ${c.notes ? `<div class="cred-row"><span class="cred-label">Notes</span><span class="text-muted">${escapeHtml(c.notes)}</span></div>` : ''}
       <div class="cred-meta">Added by ${escapeHtml(c.addedBy || '—')} · ${formatDate(c.createdAt)}</div>
     </div>`).join('');
+
+  // Only admins can delete — update delete buttons after render
+  if (currentUserRole !== 'admin') {
+    container.querySelectorAll('[onclick^="deleteCred"]').forEach(b => b.remove());
+  }
 }
 
 window.toggleCreds = () => {
@@ -754,11 +866,16 @@ window.saveBadgeNomination = async () => {
   alert(`"${badge}" nomination submitted — an admin will review it.`);
 };
 window.approveBadge = async (associateId, badgeId) => {
-  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
+  const userSnap  = await get(ref(db, `users/${currentUser.uid}`));
   const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+  const badgeSnap = await get(ref(db, `badges/${associateId}/${badgeId}`));
   await update(ref(db, `badges/${associateId}/${badgeId}`), {
     status: 'approved', approvedBy: displayName, approvedAt: new Date().toISOString()
   });
+  if (badgeSnap.exists()) {
+    const pts = badgePoints(badgeSnap.val().badge);
+    await update(ref(db, `associates/${associateId}`), { points: increment(pts) });
+  }
 };
 window.rejectBadge = async (associateId, badgeId) => {
   if (!confirm('Reject and remove this nomination?')) return;
@@ -766,6 +883,11 @@ window.rejectBadge = async (associateId, badgeId) => {
 };
 window.removeBadge = async (badgeId) => {
   if (!confirm('Remove this badge?')) return;
+  const badgeSnap = await get(ref(db, `badges/${currentAssociateId}/${badgeId}`));
+  if (badgeSnap.exists()) {
+    const pts = badgePoints(badgeSnap.val().badge);
+    await update(ref(db, `associates/${currentAssociateId}`), { points: increment(-pts) });
+  }
   await remove(ref(db, `badges/${currentAssociateId}/${badgeId}`));
 };
 
@@ -829,6 +951,7 @@ window.openEditAssociate = (id, data) => {
   document.getElementById('assocShift').value      = data.shift      || '';
   document.getElementById('assocStatus').value     = data.status     || 'active';
   document.getElementById('assocPosition').value   = data.position   || '';
+  document.getElementById('assocHireDate').value   = data.hireDate   || '';
   document.getElementById('assocOpsManager').value = data.opsManager || '';
   new bootstrap.Modal(document.getElementById('assocModal')).show();
 };
@@ -842,6 +965,7 @@ window.saveAssociate = async () => {
     department:  document.getElementById('assocDept').value.trim(),
     status:      document.getElementById('assocStatus').value,
     position:    document.getElementById('assocPosition').value,
+    hireDate:    document.getElementById('assocHireDate').value,
     opsManager:  document.getElementById('assocOpsManager').value.trim(),
     updatedAt:  new Date().toISOString(), updatedBy: currentUser?.email
   };
@@ -853,6 +977,59 @@ window.saveAssociate = async () => {
     await push(ref(db, 'associates'), data);
   }
   bootstrap.Modal.getInstance(document.getElementById('assocModal')).hide();
+};
+
+// ─── Export Profile PDF ───────────────────────────────────────────────
+window.exportProfilePDF = async () => {
+  const assoc = allAssociates.find(a => a.id === currentAssociateId);
+  if (!assoc) return;
+
+  // Gather notes
+  const notesSnap = await get(ref(db, `notes/${currentAssociateId}`));
+  const notes = [];
+  if (notesSnap.exists()) Object.values(notesSnap.val()).forEach(n => notes.push(n));
+  notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  // Gather badges
+  const badgesSnap = await get(ref(db, `badges/${currentAssociateId}`));
+  const badges = [];
+  if (badgesSnap.exists()) Object.values(badgesSnap.val()).filter(b => b.status === 'approved').forEach(b => badges.push(b));
+
+  // Gather certs
+  const certsSnap = await get(ref(db, `certs/${currentAssociateId}`));
+  const certs = certsSnap.exists() ? Object.keys(certsSnap.val()).filter(k => certsSnap.val()[k]).map(k => k.replace(/_/g,' ')) : [];
+
+  const pts = assoc.points || 0;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${assoc.name} — Profile</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #1f2937; padding: 32px; max-width: 800px; margin: 0 auto; }
+    h1 { color: #1a2744; border-bottom: 3px solid #f97316; padding-bottom: 8px; }
+    h2 { color: #1a2744; font-size: 1rem; margin-top: 24px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+    .meta { color: #6b7280; font-size: 0.9rem; margin-bottom: 4px; }
+    .pts { font-size: 1.1rem; font-weight: 700; color: ${pts >= 0 ? '#16a34a' : '#dc2626'}; }
+    .note { border-left: 3px solid #f97316; padding: 6px 12px; margin: 8px 0; background: #fff7f0; }
+    .note-type { font-size: 0.75rem; font-weight: 700; color: #f97316; }
+    .note-meta { font-size: 0.72rem; color: #9ca3af; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { background: #1a2744; color: #fff; border-radius: 20px; padding: 3px 10px; font-size: 0.78rem; }
+    .badge-item { display: inline-block; margin: 4px 6px 4px 0; font-size: 0.85rem; }
+    @media print { body { padding: 16px; } }
+  </style></head><body>
+  <h1>${assoc.name}</h1>
+  <div class="meta">${[assoc.role, assoc.department, assoc.shift ? assoc.shift + ' Shift' : null, assoc.employeeId ? 'ID: ' + assoc.employeeId : null].filter(Boolean).join(' · ')}</div>
+  ${assoc.hireDate ? `<div class="meta">Hired: ${new Date(assoc.hireDate).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>` : ''}
+  ${assoc.opsManager ? `<div class="meta">Ops Manager: ${assoc.opsManager}</div>` : ''}
+  <div class="pts">⭐ ${pts > 0 ? '+' : ''}${pts} Points</div>
+  ${certs.length ? `<h2>Certifications (${certs.length})</h2><div class="chips">${certs.map(c => `<span class="chip">${c}</span>`).join('')}</div>` : ''}
+  ${badges.length ? `<h2>Achievement Badges</h2>${badges.map(b => `<span class="badge-item">${b.badge} — ${new Date(b.approvedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>`).join('<br>')}` : ''}
+  ${notes.length ? `<h2>Manager Notes (${notes.length})</h2>${notes.map(n => `<div class="note"><div class="note-type">${n.type || 'General'}</div><div>${n.text}</div><div class="note-meta">${n.author} · ${new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div></div>`).join('')}` : ''}
+  <div style="margin-top:32px;font-size:0.72rem;color:#9ca3af">Exported ${new Date().toLocaleString()} · LAS1 Associate Performance Tracker</div>
+  </body></html>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
 };
 
 // ─── Export for Claude ────────────────────────────────────────────────
@@ -1332,6 +1509,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .avatar-circle { width:42px; height:42px; border-radius:50%; background:var(--navy); color:var(--orange); font-weight:700; font-size:0.875rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .assoc-name { font-weight:600; font-size:0.9rem; color:#1f2937; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .assoc-sub  { font-size:0.75rem; color:#6b7280; }
+.pts-pill   { font-size:0.75rem; font-weight:700; }
 
 /* Profile */
 .profile-header { background:var(--navy); border-radius:16px; padding:1.5rem; color:#fff; margin-bottom:1.5rem; }
@@ -1490,6 +1668,23 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .pending-badge-card { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:0.875rem 1rem; }
 .pending-badge-reason { font-size:0.85rem; color:#374151; font-style:italic; background:#fff; border-left:3px solid #f97316; padding:0.4rem 0.75rem; border-radius:0 6px 6px 0; }
 
+/* Dashboard widgets */
+.dashboard-widget-panel { background:#fff; border-radius:12px; border:1px solid #e5e7eb; padding:1.25rem; height:100%; }
+.widget-header { font-size:0.85rem; font-weight:700; color:var(--navy); margin-bottom:0.875rem; }
+.lb-row { display:flex; align-items:center; gap:0.6rem; padding:6px 0; border-bottom:1px solid #f3f4f6; cursor:pointer; }
+.lb-row:last-child { border-bottom:none; }
+.lb-row:hover { background:#fafafa; border-radius:6px; }
+.lb-rank { font-size:1rem; min-width:28px; }
+.lb-name { font-weight:600; font-size:0.82rem; flex:1; }
+.lb-pts  { font-weight:700; font-size:0.82rem; }
+.ms-row  { display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-bottom:1px solid #f3f4f6; cursor:pointer; gap:0.5rem; }
+.ms-row:last-child { border-bottom:none; }
+.ms-row:hover { background:#fafafa; border-radius:6px; }
+.ms-name   { font-weight:600; font-size:0.82rem; }
+.ms-detail { font-size:0.72rem; color:#6b7280; }
+.ms-when   { font-size:0.75rem; font-weight:600; color:#f97316; white-space:nowrap; }
+.ms-today  { color:#16a34a; }
+
 /* Responsive */
 @media(max-width:768px){
   #sidebar { width:60px; }
@@ -1590,6 +1785,26 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <option value="pip">PIP Track</option>
           <option value="low-uph">Low UPH</option>
         </select>
+        <select class="form-select" style="width:auto;max-width:200px" id="filterCert" onchange="renderDashboard()">
+          <option value="">All Certs</option>
+          <!-- JS will populate this -->
+        </select>
+      </div>
+
+      <!-- Leaderboard & Milestones -->
+      <div class="row g-3 mb-4">
+        <div class="col-lg-6" id="leaderboardSection">
+          <div class="dashboard-widget-panel">
+            <div class="widget-header"><i class="fas fa-trophy me-2" style="color:#f97316"></i>Points Leaderboard</div>
+            <div id="leaderboardList"></div>
+          </div>
+        </div>
+        <div class="col-lg-6" id="milestonesSection">
+          <div class="dashboard-widget-panel">
+            <div class="widget-header"><i class="fas fa-birthday-cake me-2" style="color:#f97316"></i>Upcoming Milestones</div>
+            <div id="milestonesList"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Leadership Team -->
@@ -1631,6 +1846,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <button class="btn btn-sm btn-outline-secondary d-none" id="profileEditBtn">
             <i class="fas fa-edit me-1"></i>Edit Profile
           </button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="exportProfilePDF()" id="profileExportBtn">
+            <i class="fas fa-file-pdf me-1"></i>Export PDF
+          </button>
         </div>
       </div>
 
@@ -1649,13 +1867,17 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </div>
         </div>
         <div class="row g-3 text-center">
-          <div class="col-6">
+          <div class="col-4">
             <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statNoteCount">—</div>
             <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Notes on File</div>
           </div>
-          <div class="col-6">
+          <div class="col-4">
             <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statCertCount">—</div>
             <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Certifications</div>
+          </div>
+          <div class="col-4">
+            <div style="font-size:1.75rem;font-weight:700" id="statPoints">—</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">⭐ Points</div>
           </div>
         </div>
       </div>
@@ -1835,7 +2057,11 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <option value="supervisor">Supervisor</option>
             </select>
           </div>
-          <div class="col-12">
+          <div class="col-6">
+            <label class="form-label small fw-semibold">Hire Date</label>
+            <input type="date" class="form-control" id="assocHireDate">
+          </div>
+          <div class="col-6">
             <label class="form-label small fw-semibold">Operations Manager</label>
             <input type="text" class="form-control" id="assocOpsManager" placeholder="Name of their Operations Manager">
           </div>
