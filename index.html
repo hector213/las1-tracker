@@ -440,7 +440,11 @@ function renderDashboard() {
     const earlyOuts = [...earlyOutIds].filter(id => activeAssoc.find(a => a.id === id)).length;
     document.getElementById('statCallOuts').textContent  = callOuts;
     document.getElementById('statEarlyOuts').textContent = earlyOuts;
-    const outOfBuilding = new Set([...callOutIds, ...earlyOutIds]).size;
+    // Count today's time off for all active people
+    const timeOffIds = new Set(Object.keys(_todayTimeOffMap).filter(id => activeAll.find(a => a.id === id)));
+    const timeOffCount = timeOffIds.size;
+    document.getElementById('statTimeOff').textContent = timeOffCount;
+    const outOfBuilding = new Set([...callOutIds, ...earlyOutIds, ...timeOffIds]).size;
     document.getElementById('statInBuilding').textContent = Math.max(0, activeAll.length - outOfBuilding);
     _todayAttMap = {};
     [...callOutIds].forEach(id  => { _todayAttMap[id] = 'call-out'; });
@@ -3958,8 +3962,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .ms-name   { font-weight:600; font-size:0.9rem; }
 .ms-detail { font-size:0.78rem; color:#6b7280; }
 .ms-when   { font-size:0.8rem; font-weight:700; color:#fff; background:#f97316; white-space:nowrap; margin-right:12px; padding:3px 10px; border-radius:20px; flex-shrink:0; }
-.ms-today  { background:var(--navy); }
-.ms-today  { color:#16a34a; }
+.ms-today  { background:#16a34a; }
 
 /* Responsive */
 @media(max-width:768px){
@@ -4006,9 +4009,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <a class="nav-link active" data-view="dashboard" onclick="loadDashboard()">
         <i class="fas fa-th-large"></i><span>Dashboard</span>
       </a>
-      <a class="nav-link d-none" id="navAdmin" data-view="admin" onclick="loadAdminPanel()">
-        <i class="fas fa-shield-alt"></i><span>Admin</span>
-      </a>
       <a class="nav-link" data-view="matrix" onclick="loadMatrix()">
         <i class="fas fa-table"></i><span>Training Matrix</span>
       </a>
@@ -4020,6 +4020,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       </a>
       <a class="nav-link" data-view="pointslog" onclick="loadPointsLog()">
         <i class="fas fa-star"></i><span>Engagement Points Log</span>
+      </a>
+      <a class="nav-link d-none" id="navAdmin" data-view="admin" onclick="loadAdminPanel()">
+        <i class="fas fa-shield-alt"></i><span>Admin</span>
       </a>
       <a class="nav-link" data-view="help" onclick="showView('help')">
         <i class="fas fa-question-circle"></i><span>Help</span>
@@ -4083,6 +4086,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <div class="d-flex justify-content-between align-items-baseline">
               <span class="lbl" style="margin-top:0">Early Outs</span>
               <span class="val" id="statEarlyOuts" style="font-size:1.4rem">—</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-baseline">
+              <span class="lbl" style="margin-top:0">Time Off</span>
+              <span class="val" id="statTimeOff" style="font-size:1.4rem">—</span>
             </div>
           </div>
         </div>
@@ -4450,11 +4457,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-users me-2" style="color:var(--orange)"></i>Dashboard</h6>
-            <p class="small text-muted">The dashboard shows all associates as cards. Use the search bar to find by name or employee ID. Filter by shift, status, flag, or certification. The leaderboard shows the top 10 active associates by points. The milestones widget shows upcoming work anniversaries within the next 60 days.</p>
+            <p class="small text-muted">Associate cards show only non-leadership staff. Leadership appears in the "Meet Your Leadership Team" section above. Cards are sorted alphabetically. Use the search bar to find by name or employee ID, or filter by shift, status, flag, or certification.</p>
+            <p class="small text-muted mb-0">The stats bar shows: <strong>Active</strong> (all active roster), <strong>Associates</strong> (excluding leadership), <strong>In Building</strong> (active minus today's call-outs and early-outs, including leadership), and <strong>Call Outs / Early Outs</strong> for today.</p>
+            <h6 class="fw-bold mb-2 mt-3" style="color:var(--navy)"><i class="fas fa-id-card me-2" style="color:var(--orange)"></i>Card Banners</h6>
+            <p class="small text-muted mb-0">Associate cards display a colored banner when a status is active today: <span style="color:#dc2626;font-weight:600">OUT</span> (call-out logged), <span style="color:#ea580c;font-weight:600">Early Out</span> (early-out logged), <span style="color:#d97706;font-weight:600">Tardy</span> (late arrival), or a <span style="color:#0ea5e9;font-weight:600">time-off type</span> (Vacation, FMLA, etc.). Banners reset automatically each day. An orange pulsing dot appears when a profile has new activity you haven't viewed.</p>
             <h6 class="fw-bold mb-2 mt-3" style="color:var(--navy)"><i class="fas fa-user me-2" style="color:var(--orange)"></i>Associate Profiles</h6>
-            <p class="small text-muted">Click any card to open a profile. From there you can add manager notes, toggle certifications, nominate badges, and view the private watch notes section (supervisors/admins only). Use the Export PDF button to generate a printable summary for HR records.</p>
+            <p class="small text-muted mb-0">Click any card to open a profile. From there you can add manager notes, toggle certifications, nominate badges, set a Reports To supervisor, and view the private watch notes section (supervisors/admins only). Use the Export PDF button to generate a printable summary for HR records.</p>
             <h6 class="fw-bold mb-2 mt-3" style="color:var(--navy)"><i class="fas fa-sticky-note me-2" style="color:var(--orange)"></i>Note Types</h6>
-            <p class="small text-muted"><strong>Coaching:</strong> performance conversations, no point impact. <strong>Recognition:</strong> positive callouts, +10 pts. <strong>Leadership:</strong> leadership potential observations, +15 pts. <strong>Warning:</strong> formal warnings, -10 pts. <strong>PIP:</strong> performance improvement plan entries, -150 pts. <strong>General:</strong> misc notes, no point impact.</p>
+            <p class="small text-muted mb-0"><strong>Coaching:</strong> performance conversations, no point impact. <strong>Recognition:</strong> positive callouts, +10 pts. <strong>Leadership:</strong> leadership potential observations, +15 pts. <strong>Warning:</strong> formal warnings, -10 pts. <strong>PIP:</strong> performance improvement plan entries, -150 pts. <strong>General:</strong> misc notes, no point impact.</p>
           </div>
         </div>
 
@@ -4576,6 +4586,34 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-key me-2" style="color:#6366f1"></i>System Credentials</h6>
             <p class="small text-muted mb-0">The <strong>System Credentials</strong> panel on each profile stores system logins (WMS, scheduler, etc.) tied to that associate. Leads and above can add entries; only Admins can delete them. Passwords are masked by default — click the eye icon to reveal or the copy icon to copy without displaying. Credentials are stored in Firebase and are not visible to Viewer-role accounts.</p>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="admin-card">
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-calendar-minus me-2" style="color:var(--orange)"></i>Time Off</h6>
+            <p class="small text-muted mb-2">The <strong>Time Off</strong> sidebar tab lets supervisors and admins schedule and track associate time away. Features include:</p>
+            <ul class="small text-muted ps-3 mb-2">
+              <li><strong>Calendar View:</strong> Click any month tab to switch months. Click a day on the calendar to add a time off entry pre-filled with that date. Associates with active entries appear as colored chips on the calendar.</li>
+              <li><strong>Types:</strong> Vacation, Unpaid Day Off, FMLA / Medical, Leave of Absence, Pre-Hire Approved.</li>
+              <li><strong>Card Banners:</strong> When an entry is active today, a matching banner appears on the associate's dashboard card automatically.</li>
+              <li><strong>Upcoming Events:</strong> Time off starting within the next 40 days also appears in the Upcoming Events panel on the dashboard.</li>
+            </ul>
+            <p class="small text-muted mb-0">Entries are stored per-associate in Firebase and update in real time.</p>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="admin-card">
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-print me-2" style="color:var(--orange)"></i>Corrective Action Form</h6>
+            <p class="small text-muted mb-2">When an associate reaches a warning threshold on the Attendance tab, a <strong>Print Corrective Action</strong> button appears on their warning tier card. Clicking it generates a print-ready corrective action form that includes:</p>
+            <ul class="small text-muted ps-3 mb-0">
+              <li>Associate name, employee ID, hire date, and shift schedule</li>
+              <li>Warning tier (Documented Verbal, Written Warning, Final Warning, Termination)</li>
+              <li>Pre-filled attendance summary with all logged events</li>
+              <li>Manager name (Hector Marron) and signature lines</li>
+              <li>Previous discipline history pulled from logged warnings</li>
+            </ul>
           </div>
         </div>
 
@@ -5306,7 +5344,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <!-- Manual -->
         <!-- Manual -->
         <div class="tab-pane fade" id="tabManual">
-          <p class="text-muted small mb-3">Enter the values directly from the Performance Snapshot.</p>
+          <p class="text-muted small mb-3">Enter the values directly from the Performance Sna          <p class="text-muted small mb-3">Enter the values directly from the Performance Snapshot.</p>
           <div class="row g-3">
             <div class="col-6">
               <label class="form-label small fw-semibold">Employee ID <span class="text-danger">*</span></label>
