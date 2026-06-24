@@ -171,6 +171,7 @@ async function autoExpirePoints() {
 // ─── State ────────────────────────────────────────────────────────────
 let currentUser = null;
 let currentUserRole = 'viewer';
+let currentUserAssocId = null; // associate record ID matching the logged-in user
 let currentAssociateId = null;
 window._getCurrentAssocId = () => currentAssociateId;
 let activeListeners = {};
@@ -210,6 +211,18 @@ onAuthStateChanged(auth, async (user) => {
     onDisconnect(presRef).remove();
 
     showApp();
+    // Resolve the associate record for the logged-in user (match by displayName)
+    const _uSnap = await get(ref(db, `users/${user.uid}`));
+    const _uName = _uSnap.val()?.displayName || '';
+    if (_uName) {
+      const _aSnap = await get(ref(db, 'associates'));
+      if (_aSnap.exists()) {
+        const _match = Object.entries(_aSnap.val()).find(([,a]) =>
+          a.name && a.name.toLowerCase() === _uName.toLowerCase()
+        );
+        currentUserAssocId = _match ? _match[0] : null;
+      }
+    }
     if (currentUserRole === 'admin') document.getElementById('navAdmin').classList.remove('d-none');
     if (currentUserRole !== 'viewer') document.getElementById('addAssocBtn').classList.remove('d-none');
     applyTabVisibility();
@@ -657,10 +670,7 @@ function renderLeaders() {
       <div class="leader-name">${escapeHtml(a.name)}</div>
       <div class="leader-pos"><i class="fas ${icon} me-1"></i>${label}</div>
       <div class="leader-shift">${escapeHtml(a.shift || '—')} Shift</div>
-      <button class="kanban-btn" onclick="event.stopPropagation();openKanban('${a.id}','${escapeHtml(a.name)}')">
-        <i class="fas fa-columns" style="font-size:0.65rem"></i>Board
-        <span class="kb-count" id="kb-count-${a.id}">—</span>
-      </button>
+      ${(currentUserRole === 'admin' || a.id === currentUserAssocId) ? `<button class="kanban-btn" onclick="event.stopPropagation();openKanban('${a.id}','${escapeHtml(a.name)}')"><i class="fas fa-columns" style="font-size:0.65rem"></i>Board<span class="kb-count" id="kb-count-${a.id}">—</span></button>` : ''}
     </div>`;
   }).join('');
 }
@@ -721,8 +731,9 @@ window.openProfile = async (id) => {
   document.getElementById('profileFlagBtn').classList.toggle('d-none', !canEdit);
   // Board button — show for leadership positions
   const isLeadership = a.position === 'supervisor' || a.position === 'lead' || a.position === 'ops-manager';
+  const canSeeBoard = isLeadership && (currentUserRole === 'admin' || id === currentUserAssocId);
   const boardBtn = document.getElementById('profileBoardBtn');
-  boardBtn.classList.toggle('d-none', !isLeadership);
+  boardBtn.classList.toggle('d-none', !canSeeBoard);
   if (isLeadership) {
     get(ref(db, `supervisorTasks/${id}/board`)).then(snap => {
       const countEl = document.getElementById('kb-count-profile');
@@ -1467,12 +1478,68 @@ window.setCertStatus = async (newStatus) => {
       await update(ref(db, `associates/${currentAssociateId}`), { points: increment(10) });
       await logPoints(currentAssociateId, 'Certification', `Cert earned: ${_certModalLabel}`, 10);
     } else if (newStatus === 'training' && oldStatus === 'certified') {
-      // Downgraded from certified — reverse the points
       await update(ref(db, `associates/${currentAssociateId}`), { points: increment(-10) });
       await logPoints(currentAssociateId, 'Certification', `Cert moved to training: ${_certModalLabel}`, -10);
     }
   }
+  // Check cert milestone badges after any change
+  if (newStatus !== 'remove') await checkCertMilestones(currentAssociateId, displayName);
 };
+
+const CERT_MILESTONES = [
+  { pct: 25,  key: 'cert-25',  label: 'Training Starter',   emoji: '📗', pts: 0,   desc: '25% of certifications earned' },
+  { pct: 50,  key: 'cert-50',  label: 'Half Trained',        emoji: '📘', pts: 0,   desc: '50% of certifications earned' },
+  { pct: 75,  key: 'cert-75',  label: 'Well Trained',        emoji: '📙', pts: 0,   desc: '75% of certifications earned' },
+  { pct: 100, key: 'cert-100', label: 'Super Trained',       emoji: '🏆', pts: 500, desc: '100% of certifications earned — Super Trained!' },
+];
+
+async function checkCertMilestones(assocId, awardedBy) {
+  const [certSnap, badgeSnap] = await Promise.all([
+    get(ref(db, `certs/${assocId}`)),
+    get(ref(db, `badges/${assocId}`))
+  ]);
+  const certs = certSnap.exists() ? certSnap.val() : {};
+  const certifiedCount = Object.values(certs).filter(c => (c.status || 'certified') === 'certified').length;
+  const total = CERTS.length;
+  const pct = total > 0 ? (certifiedCount / total) * 100 : 0;
+
+  // Get already-earned milestone badge keys
+  const existingMilestones = new Set();
+  if (badgeSnap.exists()) {
+    Object.values(badgeSnap.val()).forEach(b => {
+      if (b.badge && b.badge.startsWith('cert-')) existingMilestones.add(b.badge);
+    });
+  }
+
+  for (const m of CERT_MILESTONES) {
+    if (pct >= m.pct && !existingMilestones.has(m.key)) {
+      // Auto-award this milestone badge
+      const badgeRef = push(ref(db, `badges/${assocId}`));
+      await set(badgeRef, {
+        badge: m.key, label: m.label, emoji: m.emoji,
+        awardedAt: new Date().toISOString(), awardedBy,
+        autoAwarded: true, note: m.desc, approved: true
+      });
+      if (m.pts > 0) {
+        await update(ref(db, `associates/${assocId}`), { points: increment(m.pts) });
+        await logPoints(assocId, 'Milestone', `${m.emoji} ${m.label} — ${m.desc}`, m.pts);
+      }
+      // Toast notification
+      showCertMilestoneToast(m);
+    }
+  }
+}
+
+function showCertMilestoneToast(m) {
+  const toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;background:#1a2744;color:#fff;border-left:4px solid #f97316;border-radius:10px;padding:14px 18px;box-shadow:0 8px 30px rgba(0,0,0,0.25);min-width:280px;animation:slideInRight .3s ease';
+  toast.innerHTML = `<div style="font-size:1.4rem;margin-bottom:4px">${m.emoji}</div>
+    <div style="font-weight:700;color:#f97316">${m.label}</div>
+    <div style="font-size:0.82rem;opacity:.85">${m.desc}${m.pts > 0 ? ` · <strong>+${m.pts} pts</strong>` : ''}</div>`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.style.opacity = '0', 3500);
+  setTimeout(() => toast.remove(), 4000);
+}
 
 // ─── Add/Edit Associate ───────────────────────────────────────────────
 function populateReportsTo(selectedId) {
@@ -3722,6 +3789,10 @@ async function loadKanbanCounts() {
 }
 
 window.openKanban = async (assocId, assocName) => {
+  if (currentUserRole !== 'admin' && assocId !== currentUserAssocId) {
+    alert('You can only view your own board.');
+    return;
+  }
   _kbAssocId   = assocId;
   _kbAssocName = assocName;
   _kbViewMode  = 'board';
@@ -4186,6 +4257,11 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .ms-when   { font-size:0.8rem; font-weight:700; color:#fff; background:#f97316; white-space:nowrap; margin-right:12px; padding:3px 10px; border-radius:20px; flex-shrink:0; }
 .ms-today  { background:#16a34a; }
 
+@keyframes slideInRight {
+  from { opacity:0; transform:translateX(40px); }
+  to   { opacity:1; transform:translateX(0); }
+}
+
 /* Responsive */
 @media(max-width:768px){
   #sidebar { width:60px; }
@@ -4460,19 +4536,19 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="d-flex align-items-center gap-3">
           <div class="row g-3 text-center flex-grow-1">
             <div class="col-4">
-              <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statNoteCount">—</div>
+              <div style="font-size:2rem;font-weight:700;color:var(--orange)" id="statNoteCount">—</div>
               <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Notes on File</div>
             </div>
             <div class="col-4">
-              <div style="font-size:1.75rem;font-weight:700;color:var(--orange)" id="statCertCount">—</div>
+              <div style="font-size:2rem;font-weight:700;color:var(--orange)" id="statCertCount">—</div>
               <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Certifications</div>
             </div>
             <div class="col-4">
-              <div style="font-size:2.45rem;font-weight:700" id="statPoints">—</div>
+              <div style="font-size:2rem;font-weight:700" id="statPoints">—</div>
               <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">⭐ Points</div>
             </div>
           </div>
-          <button class="kanban-btn d-none" id="profileBoardBtn" onclick="openKanban(window._getCurrentAssocId(), document.getElementById('profileName').textContent)" style="flex-direction:column;align-items:center;gap:6px;border-radius:14px;padding:20px 28px;min-width:140px">
+          <button class="kanban-btn d-none" id="profileBoardBtn" onclick="openKanban(window._getCurrentAssocId(), document.getElementById('profileName').textContent)" style="flex-direction:column;align-items:center;justify-content:center;gap:6px;border-radius:14px;padding:20px 28px;min-width:140px;align-self:stretch">
             <i class="fas fa-columns" style="font-size:2rem;margin-bottom:2px"></i>
             <span style="font-size:1rem;font-weight:700">Daily Board</span>
             <span class="kb-count d-none" id="kb-count-profile" style="margin-top:2px;font-size:1rem;padding:4px 16px">—</span>
