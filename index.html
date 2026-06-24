@@ -375,8 +375,10 @@ function renderDashboard() {
     const pts = a.points || 0;
     const ptsColor = pts > 0 ? '#f97316' : pts < 0 ? '#dc2626' : '#d1d5db';
     const ptsBg    = pts > 0 ? 'rgba(249,115,22,0.10)' : pts < 0 ? 'rgba(220,38,38,0.08)' : 'rgba(0,0,0,0.04)';
+    const newActivity = hasNewActivity(a);
     return `<div class="col-xl-3 col-lg-4 col-md-6">
-      <div class="associate-card ${a.position === 'ops-manager' ? 'card-om' : a.position === 'supervisor' ? 'card-supervisor' : a.position === 'lead' ? 'card-lead' : ''}" onclick="openProfile('${a.id}')">
+      <div class="associate-card ${a.position === 'ops-manager' ? 'card-om' : a.position === 'supervisor' ? 'card-supervisor' : a.position === 'lead' ? 'card-lead' : ''}" onclick="openProfile('${a.id}')" style="position:relative">
+        ${newActivity ? `<span title="New activity on this profile" style="position:absolute;top:8px;right:10px;width:10px;height:10px;border-radius:50%;background:#f97316;box-shadow:0 0 0 2px #fff;animation:pulse-dot 1.5s infinite"></span>` : ''}
         <div class="card-body p-3">
           <div class="d-flex align-items-start gap-3 mb-2">
             <div class="avatar-circle">${initials}</div>
@@ -584,6 +586,7 @@ window.setLeaderFilter = (shift) => {
 // ─── Profile ──────────────────────────────────────────────────────────
 window.openProfile = async (id) => {
   currentAssociateId = id;
+  markViewed(id);
   sessionStorage.setItem('lastAssocId', id);
   currentNoteFilter  = 'All';
   detachAll();
@@ -867,6 +870,20 @@ window.openAddNote = () => {
   document.getElementById('noteForm').reset();
   new bootstrap.Modal(document.getElementById('noteModal')).show();
 };
+// ─── Activity Tracking ────────────────────────────────────────────────
+function recordActivity(assocId) {
+  update(ref(db, `associates/${assocId}`), { lastActivityAt: new Date().toISOString() });
+}
+function markViewed(assocId) {
+  if (!currentUser) return;
+  localStorage.setItem(`viewed_${currentUser.uid}_${assocId}`, new Date().toISOString());
+}
+function hasNewActivity(assoc) {
+  if (!assoc.lastActivityAt || !currentUser) return false;
+  const viewed = localStorage.getItem(`viewed_${currentUser.uid}_${assoc.id}`);
+  return !viewed || assoc.lastActivityAt > viewed;
+}
+
 window.saveNote = async () => {
   const text = document.getElementById('noteText').value.trim();
   const type = document.getElementById('noteType').value;
@@ -882,6 +899,7 @@ window.saveNote = async () => {
       author: displayName, authorUid: currentUser.uid,
       createdAt: new Date().toISOString()
     });
+    recordActivity(currentAssociateId);
     const pts = notePoints(type);
     if (pts !== 0) {
       await update(ref(db, `associates/${currentAssociateId}`), { points: increment(pts) });
@@ -1353,10 +1371,30 @@ window.setCertStatus = async (newStatus) => {
 };
 
 // ─── Add/Edit Associate ───────────────────────────────────────────────
+function populateReportsTo(selectedId) {
+  const sel = document.getElementById('assocReportsTo');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Select Supervisor / Lead —</option>';
+  const leaders = allAssociates
+    .filter(a => (a.position === 'supervisor' || a.position === 'lead' || a.position === 'ops-manager') && a.status === 'active')
+    .sort((a, b) => {
+      const order = { 'ops-manager': 0, 'supervisor': 1, 'lead': 2 };
+      return (order[a.position] ?? 9) - (order[b.position] ?? 9) || a.name.localeCompare(b.name);
+    });
+  leaders.forEach(l => {
+    const opt = document.createElement('option');
+    opt.value = l.id;
+    opt.textContent = `${l.name} (${l.position === 'ops-manager' ? 'OM' : l.position === 'supervisor' ? 'Supervisor' : 'Lead'})`;
+    if (l.id === selectedId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
 window.openAddAssociate = () => {
   document.getElementById('assocModalTitle').textContent = 'Add Associate';
   document.getElementById('assocForm').reset();
   document.getElementById('assocId').value = '';
+  populateReportsTo('');
   new bootstrap.Modal(document.getElementById('assocModal')).show();
 };
 window.openEditAssociate = (id, data) => {
@@ -1372,6 +1410,7 @@ window.openEditAssociate = (id, data) => {
   document.getElementById('assocHireDate').value   = data.hireDate   || '';
   document.getElementById('assocBirthday').value   = data.birthday   || '';
   document.getElementById('assocOpsManager').value = data.opsManager || '';
+  populateReportsTo(data.reportsTo || '');
   new bootstrap.Modal(document.getElementById('assocModal')).show();
 };
 window.saveAssociate = async () => {
@@ -1387,6 +1426,7 @@ window.saveAssociate = async () => {
     hireDate:    document.getElementById('assocHireDate').value,
     birthday:    document.getElementById('assocBirthday').value,
     opsManager:  document.getElementById('assocOpsManager').value.trim(),
+    reportsTo:   document.getElementById('assocReportsTo').value || '',
     updatedAt:  new Date().toISOString(), updatedBy: currentUser?.email
   };
   if (!data.name) { alert('Name is required'); return; }
@@ -1767,22 +1807,36 @@ window.updateAttFilterColor = async () => {
     if (!wContainer) return;
     const canLog = currentUserRole === 'admin' || currentUserRole === 'supervisor' || currentUserRole === 'lead';
     const assocId = sel.value;
+    const canDelete = currentUserRole === 'admin' || currentUserRole === 'supervisor';
     wContainer.innerHTML = WARNING_TIERS.map(tier => {
-      const issued  = warnings.filter(w => w.type === tier.key);
+      const issued  = warnings.filter(w => w.type === tier.key).sort((a,b) => new Date(b.issuedAt)-new Date(a.issuedAt));
       const isActive = pts >= tier.threshold;
-      const latest  = issued[issued.length - 1];
-      return `<div class="d-flex align-items-start gap-2 mb-2 p-2 rounded" style="background:${isActive ? tier.bg : '#f3f4f6'};border-left:3px solid ${isActive ? tier.color : '#d1d5db'};opacity:${isActive ? 1 : 0.5}">
-        <i class="fas ${tier.icon} mt-1" style="color:${isActive ? tier.color : '#9ca3af'};font-size:0.8rem;width:14px;flex-shrink:0"></i>
-        <div class="flex-grow-1">
-          <div class="fw-semibold" style="font-size:0.8rem;color:${isActive ? tier.color : '#6b7280'}">${tier.label} <span style="font-weight:400;color:#9ca3af">(${tier.threshold}+ pts)</span></div>
-          ${issued.length
-            ? issued.map(w => `<div style="font-size:0.72rem;color:#374151;margin-top:2px"><i class="fas fa-check-circle me-1" style="color:${tier.color}"></i>${new Date(w.issuedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} ${new Date(w.issuedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})} · ${escapeHtml(w.issuedBy||'—')}${w.notes?` · "${escapeHtml(w.notes)}"`:''}</div>`).join('')
-            : isActive ? `<div style="font-size:0.72rem;color:${tier.color};margin-top:2px"><i class="fas fa-exclamation-circle me-1"></i>Not yet issued</div>` : ''}
+      return `<div class="mb-2 p-2 rounded" style="background:${isActive ? tier.bg : '#f3f4f6'};border-left:3px solid ${isActive ? tier.color : '#d1d5db'};opacity:${isActive ? 1 : 0.5}">
+        <div class="d-flex align-items-center gap-2">
+          <i class="fas ${tier.icon}" style="color:${isActive ? tier.color : '#9ca3af'};font-size:0.8rem;width:14px;flex-shrink:0"></i>
+          <span class="fw-semibold flex-grow-1" style="font-size:0.8rem;color:${isActive ? tier.color : '#6b7280'}">${tier.label} <span style="font-weight:400;color:#9ca3af">(${tier.threshold}+ pts)</span></span>
+          <div class="d-flex gap-1">
+            ${isActive ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:#1a2744;color:#fff;border:none" onclick="generateCorrectiveAction('${tier.key}','${assocId}')"><i class="fas fa-print me-1"></i>Print</button>` : ''}
+            ${canLog && isActive ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:${tier.color};color:#fff;border:none" onclick="window._logWarnTeam('${assocId}','${tier.key}')"><i class="fas fa-plus me-1"></i>Log</button>` : ''}
+          </div>
         </div>
-        ${canLog && isActive ? `<button class="btn btn-sm py-0 px-2 flex-shrink-0" style="font-size:0.72rem;background:${tier.color};color:#fff;border:none" onclick="window._logWarnTeam('${assocId}','${tier.key}')"><i class="fas fa-plus me-1"></i>Log</button>` : ''}
+        ${issued.length
+          ? `<div class="mt-1">` + issued.map(w => `
+            <div class="d-flex align-items-center gap-2 mt-1" style="font-size:0.72rem;color:#374151">
+              <i class="fas fa-check-circle" style="color:${tier.color}"></i>
+              <span>${new Date(w.issuedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} ${new Date(w.issuedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})} · ${escapeHtml(w.issuedBy||'—')}${w.notes?` · "${escapeHtml(w.notes)}"`:''}</span>
+              ${canDelete ? `<button class="btn btn-link text-danger p-0 ms-auto" style="font-size:0.7rem" onclick="window._delWarnTeam('${assocId}','${w.id}')"><i class="fas fa-times"></i></button>` : ''}
+            </div>`).join('') + `</div>`
+          : isActive ? `<div style="font-size:0.72rem;color:${tier.color};margin-top:4px"><i class="fas fa-exclamation-circle me-1"></i>Not yet issued</div>` : ''}
       </div>`;
     }).join('');
   } catch(e) { /* warnings unavailable */ }
+};
+
+window._delWarnTeam = async (assocId, warningId) => {
+  if (!confirm('Remove this warning record?')) return;
+  await remove(ref(db, `warnings/${assocId}/${warningId}`));
+  updateAttFilterColor();
 };
 
 window._logWarnTeam = async (assocId, type) => {
@@ -1799,6 +1853,7 @@ window._logWarnTeam = async (assocId, type) => {
     attendancePtsAtTime: assoc?.attendancePoints || 0,
     notes: notes.trim() || ''
   });
+  recordActivity(assocId);
   updateAttFilterColor(); // refresh the card
 };
 
@@ -1945,34 +2000,47 @@ const SHIFT_SCHEDULES = {
   'B1': 'Tuesday – Friday, 5:00 A.M. to 4:30 P.M.'
 };
 
-window.generateCorrectiveAction = async (tierKey) => {
-  const assoc = allAssociates.find(a => a.id === currentAssociateId);
+window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
+  const resolvedId = overrideAssocId || currentAssociateId;
+  const assoc = allAssociates.find(a => a.id === resolvedId);
   if (!assoc) return;
 
   const tier      = WARNING_TIERS.find(t => t.key === tierKey);
-  const warnings  = lastWarnings.filter(w => w.type === tierKey).sort((a,b) => new Date(b.issuedAt)-new Date(a.issuedAt));
+  // Load warnings fresh if coming from team view (no lastWarnings for this assoc)
+  let warnSource = lastWarnings;
+  if (overrideAssocId && overrideAssocId !== currentAssociateId) {
+    const wSnap = await get(ref(db, `warnings/${resolvedId}`));
+    warnSource = wSnap.exists() ? Object.entries(wSnap.val()).map(([id,w]) => ({id,...w})) : [];
+  }
+  // Load attendance fresh if coming from team view
+  let attSource = lastAttendance;
+  if (overrideAssocId && overrideAssocId !== currentAssociateId) {
+    const aSnap = await get(ref(db, `attendance/${resolvedId}`));
+    attSource = aSnap.exists() ? Object.entries(aSnap.val()).map(([id,e]) => ({id,...e})) : [];
+  }
+  const warnings  = warnSource.filter(w => w.type === tierKey).sort((a,b) => new Date(b.issuedAt)-new Date(a.issuedAt));
   const latest    = warnings[0];
   const pts       = assoc.attendancePoints || 0;
   const issuedDate = latest ? new Date(latest.issuedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
   const schedule  = SHIFT_SCHEDULES[assoc.shift] || assoc.shift || '—';
 
-  // Build attendance history for Description field
-  const attEntries = [...lastAttendance]
+  const managerName = 'Hector Marron';
+
+  // Build attendance history rows
+  const attEntries = [...attSource]
     .filter(e => (e.points||0) > 0)
     .sort((a,b) => new Date(a.date)-new Date(b.date));
-  const attLines = attEntries.length
+  const attRows = attEntries.length
     ? attEntries.map(e => {
         const typeInfo = ATTENDANCE_TYPES.find(t => t.key === e.type);
         const label    = typeInfo ? typeInfo.label : e.type;
         const d        = new Date(e.date + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-        return `${d} — ${label} (${e.points > 0 ? '+' : ''}${e.points} pt${Math.abs(e.points)!==1?'s':''})`;
-      }).join('\n')
-    : 'See attendance records on file.';
-  const description = `${assoc.name} has accumulated ${pts} attendance point${pts!==1?'s':''} under the LAS1 Attendance Policy, triggering a ${tier.label}.\n\nAttendance entries on record:\n${attLines}`;
+        return `<tr><td>${d}</td><td>${label}</td><td style="text-align:center">${e.points > 0 ? '+' : ''}${e.points}</td></tr>`;
+      }).join('')
+    : `<tr><td colspan="3" style="color:#666;font-style:italic">See attendance records on file.</td></tr>`;
 
-  // Action taken and plan text by tier
   const actionMap = {
-    'documented-verbal': `A Documented Verbal Warning has been issued. Associate has been informed of the current attendance point total and the consequences of further occurrences. Associate is expected to improve attendance immediately.`,
+    'documented-verbal': `A Documented Verbal Warning has been issued. Associate has been informed of their current attendance point total and the consequences of further occurrences. Associate is expected to improve attendance immediately.`,
     'written-warning':   `A Written Warning has been issued. Associate has been counseled on attendance expectations and the impact of continued absences. Any further attendance infractions may result in a Final Warning or termination.`,
     'final-warning':     `A Final Warning has been issued. This is the last corrective step before termination. Associate has been advised that any additional attendance violations will result in immediate termination of employment.`,
     'termination':       `Associate has been notified of termination of employment due to continued attendance violations after all prior corrective steps were taken.`
@@ -1984,17 +2052,9 @@ window.generateCorrectiveAction = async (tierKey) => {
     'termination':       `N/A — Employment has been terminated.`
   };
 
-  const warningTypeLabels = {
-    'documented-verbal': 'Verbal Warning',
-    'written-warning':   'First Written Warning',
-    'final-warning':     'Final Warning',
-    'termination':       'Termination'
-  };
-  const wLabel = warningTypeLabels[tierKey] || tier.label;
-
-  const checkBox = (checked) => checked
-    ? `<span style="display:inline-block;width:14px;height:14px;border:2px solid #1a2744;background:#1a2744;border-radius:2px;text-align:center;line-height:12px;color:#fff;font-size:10px;vertical-align:middle">✓</span>`
-    : `<span style="display:inline-block;width:14px;height:14px;border:2px solid #666;border-radius:2px;vertical-align:middle"></span>`;
+  const cb = (checked) => checked
+    ? `<td style="width:22px;text-align:center"><span style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border:1.5px solid #222;background:#1a2744;color:#fff;font-size:11px;font-weight:bold">✓</span></td>`
+    : `<td style="width:22px;text-align:center"><span style="display:inline-block;width:15px;height:15px;border:1.5px solid #555"></span></td>`;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -2003,120 +2063,165 @@ window.generateCorrectiveAction = async (tierKey) => {
 <title>Employee Warning Notice — ${assoc.name}</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family: Arial, sans-serif; font-size: 11pt; color: #111; padding: 32px 40px; max-width: 800px; margin: 0 auto; }
-  h1 { font-size: 15pt; font-weight: bold; text-align: center; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
-  h2 { font-size: 11pt; font-weight: bold; text-align: center; color: #555; margin-bottom: 20px; }
-  .section-title { font-size: 10pt; font-weight: bold; text-transform: uppercase; background: #1a2744; color: #fff; padding: 4px 10px; margin: 18px 0 8px; letter-spacing: 0.5px; }
-  .field-row { display: flex; gap: 24px; margin-bottom: 10px; }
-  .field { flex: 1; }
-  .field label { font-size: 9pt; color: #555; display: block; margin-bottom: 2px; }
-  .field .value { border-bottom: 1px solid #333; padding-bottom: 3px; min-height: 20px; font-size: 10.5pt; }
-  .check-row { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 6px; align-items: center; }
-  .check-item { display: flex; align-items: center; gap: 6px; font-size: 10.5pt; }
-  .pts-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-  .pts-table th { background: #1a2744; color: #fff; padding: 4px 8px; font-size: 9.5pt; text-align: left; }
-  .pts-table td { border: 1px solid #ccc; padding: 4px 8px; font-size: 9.5pt; }
-  .pts-table tr.active-row td { background: #fff3cd; font-weight: bold; }
-  .text-block { border: 1px solid #ccc; border-radius: 4px; padding: 8px 10px; min-height: 80px; font-size: 10pt; white-space: pre-wrap; line-height: 1.5; margin-bottom: 4px; }
-  .text-block.short { min-height: 50px; }
-  .sig-row { display: flex; gap: 32px; margin-top: 12px; }
-  .sig-block { flex: 1; border-top: 1px solid #333; padding-top: 4px; font-size: 9.5pt; color: #555; }
-  .sig-block .sig-name { font-size: 11pt; font-weight: bold; color: #111; margin-bottom: 20px; }
-  @media print {
-    body { padding: 16px 24px; }
-    button { display: none !important; }
-  }
+  body { font-family: Arial, sans-serif; font-size: 10.5pt; color: #111; padding: 28px 36px; max-width: 820px; margin: 0 auto; }
+  .doc-title { text-align:center; border:2px solid #1a2744; padding:10px 0 6px; margin-bottom:0; }
+  .doc-title h1 { font-size:16pt; font-weight:bold; letter-spacing:1px; color:#1a2744; text-transform:uppercase; }
+  .doc-title h2 { font-size:11pt; font-weight:bold; color:#555; margin-top:2px; }
+  .outer-table { width:100%; border-collapse:collapse; border:1.5px solid #1a2744; }
+  .outer-table td, .outer-table th { border:1px solid #aaa; padding:0; vertical-align:top; }
+  .sec-header { background:#1a2744; color:#fff; font-weight:bold; font-size:9.5pt; text-transform:uppercase; letter-spacing:0.5px; padding:4px 8px; }
+  .field-cell { padding:5px 8px 3px; }
+  .field-label { font-size:8pt; color:#555; margin-bottom:1px; }
+  .field-value { font-size:10.5pt; font-weight:600; border-bottom:1px solid #333; min-height:20px; padding-bottom:2px; }
+  .check-table { width:100%; border-collapse:collapse; }
+  .check-table td { padding:5px 8px; border:none; vertical-align:middle; font-size:10pt; }
+  .pts-inner { width:100%; border-collapse:collapse; }
+  .pts-inner th { background:#d1d5db; font-size:9pt; padding:3px 8px; border:1px solid #aaa; }
+  .pts-inner td { font-size:9.5pt; padding:3px 8px; border:1px solid #aaa; }
+  .pts-inner tr.active td { background:#fef3c7; font-weight:bold; }
+  .text-area-cell { padding:6px 8px; font-size:10pt; min-height:70px; white-space:pre-wrap; line-height:1.55; }
+  .text-area-cell.short { min-height:48px; }
+  .sig-table { width:100%; border-collapse:collapse; margin-top:0; }
+  .sig-table td { padding:28px 10px 6px; border:1px solid #aaa; vertical-align:bottom; font-size:9.5pt; width:33%; }
+  .sig-line { border-top:1.5px solid #333; padding-top:3px; font-size:9pt; color:#444; }
+  .att-table { width:100%; border-collapse:collapse; }
+  .att-table th { background:#e5e7eb; font-size:8.5pt; padding:2px 6px; border:1px solid #aaa; text-align:left; }
+  .att-table td { font-size:9pt; padding:2px 6px; border:1px solid #ccc; }
+  @media print { button { display:none !important; } body { padding:14px 20px; } }
 </style>
 </head>
 <body>
 
-<div style="text-align:center;margin-bottom:6px">
-  <div style="font-size:9pt;color:#888;letter-spacing:1px">LAS1 FULFILLMENT CENTER</div>
+<div class="doc-title">
+  <div style="font-size:8.5pt;color:#888;letter-spacing:2px;margin-bottom:4px">LAS1 FULFILLMENT CENTER</div>
   <h1>Employee Warning Notice</h1>
   <h2>Attendance Policy</h2>
 </div>
 
-<div class="section-title">Employee Information</div>
-<div class="field-row">
-  <div class="field"><label>Employee Name</label><div class="value">${assoc.name}</div></div>
-  <div class="field"><label>Date</label><div class="value">${issuedDate}</div></div>
-</div>
-<div class="field-row">
-  <div class="field"><label>Employee ID</label><div class="value">${assoc.employeeId || '—'}</div></div>
-  <div class="field"><label>Job Title</label><div class="value">${assoc.role || '—'}</div></div>
-</div>
-<div class="field-row">
-  <div class="field"><label>Manager</label><div class="value">${latest?.issuedBy || '—'}</div></div>
-  <div class="field"><label>Department</label><div class="value">LAS1 Inbound Operations</div></div>
-</div>
+<table class="outer-table" style="margin-top:0">
+  <!-- Employee Information -->
+  <tr><td colspan="4" class="sec-header">Employee Information</td></tr>
+  <tr>
+    <td style="width:50%" class="field-cell"><div class="field-label">Employee Name :</div><div class="field-value">${assoc.name}</div></td>
+    <td style="width:50%" class="field-cell"><div class="field-label">Date :</div><div class="field-value">${issuedDate}</div></td>
+  </tr>
+  <tr>
+    <td class="field-cell"><div class="field-label">Employee ID :</div><div class="field-value">${assoc.employeeId || '&nbsp;'}</div></td>
+    <td class="field-cell"><div class="field-label">Job Title :</div><div class="field-value">${assoc.role || '&nbsp;'}</div></td>
+  </tr>
+  <tr>
+    <td class="field-cell"><div class="field-label">Manager :</div><div class="field-value">${managerName}</div></td>
+    <td class="field-cell"><div class="field-label">Department :</div><div class="field-value">LAS1 Inbound Operations</div></td>
+  </tr>
 
-<div class="section-title">Type of Warning</div>
-<div class="check-row">
-  <div class="check-item">${checkBox(tierKey==='documented-verbal')} Verbal Warning</div>
-  <div class="check-item">${checkBox(tierKey==='written-warning')} First Written Warning</div>
-  <div class="check-item">${checkBox(tierKey==='final-warning')} Final Warning</div>
-  <div class="check-item">${checkBox(tierKey==='termination')} Termination</div>
-</div>
+  <!-- Type of Warning -->
+  <tr><td colspan="4" class="sec-header">Type of Warning</td></tr>
+  <tr>
+    <td colspan="4">
+      <table class="check-table">
+        <tr>
+          ${cb(tierKey==='documented-verbal')}<td>Verbal Warning</td>
+          ${cb(tierKey==='written-warning')}<td>First Written Warning</td>
+          ${cb(tierKey==='final-warning')}<td>Final Warning</td>
+          ${cb(tierKey==='termination')}<td>Termination</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
 
-<div class="section-title">Type of Offense</div>
-<div class="check-row">
-  <div class="check-item">${checkBox(true)} Tardiness / Leaving Early</div>
-  <div class="check-item">${checkBox(true)} Absenteeism</div>
-  <div class="check-item">${checkBox(false)} Violation of Company Policies</div>
-  <div class="check-item">${checkBox(false)} Substandard Work</div>
-  <div class="check-item">${checkBox(false)} Violation of Safety Rules</div>
-  <div class="check-item">${checkBox(false)} Rudeness to Customers / Coworkers</div>
-</div>
+  <!-- Type of Offense -->
+  <tr><td colspan="4" class="sec-header">Type of Offense</td></tr>
+  <tr>
+    <td colspan="4">
+      <table class="check-table">
+        <tr>
+          ${cb(true)}<td>Tardiness / Leaving Early</td>
+          ${cb(true)}<td>Absenteeism</td>
+          ${cb(false)}<td>Violation of Company Policies</td>
+        </tr>
+        <tr>
+          ${cb(false)}<td>Substandard Work</td>
+          ${cb(false)}<td>Violation of Safety Rules</td>
+          ${cb(false)}<td>Rudeness to Customers / Coworkers</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
 
-<div class="section-title">Details</div>
-<div style="margin-bottom:8px"><strong>Description of Infraction:</strong></div>
-<div class="text-block">${description}</div>
+  <!-- Details -->
+  <tr><td colspan="4" class="sec-header">Details</td></tr>
+  <tr>
+    <td colspan="4" class="field-cell" style="padding-bottom:6px">
+      <div class="field-label" style="font-weight:bold;color:#111;margin-bottom:4px">Description of Infraction :</div>
+      <div style="margin-bottom:6px;font-size:10pt">${assoc.name} has accumulated <strong>${pts} attendance point${pts!==1?'s':''}</strong> under the LAS1 Attendance Policy, triggering a <strong>${tier.label}</strong>.</div>
+      <table class="att-table">
+        <thead><tr><th>Date</th><th>Offense</th><th style="text-align:center">Points</th></tr></thead>
+        <tbody>${attRows}</tbody>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" class="field-cell"><div class="field-label">Work schedule for :</div><div class="field-value">${schedule}</div></td>
+    <td colspan="2" style="padding:5px 8px;vertical-align:top">
+      <table class="pts-inner">
+        <tr><th>Points</th><th>Disciplinary Action</th></tr>
+        <tr${pts>=3&&pts<6?' class="active"':''}><td>3</td><td>Verbal Warning</td></tr>
+        <tr${pts>=6&&pts<9?' class="active"':''}><td>6</td><td>Written Warning</td></tr>
+        <tr${pts>=9&&pts<10?' class="active"':''}><td>9</td><td>Final Warning</td></tr>
+        <tr${pts>=10?' class="active"':''}><td>10+</td><td>Termination</td></tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" class="field-cell">
+      <div class="field-label">Team Member has accumulated :</div>
+      <div class="field-value" style="font-size:13pt;color:#dc2626;font-weight:bold">${pts} point${pts!==1?'s':''}</div>
+    </td>
+    <td colspan="2" class="field-cell">
+      <div class="field-label">Corrective Given On :</div>
+      <div class="field-value">${issuedDate}</div>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="4" class="field-cell" style="padding-bottom:2px">
+      <div class="field-label" style="font-weight:bold;color:#111;margin-bottom:3px">Plan for Improvement :</div>
+      <div class="text-area-cell" style="padding:0">${planMap[tierKey]}</div>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="4" class="field-cell">
+      <div class="field-label" style="margin-bottom:2px"><strong>Action Taken :</strong></div>
+      <div class="text-area-cell short" style="padding:0">${actionMap[tierKey]}</div>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="4" class="field-cell">
+      <div class="field-label" style="margin-bottom:2px"><strong>Consequences of Further Infractions :</strong></div>
+      <div class="text-area-cell short" style="padding:0">Any further infractions may result in disciplinary action up to and including termination.</div>
+    </td>
+  </tr>
 
-<div style="margin:10px 0 4px"><strong>Work Schedule:</strong> ${schedule}</div>
-
-<div style="margin:12px 0 6px"><strong>Attendance Points — Disciplinary Policy:</strong></div>
-<table class="pts-table">
-  <tr><th>Points</th><th>Disciplinary Action</th></tr>
-  <tr${pts>=3&&pts<6?' class="active-row"':''}><td>3</td><td>Documented Verbal Warning</td></tr>
-  <tr${pts>=6&&pts<9?' class="active-row"':''}><td>6</td><td>Written Warning</td></tr>
-  <tr${pts>=9&&pts<10?' class="active-row"':''}><td>9</td><td>Final Warning</td></tr>
-  <tr${pts>=10?' class="active-row"':''}><td>10+</td><td>Termination</td></tr>
+  <!-- Acknowledgement -->
+  <tr><td colspan="4" class="sec-header">Acknowledgement of Receipt of Warning</td></tr>
+  <tr>
+    <td colspan="4" style="padding:6px 8px;font-size:9.5pt;color:#444">
+      By signing this form, you confirm that you understand the information in this warning. You also confirm that you and your manager have discussed the warning and a plan for improvement. Signing this form does not necessarily indicate that you agree with this warning.
+    </td>
+  </tr>
+  <tr>
+    <td colspan="4" style="padding:0">
+      <table class="sig-table">
+        <tr>
+          <td><div class="sig-line">Employee Signature<br><span style="font-size:8.5pt">Date: _______________</span></div></td>
+          <td><div class="sig-line">Manager Signature<br><span style="font-size:8.5pt">Date: _______________</span></div></td>
+          <td><div class="sig-line">Witness Signature <span style="font-size:8pt;color:#888">(if employee refuses to sign)</span><br><span style="font-size:8.5pt">Date: _______________</span></div></td>
+        </tr>
+      </table>
+    </td>
+  </tr>
 </table>
 
-<div style="margin-bottom:6px"><strong>Team Member has accumulated:</strong> <span style="font-size:13pt;font-weight:bold;color:#dc2626">${pts}</span> attendance point${pts!==1?'s':''}</div>
-<div style="margin-bottom:10px"><strong>Corrective Given On:</strong> ${issuedDate}</div>
-
-<div style="margin-bottom:4px"><strong>Action Taken:</strong></div>
-<div class="text-block short">${actionMap[tierKey]}</div>
-
-<div style="margin:10px 0 4px"><strong>Plan for Improvement:</strong></div>
-<div class="text-block">${planMap[tierKey]}</div>
-
-<div style="margin:10px 0 4px"><strong>Consequences of Further Infractions:</strong></div>
-<div class="text-block short">Any further attendance infractions may result in disciplinary action up to and including termination of employment.</div>
-
-<div class="section-title">Acknowledgement of Receipt of Warning</div>
-<p style="font-size:9.5pt;color:#555;margin-bottom:14px">By signing this form, you confirm that you understand the information in this warning and that you and your manager have discussed it and a plan for improvement. Signing does not necessarily indicate that you agree with this warning.</p>
-
-<div class="sig-row">
-  <div class="sig-block">
-    <div class="sig-name">&nbsp;</div>
-    <div>Employee Signature</div>
-    <div style="margin-top:6px;font-size:9pt">Date: _______________</div>
-  </div>
-  <div class="sig-block">
-    <div class="sig-name">&nbsp;</div>
-    <div>Manager Signature</div>
-    <div style="margin-top:6px;font-size:9pt">Date: _______________</div>
-  </div>
-  <div class="sig-block">
-    <div class="sig-name">&nbsp;</div>
-    <div>Witness Signature <span style="font-size:8.5pt;color:#888">(if employee refuses to sign)</span></div>
-    <div style="margin-top:6px;font-size:9pt">Date: _______________</div>
-  </div>
-</div>
-
-<div style="text-align:center;margin-top:28px">
+<div style="text-align:center;margin-top:20px">
   <button onclick="window.print()" style="padding:10px 32px;background:#1a2744;color:#fff;border:none;border-radius:6px;font-size:11pt;cursor:pointer;font-weight:bold">🖨️ Print / Save as PDF</button>
 </div>
 </body>
@@ -2141,6 +2246,7 @@ window.logWarning = async (type) => {
     attendancePtsAtTime: pts,
     notes: notes.trim() || ''
   });
+  recordActivity(currentAssociateId);
 };
 
 window.deleteWarning = async (warningId) => {
@@ -2161,6 +2267,7 @@ window.saveAttendance = async () => {
   });
   // Update running attendance score on associate
   await update(ref(db, `associates/${currentAssociateId}`), { attendancePoints: increment(info.points) });
+  recordActivity(currentAssociateId);
   bootstrap.Modal.getInstance(document.getElementById('attModal')).hide();
 };
 
@@ -3271,6 +3378,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .stat-card .val { font-size:2rem; font-weight:700; color:var(--orange); line-height:1; }
 .stat-card .lbl { font-size:0.72rem; color:rgba(255,255,255,0.55); margin-top:4px; }
 
+@keyframes pulse-dot {
+  0%,100% { box-shadow:0 0 0 2px #fff, 0 0 0 4px rgba(249,115,22,0.4); }
+  50%      { box-shadow:0 0 0 2px #fff, 0 0 0 6px rgba(249,115,22,0); }
+}
 /* Associate cards */
 .associate-card { background:#fff; border-radius:12px; border:1px solid #e5e7eb; border-top:3px solid var(--orange); cursor:pointer; transition:all .15s; height:100%; }
 .associate-card:hover { box-shadow:0 6px 24px rgba(0,0,0,0.1); transform:translateY(-2px); }
@@ -4505,6 +4616,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="col-6">
             <label class="form-label small fw-semibold">Operations Manager</label>
             <input type="text" class="form-control" id="assocOpsManager" placeholder="Name of their Operations Manager">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">Reports To</label>
+            <select class="form-select" id="assocReportsTo">
+              <option value="">— Select Supervisor / Lead —</option>
+            </select>
           </div>
         </div>
       </form>
