@@ -441,7 +441,7 @@ function renderDashboard() {
     document.getElementById('statCallOuts').textContent  = callOuts;
     document.getElementById('statEarlyOuts').textContent = earlyOuts;
     const outOfBuilding = new Set([...callOutIds, ...earlyOutIds]).size;
-    document.getElementById('statInBuilding').textContent = Math.max(0, activeAssoc.length - outOfBuilding);
+    document.getElementById('statInBuilding').textContent = Math.max(0, activeAll.length - outOfBuilding);
     _todayAttMap = {};
     [...callOutIds].forEach(id  => { _todayAttMap[id] = 'call-out'; });
     [...earlyOutIds].forEach(id => { if (!_todayAttMap[id]) _todayAttMap[id] = 'early'; });
@@ -2301,11 +2301,15 @@ const TIME_OFF_TYPES = {
 let _allTimeOff = []; // { id, assocId, assocName, type, startDate, endDate, note, addedBy, createdAt }
 let _todayTimeOffMap = {}; // assocId → TIME_OFF_TYPES entry (for card banners)
 let _todayAttMap = {};
+let _toMonth = new Date().getMonth(); // 0-11
+let _toYear  = new Date().getFullYear();
+const TO_MONTHS       = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const TO_MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 window.loadTimeOff = async () => {
   showView('timeoff');
   detachAll();
-  // Ensure allAssociates is populated (may be empty if dashboard was never loaded)
+  // Ensure allAssociates is populated
   if (!allAssociates.length) {
     const snap = await get(ref(db, 'associates'));
     if (snap.exists()) {
@@ -2334,49 +2338,134 @@ window.loadTimeOff = async () => {
   renderTimeOff();
 };
 
-function renderTimeOff() {
-  const tbody = document.getElementById('timeOffBody');
-  if (!tbody) return;
-  const today = new Date().toISOString().split('T')[0];
-  const assocF  = document.getElementById('toFilterAssoc')?.value  || '';
-  const statusF = document.getElementById('toFilterStatus')?.value || '';
-  const canEdit = currentUserRole === 'admin' || currentUserRole === 'supervisor';
+window.toChangeYear = (delta) => { _toYear += delta; renderTimeOff(); };
+window.toSelectMonth = (m) => { _toMonth = m; renderTimeOff(); };
 
-  let rows = _allTimeOff.filter(e => {
+function renderTimeOff() {
+  const yearEl  = document.getElementById('toYearLabel');
+  const tabsEl  = document.getElementById('toMonthTabs');
+  const tbody   = document.getElementById('timeOffBody');
+  if (!tabsEl || !tbody) return;
+
+  // Year label
+  if (yearEl) yearEl.textContent = _toYear;
+
+  // Month tabs
+  tabsEl.innerHTML = TO_MONTHS_SHORT.map((m, i) => {
+    const isActive   = i === _toMonth;
+    const monthStr   = `${_toYear}-${String(i+1).padStart(2,'0')}`;
+    const mStart     = `${monthStr}-01`;
+    const mEnd       = `${monthStr}-31`;
+    const hasEntries = _allTimeOff.some(e => e.startDate <= mEnd && e.endDate >= mStart);
+    return `<button class="btn btn-sm ${isActive ? 'btn-orange' : 'btn-outline-secondary'}" onclick="toSelectMonth(${i})" style="${hasEntries && !isActive ? 'border-color:var(--orange);color:var(--orange)' : ''}">${m}</button>`;
+  }).join('');
+
+  // Calendar
+  renderToCalendar();
+
+  // Table: show entries that overlap the selected month
+  const monthStr = `${_toYear}-${String(_toMonth+1).padStart(2,'0')}`;
+  const mStart   = `${monthStr}-01`;
+  const mEnd     = `${monthStr}-${String(new Date(_toYear, _toMonth+1, 0).getDate()).padStart(2,'0')}`;
+  const assocF   = document.getElementById('toFilterAssoc')?.value || '';
+  const canEdit  = currentUserRole === 'admin' || currentUserRole === 'supervisor';
+
+  const rows = _allTimeOff.filter(e => {
     if (assocF && e.assocId !== assocF) return false;
-    if (statusF === 'active')   return e.startDate <= today && e.endDate >= today;
-    if (statusF === 'upcoming') return e.startDate > today;
-    if (statusF === 'past')     return e.endDate < today;
-    return true;
+    return e.startDate <= mEnd && e.endDate >= mStart;
   });
 
-  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8" class="text-muted text-center py-4">No time off entries found.</td></tr>'; return; }
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-muted text-center py-4">No time off entries for ${TO_MONTHS[_toMonth]} ${_toYear}.</td></tr>`;
+    return;
+  }
 
   tbody.innerHTML = rows.map(e => {
-    const t = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['out'];
-    const start = new Date(e.startDate + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-    const end   = new Date(e.endDate   + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    const t     = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['out'];
+    const start = new Date(e.startDate + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    const end   = new Date(e.endDate   + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
     const days  = Math.round((new Date(e.endDate) - new Date(e.startDate)) / 86400000) + 1;
-    let status = 'Past'; let statusCls = 'bg-secondary';
-    if (e.startDate <= today && e.endDate >= today) { status = 'Active'; statusCls = 'bg-success'; }
-    else if (e.startDate > today) { status = 'Upcoming'; statusCls = 'bg-primary'; }
     return `<tr>
       <td class="fw-semibold" style="cursor:pointer;color:var(--navy)" onclick="openProfile('${e.assocId}')">${escapeHtml(e.assocName)}</td>
       <td><span class="badge" style="background:${t.bg};color:${t.text};border:1px solid ${t.color}">${t.label}</span></td>
       <td>${start}</td><td>${end}</td><td>${days}d</td>
-      <td><span class="badge ${statusCls}">${status}</span></td>
       <td class="text-muted small">${escapeHtml(e.note || '—')}</td>
       <td>${canEdit ? `<button class="btn btn-link text-danger p-0" style="font-size:0.8rem" onclick="deleteTimeOff('${e.assocId}','${e.id}')"><i class="fas fa-times"></i></button>` : ''}</td>
     </tr>`;
   }).join('');
 }
 
-window.openTimeOffModal = (assocId) => {
+function renderToCalendar() {
+  const el = document.getElementById('toCalendar');
+  if (!el) return;
+  const year  = _toYear;
+  const month = _toMonth;
+  const today = new Date().toISOString().split('T')[0];
+  const firstDay    = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // Build day → entries map for this month
+  const dayMap = {};
+  const monthStr = `${year}-${String(month+1).padStart(2,'0')}`;
+  const mStart   = `${monthStr}-01`;
+  const mEnd     = `${monthStr}-${String(daysInMonth).padStart(2,'0')}`;
+  _allTimeOff.forEach(e => {
+    if (e.startDate > mEnd || e.endDate < mStart) return;
+    let cur = new Date(Math.max(new Date(e.startDate + 'T00:00:00'), new Date(mStart + 'T00:00:00')));
+    const stop = new Date(Math.min(new Date(e.endDate + 'T00:00:00'), new Date(mEnd + 'T00:00:00')));
+    while (cur <= stop) {
+      const key = cur.toISOString().split('T')[0];
+      if (!dayMap[key]) dayMap[key] = [];
+      dayMap[key].push(e);
+      cur.setDate(cur.getDate() + 1);
+    }
+  });
+
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  let html = `<div class="d-flex justify-content-between align-items-center mb-3">
+    <h6 class="fw-bold mb-0" style="color:var(--navy)">${TO_MONTHS[month]} ${year}</h6>
+    <button class="btn btn-orange btn-sm" onclick="openTimeOffModal()"><i class="fas fa-plus me-1"></i>Add Time Off</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">`;
+
+  dayNames.forEach(d => {
+    html += `<div style="text-align:center;font-size:0.7rem;font-weight:700;color:#6b7280;padding:4px 0;border-bottom:2px solid #e5e7eb">${d}</div>`;
+  });
+
+  for (let i = 0; i < firstDay; i++) html += `<div></div>`;
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr  = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const isToday  = dateStr === today;
+    const entries  = dayMap[dateStr] || [];
+    const bgColor  = isToday ? 'rgba(249,115,22,0.08)' : '#fff';
+    const border   = isToday ? 'var(--orange)' : '#e5e7eb';
+    html += `<div onclick="openTimeOffModal(null,'${dateStr}')"
+      style="border:1px solid ${border};border-radius:8px;padding:5px 4px;min-height:58px;cursor:pointer;background:${bgColor};transition:background .12s"
+      onmouseover="this.style.background='rgba(26,39,68,0.06)'"
+      onmouseout="this.style.background='${bgColor}'">
+      <div style="font-size:0.78rem;font-weight:${isToday?'700':'500'};color:${isToday?'var(--orange)':'var(--navy)'};">${day}</div>
+      ${entries.slice(0,2).map(e => {
+        const t = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['out'];
+        const firstName = escapeHtml(e.assocName.split(' ')[0]);
+        return `<div style="font-size:0.58rem;background:${t.bg};color:${t.text};border-radius:3px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${firstName}</div>`;
+      }).join('')}
+      ${entries.length > 2 ? `<div style="font-size:0.58rem;color:#6b7280;margin-top:1px">+${entries.length-2}</div>` : ''}
+    </div>`;
+  }
+
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+window.openTimeOffModal = (assocId, date) => {
+  const d = date || new Date().toISOString().split('T')[0];
   document.getElementById('toEditId').value = '';
   document.getElementById('toEditAssocId').value = assocId || '';
   document.getElementById('toNote').value = '';
-  document.getElementById('toStart').value = new Date().toISOString().split('T')[0];
-  document.getElementById('toEnd').value   = new Date().toISOString().split('T')[0];
+  document.getElementById('toStart').value = d;
+  document.getElementById('toEnd').value   = d;
+  document.getElementById('toType').value  = 'vacation';
   // Populate assoc select
   const sel = document.getElementById('toAssoc');
   sel.innerHTML = '';
@@ -2401,13 +2490,28 @@ window.saveTimeOff = async () => {
   await push(ref(db, `timeOff/${assocId}`), { type, startDate: start, endDate: end, note, addedBy, addedByUid: currentUser.uid, createdAt: new Date().toISOString() });
   recordActivity(assocId);
   bootstrap.Modal.getInstance(document.getElementById('timeOffModal')).hide();
-  loadTimeOff();
+  // Reload data and re-render
+  const assoc = allAssociates.find(a => a.id === assocId);
+  // Reload full timeOff data
+  const toSnap = await get(ref(db, 'timeOff'));
+  _allTimeOff = [];
+  if (toSnap.exists()) {
+    Object.entries(toSnap.val()).forEach(([aid, entries]) => {
+      const a2 = allAssociates.find(x => x.id === aid);
+      Object.entries(entries).forEach(([id2, e2]) => {
+        _allTimeOff.push({ id: id2, assocId: aid, assocName: a2?.name || aid, ...e2 });
+      });
+    });
+  }
+  _allTimeOff.sort((a,b) => b.startDate.localeCompare(a.startDate));
+  renderTimeOff();
 };
 
 window.deleteTimeOff = async (assocId, entryId) => {
   if (!confirm('Remove this time off entry?')) return;
   await remove(ref(db, `timeOff/${assocId}/${entryId}`));
-  loadTimeOff();
+  _allTimeOff = _allTimeOff.filter(e => !(e.assocId === assocId && e.id === entryId));
+  renderTimeOff();
 };
 
 async function loadTodayTimeOff() {
@@ -4481,32 +4585,41 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <h4 class="fw-bold mb-0" style="color:var(--navy)">Time Off</h4>
       <p class="text-muted small mb-0">Schedule and track associate time away</p>
     </div>
-    <button class="btn btn-orange btn-sm" onclick="openTimeOffModal()"><i class="fas fa-plus me-1"></i>Add Time Off</button>
   </div>
+
+  <!-- Month/Year nav -->
+  <div class="admin-card mb-3" style="padding:0.75rem 1.25rem">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <button class="btn btn-sm btn-outline-secondary" onclick="toChangeYear(-1)"><i class="fas fa-chevron-left"></i></button>
+      <span id="toYearLabel" class="fw-bold fs-5" style="color:var(--navy)">2026</span>
+      <button class="btn btn-sm btn-outline-secondary" onclick="toChangeYear(1)"><i class="fas fa-chevron-right"></i></button>
+    </div>
+    <div class="d-flex gap-1 flex-wrap justify-content-center" id="toMonthTabs"></div>
+  </div>
+
+  <!-- Calendar grid -->
+  <div class="admin-card mb-3">
+    <div id="toCalendar"></div>
+  </div>
+
+  <!-- Entries table for selected month -->
   <div class="admin-card">
-    <div class="d-flex gap-2 mb-3 flex-wrap align-items-end">
-      <div>
-        <label class="form-label small fw-semibold mb-1">Associate</label>
-        <select class="form-select form-select-sm" id="toFilterAssoc" onchange="renderTimeOff()" style="min-width:180px">
-          <option value="">All Associates</option>
-        </select>
-      </div>
-      <div>
-        <label class="form-label small fw-semibold mb-1">Status</label>
-        <select class="form-select form-select-sm" id="toFilterStatus" onchange="renderTimeOff()">
-          <option value="">All</option>
-          <option value="active">Active Today</option>
-          <option value="upcoming">Upcoming</option>
-          <option value="past">Past</option>
-        </select>
+    <div class="d-flex gap-2 mb-3 flex-wrap align-items-end justify-content-between">
+      <div class="d-flex gap-2">
+        <div>
+          <label class="form-label small fw-semibold mb-1">Associate</label>
+          <select class="form-select form-select-sm" id="toFilterAssoc" onchange="renderTimeOff()" style="min-width:180px">
+            <option value="">All Associates</option>
+          </select>
+        </div>
       </div>
     </div>
     <div class="table-responsive">
       <table class="table table-hover table-sm align-middle" id="timeOffTable">
         <thead class="table-dark"><tr>
-          <th>Associate</th><th>Type</th><th>Start</th><th>End</th><th>Days</th><th>Status</th><th>Notes</th><th></th>
+          <th>Associate</th><th>Type</th><th>Start</th><th>End</th><th>Days</th><th>Notes</th><th></th>
         </tr></thead>
-        <tbody id="timeOffBody"><tr><td colspan="8" class="text-muted text-center py-4">Loading…</td></tr></tbody>
+        <tbody id="timeOffBody"><tr><td colspan="7" class="text-muted text-center py-4">Loading…</td></tr></tbody>
       </table>
     </div>
   </div>
