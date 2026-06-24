@@ -2017,8 +2017,113 @@ window.setAttPeriod = (period, btn) => {
   _attActivePeriod = period;
   document.querySelectorAll('.att-period-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  renderTeamAttendance(_allAttEntries);
+  renderAttTrends(); // trends only — table is not affected
 };
+
+function _trendMetrics(entries) {
+  return {
+    callOuts:  entries.filter(e => e.type?.startsWith('call-out') && (e.points||0)>0).length,
+    earlyOuts: entries.filter(e => e.type?.startsWith('left-early') && (e.points||0)>0).length,
+    lates:     entries.filter(e => e.type?.startsWith('late') && (e.points||0)>0).length,
+    totalPts:  entries.reduce((s,e) => s+(e.points||0), 0),
+    assocs:    new Set(entries.map(e=>e.assocId)).size
+  };
+}
+
+function _trendRange(period) {
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  if (period === 'week') {
+    const dow = now.getDay();
+    const mon = new Date(now); mon.setDate(now.getDate()-(dow===0?6:dow-1)); mon.setHours(0,0,0,0);
+    const prevMon = new Date(mon); prevMon.setDate(mon.getDate()-7);
+    const prevSun = new Date(mon); prevSun.setDate(mon.getDate()-1);
+    return { curr:{from:mon.toISOString().split('T')[0],to:today}, prev:{from:prevMon.toISOString().split('T')[0],to:prevSun.toISOString().split('T')[0]}, currLabel:'This Week', prevLabel:'Last Week' };
+  }
+  if (period === 'month') {
+    const currFrom = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+    const prevM = new Date(now.getFullYear(), now.getMonth()-1, 1);
+    const prevFrom = `${prevM.getFullYear()}-${String(prevM.getMonth()+1).padStart(2,'0')}-01`;
+    const prevTo   = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+    return { curr:{from:currFrom,to:today}, prev:{from:prevFrom,to:prevTo}, currLabel:now.toLocaleString('en-US',{month:'long'}), prevLabel:prevM.toLocaleString('en-US',{month:'long'}) };
+  }
+  return null;
+}
+
+function renderAttTrends() {
+  const el = document.getElementById('attTrendsContainer');
+  if (!el) return;
+  const period = _attActivePeriod;
+  const ML = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const METRICS = [
+    { key:'callOuts',  label:'Call Outs',      icon:'fa-phone-slash',        color:'#dc2626' },
+    { key:'earlyOuts', label:'Early Outs',      icon:'fa-sign-out-alt',       color:'#ea580c' },
+    { key:'lates',     label:'Late Arrivals',   icon:'fa-clock',              color:'#d97706' },
+    { key:'totalPts',  label:'Total Points',    icon:'fa-exclamation-circle', color:'#7c3aed', dec:true },
+    { key:'assocs',    label:'Associates',      icon:'fa-users',              color:'#1a2744' }
+  ];
+  const fmt = (v, dec) => dec ? (v%1===0?v:v.toFixed(1)) : v;
+
+  if (period === 'year' || period === 'all') {
+    const now = new Date();
+    const monthData = Array.from({length:12}, (_,i) => {
+      const d = period==='year' ? new Date(now.getFullYear(), i, 1) : new Date(now.getFullYear(), now.getMonth()-11+i, 1);
+      const yr = d.getFullYear(); const mo = d.getMonth();
+      const from = `${yr}-${String(mo+1).padStart(2,'0')}-01`;
+      const to   = new Date(yr, mo+1, 0).toISOString().split('T')[0];
+      const ents = _allAttEntries.filter(e => e.date>=from && e.date<=to);
+      return { label: ML[mo], ..._trendMetrics(ents) };
+    });
+    const barRow = (data, key, color) => data.map(d=>{
+      const max = Math.max(...data.map(x=>x[key]), 1);
+      return `<div class="d-flex align-items-center gap-1 mb-1">
+        <span style="font-size:0.65rem;color:#6b7280;min-width:26px">${d.label}</span>
+        <div style="flex:1;background:#f3f4f6;border-radius:3px;height:13px;overflow:hidden">
+          <div style="width:${(d[key]/max*100).toFixed(0)}%;background:${color};height:100%;border-radius:3px"></div>
+        </div>
+        <span style="font-size:0.7rem;font-weight:600;color:${color};min-width:22px;text-align:right">${fmt(d[key])}</span>
+      </div>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="mb-3"><div class="fw-semibold small mb-2" style="color:var(--navy)"><i class="fas fa-phone-slash me-1" style="color:#dc2626"></i>Call Outs</div>${barRow(monthData,'callOuts','#dc2626')}</div>
+      <div class="mb-3"><div class="fw-semibold small mb-2" style="color:var(--navy)"><i class="fas fa-sign-out-alt me-1" style="color:#ea580c"></i>Early Outs</div>${barRow(monthData,'earlyOuts','#ea580c')}</div>
+      <div class="mb-3"><div class="fw-semibold small mb-2" style="color:var(--navy)"><i class="fas fa-clock me-1" style="color:#d97706"></i>Late Arrivals</div>${barRow(monthData,'lates','#d97706')}</div>
+      <div><div class="fw-semibold small mb-2" style="color:var(--navy)"><i class="fas fa-exclamation-circle me-1" style="color:#7c3aed"></i>Total Points</div>${barRow(monthData,'totalPts','#7c3aed')}</div>`;
+    return;
+  }
+
+  const range = _trendRange(period);
+  if (!range) { el.innerHTML = '<p class="text-muted small">Select a period to view trends.</p>'; return; }
+  const curr = _trendMetrics(_allAttEntries.filter(e=>e.date>=range.curr.from&&e.date<=range.curr.to));
+  const prev = _trendMetrics(_allAttEntries.filter(e=>e.date>=range.prev.from&&e.date<=range.prev.to));
+  el.innerHTML = `
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <span class="fw-semibold small" style="color:var(--navy)">${range.currLabel} <span style="font-size:0.68rem;background:var(--navy);color:#fff;border-radius:4px;padding:1px 6px">current</span></span>
+      <span class="text-muted small">vs ${range.prevLabel}</span>
+    </div>
+    ${METRICS.map(m=>{
+      const cv=curr[m.key]; const pv=prev[m.key]; const max=Math.max(cv,pv,1);
+      const delta=cv-pv; const bad=delta>0; const noChange=delta===0;
+      const dc=noChange?'#6b7280':bad?'#dc2626':'#059669';
+      const ds=(delta>0?'+':'')+fmt(delta,m.dec);
+      return `<div class="mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="small fw-semibold" style="color:${m.color}"><i class="fas ${m.icon} me-1"></i>${m.label}</span>
+          <span class="small fw-bold" style="color:${dc}">${ds} ${noChange?'':'('+(!bad?'↓':'↑')+')'}</span>
+        </div>
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <span style="font-size:0.68rem;color:#6b7280;min-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${range.currLabel}</span>
+          <div style="flex:1;background:#f3f4f6;border-radius:4px;height:11px"><div style="width:${(cv/max*100).toFixed(0)}%;background:${m.color};height:100%;border-radius:4px"></div></div>
+          <span style="font-size:0.78rem;font-weight:700;color:${m.color};min-width:22px;text-align:right">${fmt(cv,m.dec)}</span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span style="font-size:0.68rem;color:#9ca3af;min-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${range.prevLabel}</span>
+          <div style="flex:1;background:#f3f4f6;border-radius:4px;height:11px"><div style="width:${(pv/max*100).toFixed(0)}%;background:#d1d5db;height:100%;border-radius:4px"></div></div>
+          <span style="font-size:0.78rem;font-weight:600;color:#9ca3af;min-width:22px;text-align:right">${fmt(pv,m.dec)}</span>
+        </div>
+      </div>`;
+    }).join('')}`;
+}
 
 function attPeriodStart(period) {
   const now = new Date();
@@ -2049,11 +2154,7 @@ window.loadAttendance = async () => {
 };
 
 function renderTeamAttendance(entries) {
-  // Apply period filter first (affects risk panel + summary + table)
-  const periodStart = attPeriodStart(_attActivePeriod);
-  const periodEntries = periodStart ? entries.filter(e => e.date >= periodStart) : entries;
-
-  // At-risk panel — always uses all-time running totals, independent of period filter
+  // At-risk panel — all-time running totals only
   window._riskByAssoc = {};
   allAssociates.filter(a => a.status === 'active').forEach(a => {
     if ((a.attendancePoints || 0) > 0)
@@ -2061,23 +2162,16 @@ function renderTeamAttendance(entries) {
   });
   renderRiskPanel();
 
-  // Period summary stats
-  const totalPts = periodEntries.reduce((s, e) => s + (e.points || 0), 0);
-  const uniqueAssocs = new Set(periodEntries.map(e => e.assocId)).size;
-  const sumEvents = document.getElementById('attSumEvents');
-  const sumPoints = document.getElementById('attSumPoints');
-  const sumAssocs = document.getElementById('attSumAssocs');
-  if (sumEvents) sumEvents.textContent = periodEntries.length;
-  if (sumPoints) sumPoints.textContent = totalPts % 1 === 0 ? totalPts : totalPts.toFixed(1);
-  if (sumAssocs) sumAssocs.textContent = uniqueAssocs;
+  // Render trends (uses _attActivePeriod, independent of table)
+  renderAttTrends();
 
-  // Filter + table (period + other filters combined)
+  // Table — uses only its own filter controls, completely independent of period
   const shiftF  = document.getElementById('attFilterShift')?.value  || '';
   const typeF   = document.getElementById('attFilterType')?.value   || '';
   const assocF  = document.getElementById('attFilterAssoc')?.value  || '';
   const fromF   = document.getElementById('attFilterFrom')?.value   || '';
   const toF     = document.getElementById('attFilterTo')?.value     || '';
-  const filtered = periodEntries.filter(e => {
+  const filtered = entries.filter(e => {
     if (shiftF && allAssociates.find(a => a.id === e.assocId)?.shift !== shiftF) return false;
     if (typeF  && e.type !== typeF)  return false;
     if (assocF && e.assocId !== assocF) return false;
@@ -3593,44 +3687,16 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
         <!-- Period filter / calendar -->
         <div class="col-lg-8">
-          <div class="admin-card h-100">
-            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-              <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-calendar-week me-2" style="color:var(--orange)"></i>Time Period</h6>
-              <!-- Calendar nav (shown only when associate selected) -->
-              <div id="attCalNav" class="d-none d-flex align-items-center gap-2">
-                <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="shiftAttCalMonth(-1)"><i class="fas fa-chevron-left"></i></button>
-                <span class="fw-semibold small" id="attCalMonthLabel" style="min-width:110px;text-align:center"></span>
-                <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="shiftAttCalMonth(1)"><i class="fas fa-chevron-right"></i></button>
-              </div>
-            </div>
+          <div class="admin-card h-100 d-flex flex-column">
+            <h6 class="fw-bold mb-2" style="color:var(--navy)"><i class="fas fa-chart-line me-2" style="color:var(--orange)"></i>Attendance Trends</h6>
             <div class="d-flex flex-wrap gap-2 mb-3">
               <button class="btn btn-sm att-period-btn active" data-period="week" onclick="setAttPeriod('week', this)">This Week</button>
               <button class="btn btn-sm att-period-btn" data-period="month" onclick="setAttPeriod('month', this)">This Month</button>
               <button class="btn btn-sm att-period-btn" data-period="year" onclick="setAttPeriod('year', this)">This Year</button>
               <button class="btn btn-sm att-period-btn" data-period="all" onclick="setAttPeriod('all', this)">All Time</button>
             </div>
-            <!-- Summary stats (shown when no associate selected) -->
-            <div id="attPeriodSummary" class="row g-3 text-center">
-              <div class="col-4">
-                <div class="fw-bold fs-4" id="attSumEvents" style="color:var(--navy)">—</div>
-                <div class="text-muted small">Total Events</div>
-              </div>
-              <div class="col-4">
-                <div class="fw-bold fs-4" id="attSumPoints" style="color:#dc2626">—</div>
-                <div class="text-muted small">Total Points</div>
-              </div>
-              <div class="col-4">
-                <div class="fw-bold fs-4" id="attSumAssocs" style="color:var(--orange)">—</div>
-                <div class="text-muted small">Associates Affected</div>
-              </div>
-            </div>
-            <!-- Calendar (shown when associate selected) -->
-            <div id="attCalendar" class="d-none">
-              <div class="att-cal-grid att-cal-header">
-                <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
-              </div>
-              <div class="att-cal-grid" id="attCalBody"></div>
-              <div id="attCalLegend" class="d-flex flex-wrap gap-2 mt-2" style="font-size:0.72rem"></div>
+            <div id="attTrendsContainer" style="flex:1;overflow-y:auto">
+              <p class="text-muted small">Loading trends…</p>
             </div>
           </div>
         </div>
@@ -4530,7 +4596,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <div class="tab-content">
 
         <!-- Paste -->
-        <div class="tab-pane fade show active" id="tabPaste">
         <div class="tab-pane fade show active" id="tabPaste">
           <p class="text-muted small mb-2">Copy the snapshot from Excel and paste it below — all fields import in one shot.</p>
           <textarea class="form-control mb-2" id="pasteArea" rows="10"
