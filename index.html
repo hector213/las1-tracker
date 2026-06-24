@@ -582,6 +582,29 @@ async function renderMilestones() {
     }
   } catch(e) { /* attendance unavailable */ }
 
+  // ── Time Off entries ────────────────────────────────────────────────
+  try {
+    const toSnap = await get(ref(db, 'timeOff'));
+    if (toSnap.exists()) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      Object.entries(toSnap.val()).forEach(([assocId, entries]) => {
+        const assoc = allAssociates.find(a => a.id === assocId);
+        if (!assoc) return;
+        Object.values(entries).forEach(e => {
+          if (!e.startDate) return;
+          const start = new Date(e.startDate + 'T00:00:00');
+          const diff  = dayDiff(start);
+          if (!inWindow(diff)) return;
+          const t = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['vacation'];
+          events.push({ diff, id: assocId, name: assoc.name,
+            icon: 'fa-calendar-minus', color: t.color,
+            detail: t.label,
+            dateStr: start.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
+        });
+      });
+    }
+  } catch(e) { /* time off unavailable */ }
+
   events.sort((a, b) => a.diff - b.diff);
 
   if (!events.length) {
@@ -2290,12 +2313,11 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 
 // ─── Time Off ──────────────────────────────────────────────────────────
 const TIME_OFF_TYPES = {
-  'vacation':   { label: 'Vacation',          color: '#0ea5e9', bg: '#e0f2fe', text: '#0c4a6e' },
-  'out':        { label: 'Full Day Out',       color: '#dc2626', bg: '#fee2e2', text: '#7f1d1d' },
-  'early-out':  { label: 'Early Out',          color: '#ea580c', bg: '#ffedd5', text: '#7c2d12' },
-  'personal':   { label: 'Personal Day',       color: '#7c3aed', bg: '#ede9fe', text: '#4c1d95' },
-  'fmla':       { label: 'FMLA / Medical',     color: '#059669', bg: '#d1fae5', text: '#064e3b' },
-  'leave':      { label: 'Leave of Absence',   color: '#6b7280', bg: '#f3f4f6', text: '#1f2937' }
+  'vacation':   { label: 'Vacation',              color: '#0ea5e9', bg: '#e0f2fe', text: '#0c4a6e' },
+  'unpaid':     { label: 'Unpaid Day Off',         color: '#dc2626', bg: '#fee2e2', text: '#7f1d1d' },
+  'fmla':       { label: 'FMLA / Medical',         color: '#059669', bg: '#d1fae5', text: '#064e3b' },
+  'leave':      { label: 'Leave of Absence',       color: '#6b7280', bg: '#f3f4f6', text: '#1f2937' },
+  'prehire':    { label: 'Pre-Hire Approved',      color: '#7c3aed', bg: '#ede9fe', text: '#4c1d95' }
 };
 
 let _allTimeOff = []; // { id, assocId, assocName, type, startDate, endDate, note, addedBy, createdAt }
@@ -2446,11 +2468,10 @@ function renderToCalendar() {
       onmouseout="this.style.background='${bgColor}'">
       <div style="font-size:0.78rem;font-weight:${isToday?'700':'500'};color:${isToday?'var(--orange)':'var(--navy)'};">${day}</div>
       ${entries.slice(0,2).map(e => {
-        const t = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['out'];
-        const firstName = escapeHtml(e.assocName.split(' ')[0]);
-        return `<div style="font-size:0.58rem;background:${t.bg};color:${t.text};border-radius:3px;padding:1px 3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${firstName}</div>`;
+        const t = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['unpaid'];
+        return `<div style="font-size:0.62rem;font-weight:600;background:${t.color};color:#fff;border-radius:3px;padding:2px 4px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(e.assocName)}</div>`;
       }).join('')}
-      ${entries.length > 2 ? `<div style="font-size:0.58rem;color:#6b7280;margin-top:1px">+${entries.length-2}</div>` : ''}
+      ${entries.length > 2 ? `<div style="font-size:0.62rem;font-weight:600;color:#6b7280;margin-top:1px">+${entries.length-2} more</div>` : ''}
     </div>`;
   }
 
@@ -3922,7 +3943,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .pending-badge-reason { font-size:0.85rem; color:#374151; font-style:italic; background:#fff; border-left:3px solid #f97316; padding:0.4rem 0.75rem; border-radius:0 6px 6px 0; }
 
 /* Dashboard widgets */
-.dashboard-widget-panel { background:#fff; border-radius:12px; border:1px solid #e5e7eb; padding:1.25rem; height:340px; overflow:hidden; display:flex; flex-direction:column; }
+.dashboard-widget-panel { background:#fff; border-radius:12px; border:1px solid #e5e7eb; padding:1.25rem; height:406px; overflow:hidden; display:flex; flex-direction:column; }
 .widget-header { font-size:0.85rem; font-weight:700; color:var(--navy); margin-bottom:0.875rem; flex-shrink:0; }
 #leaderboardList, #milestonesList { overflow-y:auto; flex:1; }
 .lb-row { display:flex; align-items:center; gap:0.6rem; padding:6px 0; border-bottom:1px solid #f3f4f6; cursor:pointer; }
@@ -3930,7 +3951,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .lb-row:hover { background:#fafafa; border-radius:6px; }
 .lb-rank { font-size:1rem; min-width:28px; }
 .lb-name { font-weight:600; font-size:0.82rem; flex:1; }
-.lb-pts  { font-weight:700; font-size:0.82rem; }
+.lb-pts  { font-weight:700; font-size:0.82rem; margin-right:10px; }
 .ms-row  { display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-bottom:1px solid #f3f4f6; cursor:pointer; gap:0.5rem; }
 .ms-row:last-child { border-bottom:none; }
 .ms-row:hover { background:#fafafa; border-radius:6px; }
@@ -5346,11 +5367,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <label class="form-label small fw-semibold">Type <span class="text-danger">*</span></label>
           <select class="form-select" id="toType">
             <option value="vacation">Vacation</option>
-            <option value="out">Full Day Out</option>
-            <option value="early-out">Early Out</option>
-            <option value="personal">Personal Day</option>
+            <option value="unpaid">Unpaid Day Off</option>
             <option value="fmla">FMLA / Medical</option>
             <option value="leave">Leave of Absence</option>
+            <option value="prehire">Pre-Hire Approved</option>
           </select>
         </div>
         <div class="col-6">
