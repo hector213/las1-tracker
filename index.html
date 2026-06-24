@@ -1922,7 +1922,10 @@ function renderWarnings(warnings) {
           <span class="fw-semibold small" style="color:${isActive ? tier.color : '#6b7280'}">${tier.label}</span>
           <span class="badge ms-1" style="background:${isActive ? tier.color : '#9ca3af'};color:#fff;font-size:0.65rem">${tier.threshold}+ pts</span>
         </div>
-        ${canLog ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.75rem;background:${tier.color};color:#fff;border:none" onclick="logWarning('${tier.key}')"><i class="fas fa-plus me-1"></i>Log</button>` : ''}
+        <div class="d-flex gap-1">
+          ${issued.length ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.75rem;background:#1a2744;color:#fff;border:none" onclick="generateCorrectiveAction('${tier.key}')"><i class="fas fa-print me-1"></i>Print</button>` : ''}
+          ${canLog ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.75rem;background:${tier.color};color:#fff;border:none" onclick="logWarning('${tier.key}')"><i class="fas fa-plus me-1"></i>Log</button>` : ''}
+        </div>
       </div>
       ${issued.length ? `<div class="mt-2">` + issued.map(w => `
         <div class="d-flex align-items-center gap-2 mt-1" style="font-size:0.75rem">
@@ -1935,6 +1938,194 @@ function renderWarnings(warnings) {
     </div>`;
   }).join('');
 }
+
+const SHIFT_SCHEDULES = {
+  'A1': 'Monday – Thursday, 5:00 A.M. to 3:30 P.M.',
+  'A2': 'Monday – Thursday, 5:00 P.M. to 3:30 A.M.',
+  'B1': 'Tuesday – Friday, 5:00 A.M. to 4:30 P.M.'
+};
+
+window.generateCorrectiveAction = async (tierKey) => {
+  const assoc = allAssociates.find(a => a.id === currentAssociateId);
+  if (!assoc) return;
+
+  const tier      = WARNING_TIERS.find(t => t.key === tierKey);
+  const warnings  = lastWarnings.filter(w => w.type === tierKey).sort((a,b) => new Date(b.issuedAt)-new Date(a.issuedAt));
+  const latest    = warnings[0];
+  const pts       = assoc.attendancePoints || 0;
+  const issuedDate = latest ? new Date(latest.issuedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+  const schedule  = SHIFT_SCHEDULES[assoc.shift] || assoc.shift || '—';
+
+  // Build attendance history for Description field
+  const attEntries = [...lastAttendance]
+    .filter(e => (e.points||0) > 0)
+    .sort((a,b) => new Date(a.date)-new Date(b.date));
+  const attLines = attEntries.length
+    ? attEntries.map(e => {
+        const typeInfo = ATTENDANCE_TYPES.find(t => t.key === e.type);
+        const label    = typeInfo ? typeInfo.label : e.type;
+        const d        = new Date(e.date + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+        return `${d} — ${label} (${e.points > 0 ? '+' : ''}${e.points} pt${Math.abs(e.points)!==1?'s':''})`;
+      }).join('\n')
+    : 'See attendance records on file.';
+  const description = `${assoc.name} has accumulated ${pts} attendance point${pts!==1?'s':''} under the LAS1 Attendance Policy, triggering a ${tier.label}.\n\nAttendance entries on record:\n${attLines}`;
+
+  // Action taken and plan text by tier
+  const actionMap = {
+    'documented-verbal': `A Documented Verbal Warning has been issued. Associate has been informed of the current attendance point total and the consequences of further occurrences. Associate is expected to improve attendance immediately.`,
+    'written-warning':   `A Written Warning has been issued. Associate has been counseled on attendance expectations and the impact of continued absences. Any further attendance infractions may result in a Final Warning or termination.`,
+    'final-warning':     `A Final Warning has been issued. This is the last corrective step before termination. Associate has been advised that any additional attendance violations will result in immediate termination of employment.`,
+    'termination':       `Associate has been notified of termination of employment due to continued attendance violations after all prior corrective steps were taken.`
+  };
+  const planMap = {
+    'documented-verbal': `Associate and manager discussed the attendance policy and current point total. Associate is expected to report to work as scheduled. Any future unexcused absences, tardiness, or early departures will result in further disciplinary action.`,
+    'written-warning':   `Associate has been previously counseled regarding attendance. Associate must demonstrate immediate and sustained improvement. Failure to do so will result in a Final Warning or termination.`,
+    'final-warning':     `Associate has received prior corrective action for attendance. This is the final opportunity to correct attendance behavior. Associate must have zero unexcused occurrences going forward to remain employed.`,
+    'termination':       `N/A — Employment has been terminated.`
+  };
+
+  const warningTypeLabels = {
+    'documented-verbal': 'Verbal Warning',
+    'written-warning':   'First Written Warning',
+    'final-warning':     'Final Warning',
+    'termination':       'Termination'
+  };
+  const wLabel = warningTypeLabels[tierKey] || tier.label;
+
+  const checkBox = (checked) => checked
+    ? `<span style="display:inline-block;width:14px;height:14px;border:2px solid #1a2744;background:#1a2744;border-radius:2px;text-align:center;line-height:12px;color:#fff;font-size:10px;vertical-align:middle">✓</span>`
+    : `<span style="display:inline-block;width:14px;height:14px;border:2px solid #666;border-radius:2px;vertical-align:middle"></span>`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Employee Warning Notice — ${assoc.name}</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family: Arial, sans-serif; font-size: 11pt; color: #111; padding: 32px 40px; max-width: 800px; margin: 0 auto; }
+  h1 { font-size: 15pt; font-weight: bold; text-align: center; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  h2 { font-size: 11pt; font-weight: bold; text-align: center; color: #555; margin-bottom: 20px; }
+  .section-title { font-size: 10pt; font-weight: bold; text-transform: uppercase; background: #1a2744; color: #fff; padding: 4px 10px; margin: 18px 0 8px; letter-spacing: 0.5px; }
+  .field-row { display: flex; gap: 24px; margin-bottom: 10px; }
+  .field { flex: 1; }
+  .field label { font-size: 9pt; color: #555; display: block; margin-bottom: 2px; }
+  .field .value { border-bottom: 1px solid #333; padding-bottom: 3px; min-height: 20px; font-size: 10.5pt; }
+  .check-row { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 6px; align-items: center; }
+  .check-item { display: flex; align-items: center; gap: 6px; font-size: 10.5pt; }
+  .pts-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  .pts-table th { background: #1a2744; color: #fff; padding: 4px 8px; font-size: 9.5pt; text-align: left; }
+  .pts-table td { border: 1px solid #ccc; padding: 4px 8px; font-size: 9.5pt; }
+  .pts-table tr.active-row td { background: #fff3cd; font-weight: bold; }
+  .text-block { border: 1px solid #ccc; border-radius: 4px; padding: 8px 10px; min-height: 80px; font-size: 10pt; white-space: pre-wrap; line-height: 1.5; margin-bottom: 4px; }
+  .text-block.short { min-height: 50px; }
+  .sig-row { display: flex; gap: 32px; margin-top: 12px; }
+  .sig-block { flex: 1; border-top: 1px solid #333; padding-top: 4px; font-size: 9.5pt; color: #555; }
+  .sig-block .sig-name { font-size: 11pt; font-weight: bold; color: #111; margin-bottom: 20px; }
+  @media print {
+    body { padding: 16px 24px; }
+    button { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div style="text-align:center;margin-bottom:6px">
+  <div style="font-size:9pt;color:#888;letter-spacing:1px">LAS1 FULFILLMENT CENTER</div>
+  <h1>Employee Warning Notice</h1>
+  <h2>Attendance Policy</h2>
+</div>
+
+<div class="section-title">Employee Information</div>
+<div class="field-row">
+  <div class="field"><label>Employee Name</label><div class="value">${assoc.name}</div></div>
+  <div class="field"><label>Date</label><div class="value">${issuedDate}</div></div>
+</div>
+<div class="field-row">
+  <div class="field"><label>Employee ID</label><div class="value">${assoc.employeeId || '—'}</div></div>
+  <div class="field"><label>Job Title</label><div class="value">${assoc.role || '—'}</div></div>
+</div>
+<div class="field-row">
+  <div class="field"><label>Manager</label><div class="value">${latest?.issuedBy || '—'}</div></div>
+  <div class="field"><label>Department</label><div class="value">LAS1 Inbound Operations</div></div>
+</div>
+
+<div class="section-title">Type of Warning</div>
+<div class="check-row">
+  <div class="check-item">${checkBox(tierKey==='documented-verbal')} Verbal Warning</div>
+  <div class="check-item">${checkBox(tierKey==='written-warning')} First Written Warning</div>
+  <div class="check-item">${checkBox(tierKey==='final-warning')} Final Warning</div>
+  <div class="check-item">${checkBox(tierKey==='termination')} Termination</div>
+</div>
+
+<div class="section-title">Type of Offense</div>
+<div class="check-row">
+  <div class="check-item">${checkBox(true)} Tardiness / Leaving Early</div>
+  <div class="check-item">${checkBox(true)} Absenteeism</div>
+  <div class="check-item">${checkBox(false)} Violation of Company Policies</div>
+  <div class="check-item">${checkBox(false)} Substandard Work</div>
+  <div class="check-item">${checkBox(false)} Violation of Safety Rules</div>
+  <div class="check-item">${checkBox(false)} Rudeness to Customers / Coworkers</div>
+</div>
+
+<div class="section-title">Details</div>
+<div style="margin-bottom:8px"><strong>Description of Infraction:</strong></div>
+<div class="text-block">${description}</div>
+
+<div style="margin:10px 0 4px"><strong>Work Schedule:</strong> ${schedule}</div>
+
+<div style="margin:12px 0 6px"><strong>Attendance Points — Disciplinary Policy:</strong></div>
+<table class="pts-table">
+  <tr><th>Points</th><th>Disciplinary Action</th></tr>
+  <tr${pts>=3&&pts<6?' class="active-row"':''}><td>3</td><td>Documented Verbal Warning</td></tr>
+  <tr${pts>=6&&pts<9?' class="active-row"':''}><td>6</td><td>Written Warning</td></tr>
+  <tr${pts>=9&&pts<10?' class="active-row"':''}><td>9</td><td>Final Warning</td></tr>
+  <tr${pts>=10?' class="active-row"':''}><td>10+</td><td>Termination</td></tr>
+</table>
+
+<div style="margin-bottom:6px"><strong>Team Member has accumulated:</strong> <span style="font-size:13pt;font-weight:bold;color:#dc2626">${pts}</span> attendance point${pts!==1?'s':''}</div>
+<div style="margin-bottom:10px"><strong>Corrective Given On:</strong> ${issuedDate}</div>
+
+<div style="margin-bottom:4px"><strong>Action Taken:</strong></div>
+<div class="text-block short">${actionMap[tierKey]}</div>
+
+<div style="margin:10px 0 4px"><strong>Plan for Improvement:</strong></div>
+<div class="text-block">${planMap[tierKey]}</div>
+
+<div style="margin:10px 0 4px"><strong>Consequences of Further Infractions:</strong></div>
+<div class="text-block short">Any further attendance infractions may result in disciplinary action up to and including termination of employment.</div>
+
+<div class="section-title">Acknowledgement of Receipt of Warning</div>
+<p style="font-size:9.5pt;color:#555;margin-bottom:14px">By signing this form, you confirm that you understand the information in this warning and that you and your manager have discussed it and a plan for improvement. Signing does not necessarily indicate that you agree with this warning.</p>
+
+<div class="sig-row">
+  <div class="sig-block">
+    <div class="sig-name">&nbsp;</div>
+    <div>Employee Signature</div>
+    <div style="margin-top:6px;font-size:9pt">Date: _______________</div>
+  </div>
+  <div class="sig-block">
+    <div class="sig-name">&nbsp;</div>
+    <div>Manager Signature</div>
+    <div style="margin-top:6px;font-size:9pt">Date: _______________</div>
+  </div>
+  <div class="sig-block">
+    <div class="sig-name">&nbsp;</div>
+    <div>Witness Signature <span style="font-size:8.5pt;color:#888">(if employee refuses to sign)</span></div>
+    <div style="margin-top:6px;font-size:9pt">Date: _______________</div>
+  </div>
+</div>
+
+<div style="text-align:center;margin-top:28px">
+  <button onclick="window.print()" style="padding:10px 32px;background:#1a2744;color:#fff;border:none;border-radius:6px;font-size:11pt;cursor:pointer;font-weight:bold">🖨️ Print / Save as PDF</button>
+</div>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+};
 
 window.logWarning = async (type) => {
   const tier = WARNING_TIERS.find(t => t.key === type);
@@ -4434,6 +4625,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <p class="text-muted small mt-2 mb-0">Nomination will be sent to an admin for approval.</p>
     </div>
     <div class="modal-footer border-0 pt-0">
+      <p class="text-muted small mt-2 mb-0">Nomination will be sent to an admin for approval.</p>
+    </div>
+    <div class="modal-footer border-0 pt-0">
       <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
       <button class="btn btn-orange" onclick="saveBadgeNomination()">Submit Nomination</button>
     </div>
@@ -4462,7 +4656,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
         <div class="mb-3">
           <label class="form-label small fw-semibold">Note <span class="text-danger">*</span></label>
-          <textarea class="form-control" id="noteText" rows="5"
           <textarea class="form-control" id="noteText" rows="5"
             placeholder="Add your observations, coaching points, recognition, or leadership potential notes…"></textarea>
         </div>
@@ -4645,7 +4838,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <!-- OCR -->
         <div class="tab-pane fade" id="tabOcr">
           <p class="text-muted small">Upload a clear, cropped screenshot. Results vary by image quality — use Paste Snapshot for best results.</p>
-          <input type="file" class="form-control mb-3" accept="image/*" onchange="handleImportFile(this)">
           <input type="file" class="form-control mb-3" accept="image/*" onchange="handleImportFile(this)">
           <div id="importStatus" class="text-muted small mb-2"></div>
           <div id="importPreview"></div>
