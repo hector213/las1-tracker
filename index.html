@@ -715,6 +715,8 @@ window.openProfile = async (id) => {
 
   const canEdit = currentUserRole === 'admin' || currentUserRole === 'supervisor' || currentUserRole === 'lead';
   document.getElementById('profileEditBtn').classList.toggle('d-none', !canEdit);
+  const isLeadership = a.position === 'supervisor' || a.position === 'lead' || a.position === 'ops-manager';
+  document.getElementById('profileBoardBtn').classList.toggle('d-none', !isLeadership);
   document.getElementById('profileEditBtn').onclick = () => openEditAssociate(id, a);
   document.getElementById('profileFlagBtn').classList.toggle('d-none', !canEdit);
 
@@ -4411,6 +4413,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
         </button>
         <div class="d-flex gap-2">
+          <button class="btn btn-sm d-none" id="profileBoardBtn" onclick="openKanban(currentAssociateId, document.getElementById('profileName').textContent)" style="background:rgba(249,115,22,0.15);color:#f97316;border:1px solid rgba(249,115,22,0.4);font-weight:600">
+            <i class="fas fa-columns me-1"></i>Daily Board
+          </button>
           <button class="btn btn-sm btn-outline-warning d-none" id="profileFlagBtn" onclick="openFlagModal()">
             <i class="fas fa-flag me-1"></i>Set Flag
           </button>
