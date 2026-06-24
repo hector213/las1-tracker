@@ -3852,29 +3852,31 @@ window.kbViewLog = async (date) => {
   document.getElementById('kbModalTitle').textContent = `${_kbAssocName} — Log: ${date}`;
   document.getElementById('kbLogsSection').classList.add('d-none');
   document.getElementById('kbBoardSection').classList.remove('d-none');
-  // Render read-only snapshot
-  const savedTasks = _kbTasks;
-  _kbTasks = log.tasks || {};
+  // Hide add form, show read-only banner
+  document.getElementById('kbAddForm').classList.add('d-none');
+  document.getElementById('kbReadOnlyBanner').classList.remove('d-none');
+  // Render read-only snapshot into columns
+  const logTasks = log.tasks || {};
   const board = document.getElementById('kbBoard');
-  board.innerHTML = `<div style="background:#fef3c7;color:#92400e;padding:8px 12px;border-radius:8px;font-size:0.8rem;font-weight:600;margin-bottom:8px;width:100%"><i class="fas fa-eye me-1"></i>Viewing archived log — read only</div>` +
-    KB_COLS.map(col => {
-      const tasks = Object.entries(_kbTasks).filter(([,t]) => t.status === col.key);
-      return `<div class="kanban-col">
-        <div class="kanban-col-header" style="color:${col.color}">${col.label} <span style="font-weight:400;opacity:.6">(${tasks.length})</span></div>
-        ${tasks.map(([,t]) => {
-          const freq = FREQ_META[t.frequency] || FREQ_META.daily;
-          return `<div class="kanban-task" style="border-left-color:${col.color}">
-            <div class="kt-title">${escapeHtml(t.title)}</div>
-            <span class="kt-freq" style="background:${freq.bg};color:${freq.color}">${freq.label}</span>
-          </div>`;
-        }).join('')}
-      </div>`;
-    }).join('');
-  _kbTasks = savedTasks;
+  board.innerHTML = KB_COLS.map(col => {
+    const tasks = Object.entries(logTasks).filter(([,t]) => t.status === col.key);
+    return `<div class="kanban-col">
+      <div class="kanban-col-header" style="color:${col.color}">${col.label} <span style="font-weight:400;opacity:.6">(${tasks.length})</span></div>
+      ${tasks.map(([,t]) => {
+        const freq = FREQ_META[t.frequency] || FREQ_META.daily;
+        return `<div class="kanban-task" style="border-left-color:${col.color}">
+          <div class="kt-title">${escapeHtml(t.title)}</div>
+          <span class="kt-freq" style="background:${freq.bg};color:${freq.color}">${freq.label}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
 };
 
 window.kbBack = () => {
   document.getElementById('kbModalTitle').textContent = _kbAssocName + ' — Daily Board';
+  document.getElementById('kbAddForm').classList.remove('d-none');
+  document.getElementById('kbReadOnlyBanner').classList.add('d-none');
   _kbRenderBoard();
   document.getElementById('kbBoardSection').classList.remove('d-none');
   document.getElementById('kbLogsSection').classList.add('d-none');
@@ -5579,9 +5581,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     </div>
     <div class="modal-body" style="background:#f1f5f9;padding:1rem">
 
-      <!-- Add Task Form -->
+      <!-- Add Task Form (hidden when viewing logs) -->
       <div id="kbBoardSection">
-        <div class="d-flex gap-2 mb-3 flex-wrap align-items-end">
+        <div id="kbAddForm" class="d-flex gap-2 mb-3 flex-wrap align-items-end">
           <div style="flex:1;min-width:180px">
             <label class="form-label small fw-semibold mb-1" style="color:#475569">Task Title</label>
             <input type="text" class="form-control form-control-sm" id="kbNewTitle" placeholder="e.g. Check productivity reports…" onkeydown="if(event.key==='Enter')kbAddTask()">
@@ -5599,7 +5601,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <i class="fas fa-plus me-1"></i>Add Task
           </button>
         </div>
-
+        <!-- Read-only banner shown when viewing a log -->
+        <div id="kbReadOnlyBanner" class="d-none" style="background:#fef3c7;color:#92400e;padding:8px 14px;border-radius:8px;font-size:0.82rem;font-weight:600;margin-bottom:10px">
+          <i class="fas fa-eye me-1"></i>Viewing archived log — read only
+        </div>
         <!-- Kanban columns -->
         <div class="d-flex gap-3" id="kbBoard" style="min-height:300px;align-items:flex-start">
           <div class="kanban-col"><div class="kanban-col-header" style="color:#64748b">To Do</div><p class="text-muted small text-center mt-3">No tasks yet</p></div>
