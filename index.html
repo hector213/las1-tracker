@@ -656,6 +656,10 @@ function renderLeaders() {
       <div class="leader-name">${escapeHtml(a.name)}</div>
       <div class="leader-pos"><i class="fas ${icon} me-1"></i>${label}</div>
       <div class="leader-shift">${escapeHtml(a.shift || '—')} Shift</div>
+      <button class="kanban-btn" onclick="event.stopPropagation();openKanban('${a.id}','${escapeHtml(a.name)}')">
+        <i class="fas fa-columns" style="font-size:0.65rem"></i>Board
+        <span class="kb-count" id="kb-count-${a.id}">—</span>
+      </button>
     </div>`;
   }).join('');
 }
@@ -4175,12 +4179,13 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
 /* ── Kanban ──────────────────────────────────────────────────────────── */
 .kanban-btn {
-  display:flex; align-items:center; gap:5px;
-  background:var(--navy); border:none; border-radius:0 0 10px 10px;
-  width:100%; padding:6px 10px; cursor:pointer; transition:background .15s;
-  color:rgba(255,255,255,0.8); font-size:0.72rem; font-weight:600;
+  display:inline-flex; align-items:center; gap:5px;
+  background:rgba(249,115,22,0.18); border:1px solid rgba(249,115,22,0.4);
+  border-radius:20px; padding:4px 12px; cursor:pointer; transition:all .15s;
+  color:#f97316; font-size:0.7rem; font-weight:700; margin-top:8px;
+  white-space:nowrap;
 }
-.kanban-btn:hover { background:#f97316; color:#fff; }
+.kanban-btn:hover { background:#f97316; color:#fff; border-color:#f97316; }
 .kanban-btn .kb-count {
   margin-left:auto; background:#f97316; color:#fff;
   border-radius:10px; padding:1px 7px; font-size:0.68rem; font-weight:700;
