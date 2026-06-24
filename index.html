@@ -1977,6 +1977,41 @@ window.deleteAttendance = async (entryId, type, pts) => {
 // Team-wide attendance view
 let _allAttEntries = [];
 let _attActivePeriod = 'week';
+window._riskFilter  = 'all';
+window._riskByAssoc = {};
+
+window.renderRiskPanel = () => {
+  const riskEl = document.getElementById('attRiskList');
+  if (!riskEl) return;
+  const f = window._riskFilter;
+  const sorted = Object.entries(window._riskByAssoc)
+    .sort((a, b) => b[1].total - a[1].total)
+    .filter(([, d]) => {
+      if (f === 'red')    return d.total >= 9;
+      if (f === 'orange') return d.total >= 6 && d.total < 9;
+      if (f === 'yellow') return d.total >= 3 && d.total < 6;
+      if (f === 'green')  return d.total > 0  && d.total < 3;
+      return d.total > 0; // 'all' — hide 0-point associates
+    });
+  if (!sorted.length) {
+    riskEl.innerHTML = '<div class="text-muted small py-2">No associates match this filter for the selected period.</div>';
+    return;
+  }
+  riskEl.innerHTML = sorted.map(([id, d]) => {
+    const cls    = d.total >= 9 ? 'att-risk-critical' : d.total >= 6 ? 'att-risk-orange' : d.total >= 3 ? 'att-risk-warning' : 'att-risk-ok';
+    const icon   = d.total >= 10 ? '🔴' : d.total >= 9 ? '🔴' : d.total >= 6 ? '🟠' : d.total >= 3 ? '⚠️' : '✅';
+    const color  = d.total >= 9 ? '#dc2626' : d.total >= 6 ? '#ea580c' : d.total >= 3 ? '#d97706' : '#059669';
+    const policy = d.total >= 10 ? 'Termination' : d.total >= 9 ? 'Final Warning' : d.total >= 6 ? 'Written Warning' : d.total >= 3 ? 'Doc. Verbal' : 'Good Standing';
+    return `<div class="att-risk-card ${cls}" onclick="openProfile('${id}')">
+      <span style="font-size:1.1rem">${icon}</span>
+      <div class="flex-grow-1">
+        <div class="fw-semibold small" style="color:var(--navy)">${escapeHtml(d.name)}</div>
+        <div style="font-size:0.7rem;color:${color};font-weight:600">${policy}</div>
+      </div>
+      <div class="fw-bold" style="color:${color}">${d.total % 1 === 0 ? d.total : d.total.toFixed(1)} pts</div>
+    </div>`;
+  }).join('');
+};
 
 window.setAttPeriod = (period, btn) => {
   _attActivePeriod = period;
@@ -2018,34 +2053,18 @@ function renderTeamAttendance(entries) {
   const periodStart = attPeriodStart(_attActivePeriod);
   const periodEntries = periodStart ? entries.filter(e => e.date >= periodStart) : entries;
 
-  // At-risk summary (scoped to period)
-  const byAssoc = {};
+  // At-risk summary (scoped to period) — store for re-render on filter change
+  window._riskByAssoc = {};
   periodEntries.forEach(e => {
-    if (!byAssoc[e.assocId]) byAssoc[e.assocId] = { name: e.assocName, total: 0, count: 0 };
-    byAssoc[e.assocId].total += e.points || 0;
-    byAssoc[e.assocId].count++;
+    if (!window._riskByAssoc[e.assocId]) window._riskByAssoc[e.assocId] = { name: e.assocName, total: 0, count: 0 };
+    window._riskByAssoc[e.assocId].total += e.points || 0;
+    window._riskByAssoc[e.assocId].count++;
   });
-  const sorted = Object.entries(byAssoc).sort((a, b) => b[1].total - a[1].total);
-  const riskEl = document.getElementById('attRiskList');
-  if (riskEl) {
-    if (!sorted.length) { riskEl.innerHTML = '<div class="text-muted small">No attendance data for this period.</div>'; }
-    else {
-      riskEl.innerHTML = sorted.slice(0, 8).map(([id, d]) => {
-        const cls    = d.total >= 6 ? 'att-risk-critical' : d.total >= 3 ? 'att-risk-warning' : 'att-risk-ok';
-        const icon   = d.total >= 10 ? '🔴' : d.total >= 6 ? '🚨' : d.total >= 3 ? '⚠️' : '✅';
-        const color  = d.total >= 6 ? '#dc2626' : d.total >= 3 ? '#d97706' : '#059669';
-        const policy = d.total >= 10 ? 'Termination' : d.total >= 9 ? 'Final Warning' : d.total >= 6 ? 'Written Warning' : d.total >= 3 ? 'Doc. Verbal' : 'Good Standing';
-        return `<div class="att-risk-card ${cls}" onclick="openProfile('${id}')">
-          <span style="font-size:1.1rem">${icon}</span>
-          <div class="flex-grow-1">
-            <div class="fw-semibold small" style="color:var(--navy)">${escapeHtml(d.name)}</div>
-            <div style="font-size:0.7rem;color:${color};font-weight:600">${policy}</div>
-          </div>
-          <div class="fw-bold" style="color:${color}">${d.total % 1 === 0 ? d.total : d.total.toFixed(1)} pts</div>
-        </div>`;
-      }).join('');
-    }
-  }
+  // Also include active associates with pts but no entries in period (show as 0 for period)
+  allAssociates.filter(a => a.status === 'active' && (a.attendancePoints || 0) > 0).forEach(a => {
+    if (!window._riskByAssoc[a.id]) window._riskByAssoc[a.id] = { name: a.name, total: 0, count: 0 };
+  });
+  renderRiskPanel();
 
   // Period summary stats
   const totalPts = periodEntries.reduce((s, e) => s + (e.points || 0), 0);
@@ -3149,10 +3168,13 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .att-entry-meta  { font-size:0.72rem; color:#9ca3af; margin-top:1px; }
 .att-entry-note  { font-size:0.78rem; color:#6b7280; margin-top:3px; font-style:italic; }
 .att-entry-pts   { font-size:1rem; font-weight:800; flex-shrink:0; }
-.att-risk-card   { border-radius:10px; padding:0.75rem 1rem; margin-bottom:0.5rem; display:flex; align-items:center; gap:12px; cursor:pointer; }
+.att-risk-card     { border-radius:10px; padding:0.75rem 1rem; margin-bottom:0.5rem; display:flex; align-items:center; gap:12px; cursor:pointer; transition:opacity .15s; }
+.att-risk-card:hover { opacity:0.85; }
 .att-risk-critical { background:#fef2f2; border:1px solid #fca5a5; }
+.att-risk-orange   { background:#fff7ed; border:1px solid #fb923c; }
 .att-risk-warning  { background:#fffbeb; border:1px solid #fde68a; }
 .att-risk-ok       { background:#f0fdf4; border:1px solid #86efac; }
+.risk-chip.active  { outline:2px solid var(--navy); outline-offset:1px; }
 .att-period-btn    { border:2px solid #d1d5db; background:#fff; color:#374151; border-radius:8px; font-weight:600; transition:.15s; }
 .att-period-btn:hover { border-color:var(--orange); color:var(--orange); background:#fff; }
 .att-period-btn.active { border-color:var(--navy); background:var(--navy); color:#fff; }
@@ -3561,9 +3583,17 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <div class="row g-4 mb-4">
         <!-- At-risk panel -->
         <div class="col-lg-4">
-          <div class="admin-card h-100">
-            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-exclamation-triangle me-2" style="color:var(--orange)"></i>Attendance Risk</h6>
-            <div id="attRiskList"><div class="text-muted small">Loading…</div></div>
+          <div class="admin-card h-100 d-flex flex-column">
+            <h6 class="fw-bold mb-2" style="color:var(--navy)"><i class="fas fa-exclamation-triangle me-2" style="color:var(--orange)"></i>Attendance Risk</h6>
+            <!-- Status filter chips -->
+            <div class="d-flex gap-1 flex-wrap mb-2">
+              <button class="btn btn-sm risk-chip active" data-risk="all" onclick="window._riskFilter=this.dataset.risk;document.querySelectorAll('.risk-chip').forEach(b=>b.classList.remove('active'));this.classList.add('active');renderRiskPanel()" style="font-size:0.72rem;padding:2px 8px;border:1px solid #d1d5db;background:#f9fafb">All</button>
+              <button class="btn btn-sm risk-chip" data-risk="red" onclick="window._riskFilter=this.dataset.risk;document.querySelectorAll('.risk-chip').forEach(b=>b.classList.remove('active'));this.classList.add('active');renderRiskPanel()" style="font-size:0.72rem;padding:2px 8px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">🔴 Final+</button>
+              <button class="btn btn-sm risk-chip" data-risk="orange" onclick="window._riskFilter=this.dataset.risk;document.querySelectorAll('.risk-chip').forEach(b=>b.classList.remove('active'));this.classList.add('active');renderRiskPanel()" style="font-size:0.72rem;padding:2px 8px;background:#ffedd5;color:#9a3412;border:1px solid #fb923c">🟠 Written</button>
+              <button class="btn btn-sm risk-chip" data-risk="yellow" onclick="window._riskFilter=this.dataset.risk;document.querySelectorAll('.risk-chip').forEach(b=>b.classList.remove('active'));this.classList.add('active');renderRiskPanel()" style="font-size:0.72rem;padding:2px 8px;background:#fef9c3;color:#713f12;border:1px solid #fde047">🟡 Verbal</button>
+              <button class="btn btn-sm risk-chip" data-risk="green" onclick="window._riskFilter=this.dataset.risk;document.querySelectorAll('.risk-chip').forEach(b=>b.classList.remove('active'));this.classList.add('active');renderRiskPanel()" style="font-size:0.72rem;padding:2px 8px;background:#dcfce7;color:#14532d;border:1px solid #86efac">🟢 Good</button>
+            </div>
+            <div id="attRiskList" style="overflow-y:auto;max-height:420px;flex:1"><div class="text-muted small">Loading…</div></div>
           </div>
         </div>
         <!-- Period filter / calendar -->
@@ -4505,6 +4535,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <div class="tab-content">
 
         <!-- Paste -->
+        <div class="tab-pane fade show active" id="tabPaste">
         <div class="tab-pane fade show active" id="tabPaste">
           <p class="text-muted small mb-2">Copy the snapshot from Excel and paste it below — all fields import in one shot.</p>
           <textarea class="form-control mb-2" id="pasteArea" rows="10"
