@@ -2053,16 +2053,11 @@ function renderTeamAttendance(entries) {
   const periodStart = attPeriodStart(_attActivePeriod);
   const periodEntries = periodStart ? entries.filter(e => e.date >= periodStart) : entries;
 
-  // At-risk summary (scoped to period) — store for re-render on filter change
+  // At-risk panel — always uses all-time running totals, independent of period filter
   window._riskByAssoc = {};
-  periodEntries.forEach(e => {
-    if (!window._riskByAssoc[e.assocId]) window._riskByAssoc[e.assocId] = { name: e.assocName, total: 0, count: 0 };
-    window._riskByAssoc[e.assocId].total += e.points || 0;
-    window._riskByAssoc[e.assocId].count++;
-  });
-  // Also include active associates with pts but no entries in period (show as 0 for period)
-  allAssociates.filter(a => a.status === 'active' && (a.attendancePoints || 0) > 0).forEach(a => {
-    if (!window._riskByAssoc[a.id]) window._riskByAssoc[a.id] = { name: a.name, total: 0, count: 0 };
+  allAssociates.filter(a => a.status === 'active').forEach(a => {
+    if ((a.attendancePoints || 0) > 0)
+      window._riskByAssoc[a.id] = { name: a.name, total: a.attendancePoints || 0, count: 0 };
   });
   renderRiskPanel();
 
