@@ -428,7 +428,7 @@ async function renderMilestones() {
 
   const dayDiff = (d) => Math.round((d - today) / (1000*60*60*24));
 
-  const inWindow = (diff) => diff >= 0 && diff <= 60;
+  const inWindow = (diff) => diff >= 0 && diff <= 40;
 
   // ── Work anniversaries ──────────────────────────────────────────────
   allAssociates.filter(a => a.hireDate && a.status === 'active').forEach(a => {
@@ -522,7 +522,7 @@ async function renderMilestones() {
   events.sort((a, b) => a.diff - b.diff);
 
   if (!events.length) {
-    el.innerHTML = '<div class="text-muted small py-2">No upcoming events in the next 60 days.</div>';
+    el.innerHTML = '<div class="text-muted small py-2">No upcoming events in the next 40 days.</div>';
     return;
   }
   el.innerHTML = events.map(ev => {
