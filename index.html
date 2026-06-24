@@ -412,7 +412,8 @@ function renderDashboard() {
               </div>
             </div>
           </div>
-          ${banner ? `<div style="background:${banner.bg};color:${banner.color};font-size:0.7rem;font-weight:700;text-align:center;padding:3px 0;border-radius:0 0 10px 10px;letter-spacing:0.5px">${banner.label}</div>` : ''}
+          ${banner ? `<div style="background:${banner.bg};color:${banner.color};font-size:0.7rem;font-weight:700;text-align:center;padding:3px 0;${(a.position==='supervisor'||a.position==='lead'||a.position==='ops-manager')?'':'border-radius:0 0 10px 10px;'}letter-spacing:0.5px">${banner.label}</div>` : ''}
+          ${(a.position==='supervisor'||a.position==='lead'||a.position==='ops-manager') ? `<button class="kanban-btn" onclick="event.stopPropagation();openKanban('${a.id}','${escapeHtml(a.name)}')"><i class="fas fa-columns" style="font-size:0.7rem"></i>Daily Board<span class="kb-count" id="kb-count-${a.id}">—</span></button>` : ''}
         </div>
       </div>`;
     }).join('');
@@ -458,6 +459,7 @@ function renderDashboard() {
       });
     }
     renderCards(); // Re-render cards with banner data — NOT renderDashboard()
+    loadKanbanCounts();
   });
 }
 window.renderDashboard = renderDashboard;
@@ -3662,6 +3664,205 @@ function formatTime(str) {
 function escapeHtml(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ── Kanban Board ──────────────────────────────────────────────────────────────
+let _kbAssocId   = null;
+let _kbAssocName = null;
+let _kbTasks     = {};      // live board tasks
+let _kbViewMode  = 'board'; // 'board' | 'logs'
+
+const FREQ_META = {
+  daily:     { label: 'Daily',      color: '#0ea5e9', bg: '#e0f2fe' },
+  weekly:    { label: 'Weekly',     color: '#8b5cf6', bg: '#ede9fe' },
+  biweekly:  { label: 'Bi-Weekly',  color: '#f97316', bg: '#ffedd5' },
+  monthly:   { label: 'Monthly',    color: '#059669', bg: '#d1fae5' },
+};
+const KB_COLS = [
+  { key: 'todo',       label: 'To Do',       color: '#64748b' },
+  { key: 'inprogress', label: 'In Progress', color: '#f97316' },
+  { key: 'done',       label: 'Done',        color: '#16a34a' },
+];
+
+// Load task counts for all leadership cards after render
+async function loadKanbanCounts() {
+  const leaders = allAssociates.filter(a =>
+    (a.position === 'supervisor' || a.position === 'lead' || a.position === 'ops-manager') && a.status === 'active'
+  );
+  for (const a of leaders) {
+    try {
+      const snap = await get(ref(db, `supervisorTasks/${a.id}/board`));
+      const el   = document.getElementById(`kb-count-${a.id}`);
+      if (!el) continue;
+      if (!snap.exists()) { el.textContent = '0'; continue; }
+      const tasks = Object.values(snap.val());
+      const active = tasks.filter(t => t.status !== 'done').length;
+      el.textContent = active;
+      el.style.background = active > 0 ? '#f97316' : '#6b7280';
+    } catch(e) {}
+  }
+}
+
+window.openKanban = async (assocId, assocName) => {
+  _kbAssocId   = assocId;
+  _kbAssocName = assocName;
+  _kbViewMode  = 'board';
+  document.getElementById('kbModalTitle').textContent = assocName + ' — Daily Board';
+  document.getElementById('kbBoardSection').classList.remove('d-none');
+  document.getElementById('kbLogsSection').classList.add('d-none');
+  document.getElementById('kbViewLogsBtn').classList.remove('d-none');
+  document.getElementById('kbBackBtn').classList.add('d-none');
+  await _kbRefreshBoard();
+  new bootstrap.Modal(document.getElementById('kanbanModal')).show();
+};
+
+async function _kbRefreshBoard() {
+  const snap = await get(ref(db, `supervisorTasks/${_kbAssocId}/board`));
+  _kbTasks = snap.exists() ? snap.val() : {};
+  _kbRenderBoard();
+}
+
+function _kbRenderBoard() {
+  const canEdit = currentUserRole === 'admin' || currentUserRole === 'supervisor' || currentUserRole === 'lead';
+  const board = document.getElementById('kbBoard');
+  board.innerHTML = KB_COLS.map(col => {
+    const tasks = Object.entries(_kbTasks)
+      .filter(([,t]) => t.status === col.key)
+      .sort(([,a],[,b]) => (a.createdAt||'').localeCompare(b.createdAt||''));
+    const colIdx = KB_COLS.findIndex(c => c.key === col.key);
+    return `<div class="kanban-col">
+      <div class="kanban-col-header" style="color:${col.color}">${col.label} <span style="font-weight:400;opacity:.6">(${tasks.length})</span></div>
+      ${tasks.map(([tid, t]) => {
+        const freq = FREQ_META[t.frequency] || FREQ_META.daily;
+        const prevCol = KB_COLS[colIdx - 1];
+        const nextCol = KB_COLS[colIdx + 1];
+        return `<div class="kanban-task" style="border-left-color:${col.color}">
+          <div class="kt-title">${escapeHtml(t.title)}</div>
+          <span class="kt-freq" style="background:${freq.bg};color:${freq.color}">${freq.label}</span>
+          ${canEdit ? `<div class="kt-actions">
+            ${prevCol ? `<button onclick="kbMove('${tid}','${prevCol.key}')">← ${prevCol.label}</button>` : ''}
+            ${nextCol ? `<button onclick="kbMove('${tid}','${nextCol.key}')">${nextCol.label} →</button>` : ''}
+            <button class="kt-del" onclick="kbDelete('${tid}')">✕</button>
+          </div>` : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+
+  // Update count badge on card
+  const el = document.getElementById(`kb-count-${_kbAssocId}`);
+  if (el) {
+    const active = Object.values(_kbTasks).filter(t => t.status !== 'done').length;
+    el.textContent = active;
+    el.style.background = active > 0 ? '#f97316' : '#6b7280';
+  }
+}
+
+window.kbMove = async (taskId, newStatus) => {
+  await update(ref(db, `supervisorTasks/${_kbAssocId}/board/${taskId}`), { status: newStatus });
+  _kbTasks[taskId].status = newStatus;
+  _kbRenderBoard();
+};
+
+window.kbDelete = async (taskId) => {
+  if (!confirm('Remove this task?')) return;
+  await remove(ref(db, `supervisorTasks/${_kbAssocId}/board/${taskId}`));
+  delete _kbTasks[taskId];
+  _kbRenderBoard();
+};
+
+window.kbAddTask = async () => {
+  const title = document.getElementById('kbNewTitle').value.trim();
+  const freq  = document.getElementById('kbNewFreq').value;
+  if (!title) { document.getElementById('kbNewTitle').focus(); return; }
+  const newRef = push(ref(db, `supervisorTasks/${_kbAssocId}/board`));
+  const task = { title, frequency: freq, status: 'todo', createdAt: new Date().toISOString(), createdBy: currentUser.uid };
+  await set(newRef, task);
+  _kbTasks[newRef.key] = task;
+  document.getElementById('kbNewTitle').value = '';
+  _kbRenderBoard();
+};
+
+window.kbLog = async () => {
+  const taskList = Object.values(_kbTasks);
+  if (!taskList.length) { alert('No tasks on the board to log.'); return; }
+  const today = new Date().toISOString().split('T')[0];
+  const logData = {
+    loggedAt: new Date().toISOString(),
+    loggedBy: currentUser.uid,
+    tasks: _kbTasks
+  };
+  await set(ref(db, `supervisorTasks/${_kbAssocId}/logs/${today}`), logData);
+  // Reset done tasks, keep todo/inprogress
+  const doneTasks = Object.entries(_kbTasks).filter(([,t]) => t.status === 'done');
+  for (const [tid] of doneTasks) {
+    await remove(ref(db, `supervisorTasks/${_kbAssocId}/board/${tid}`));
+    delete _kbTasks[tid];
+  }
+  _kbRenderBoard();
+  alert(`Board logged for ${today}. Completed tasks cleared.`);
+};
+
+window.kbShowLogs = async () => {
+  _kbViewMode = 'logs';
+  document.getElementById('kbBoardSection').classList.add('d-none');
+  document.getElementById('kbLogsSection').classList.remove('d-none');
+  document.getElementById('kbViewLogsBtn').classList.add('d-none');
+  document.getElementById('kbBackBtn').classList.remove('d-none');
+  const snap = await get(ref(db, `supervisorTasks/${_kbAssocId}/logs`));
+  const logsList = document.getElementById('kbLogsList');
+  if (!snap.exists()) { logsList.innerHTML = '<p class="text-muted small text-center py-3">No logs recorded yet.</p>'; return; }
+  const dates = Object.keys(snap.val()).sort().reverse();
+  logsList.innerHTML = dates.map(d => {
+    const log = snap.val()[d];
+    const taskCount = Object.keys(log.tasks || {}).length;
+    const doneCount = Object.values(log.tasks || {}).filter(t => t.status === 'done').length;
+    return `<div class="kanban-log-row" onclick="kbViewLog('${d}')">
+      <div>
+        <div style="font-weight:600">${d}</div>
+        <div style="font-size:0.75rem;color:#6b7280">${taskCount} tasks · ${doneCount} completed</div>
+      </div>
+      <i class="fas fa-chevron-right text-muted"></i>
+    </div>`;
+  }).join('');
+};
+
+window.kbViewLog = async (date) => {
+  const snap = await get(ref(db, `supervisorTasks/${_kbAssocId}/logs/${date}`));
+  if (!snap.exists()) return;
+  const log = snap.val();
+  document.getElementById('kbModalTitle').textContent = `${_kbAssocName} — Log: ${date}`;
+  document.getElementById('kbLogsSection').classList.add('d-none');
+  document.getElementById('kbBoardSection').classList.remove('d-none');
+  // Render read-only snapshot
+  const savedTasks = _kbTasks;
+  _kbTasks = log.tasks || {};
+  const board = document.getElementById('kbBoard');
+  board.innerHTML = `<div style="background:#fef3c7;color:#92400e;padding:8px 12px;border-radius:8px;font-size:0.8rem;font-weight:600;margin-bottom:8px;width:100%"><i class="fas fa-eye me-1"></i>Viewing archived log — read only</div>` +
+    KB_COLS.map(col => {
+      const tasks = Object.entries(_kbTasks).filter(([,t]) => t.status === col.key);
+      return `<div class="kanban-col">
+        <div class="kanban-col-header" style="color:${col.color}">${col.label} <span style="font-weight:400;opacity:.6">(${tasks.length})</span></div>
+        ${tasks.map(([,t]) => {
+          const freq = FREQ_META[t.frequency] || FREQ_META.daily;
+          return `<div class="kanban-task" style="border-left-color:${col.color}">
+            <div class="kt-title">${escapeHtml(t.title)}</div>
+            <span class="kt-freq" style="background:${freq.bg};color:${freq.color}">${freq.label}</span>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }).join('');
+  _kbTasks = savedTasks;
+};
+
+window.kbBack = () => {
+  document.getElementById('kbModalTitle').textContent = _kbAssocName + ' — Daily Board';
+  _kbRenderBoard();
+  document.getElementById('kbBoardSection').classList.remove('d-none');
+  document.getElementById('kbLogsSection').classList.add('d-none');
+  document.getElementById('kbViewLogsBtn').classList.remove('d-none');
+  document.getElementById('kbBackBtn').classList.add('d-none');
+};
+// ── End Kanban ────────────────────────────────────────────────────────────────
 </script>
 
 <style>
@@ -3971,6 +4172,53 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   .nav-link[data-view] { justify-content:center; padding:.6rem; }
   #mainContent { margin-left:60px; padding:1rem; }
 }
+
+/* ── Kanban ──────────────────────────────────────────────────────────── */
+.kanban-btn {
+  display:flex; align-items:center; gap:5px;
+  background:rgba(255,255,255,0.08); border:none; border-radius:0 0 10px 10px;
+  width:100%; padding:5px 10px; cursor:pointer; transition:background .15s;
+  color:rgba(255,255,255,0.75); font-size:0.72rem; font-weight:600;
+}
+.kanban-btn:hover { background:rgba(249,115,22,0.25); color:#fff; }
+.kanban-btn .kb-count {
+  margin-left:auto; background:#f97316; color:#fff;
+  border-radius:10px; padding:1px 7px; font-size:0.68rem; font-weight:700;
+}
+.kanban-col {
+  flex:1; min-width:0; display:flex; flex-direction:column; gap:8px;
+  background:#f8fafc; border-radius:10px; padding:10px;
+}
+.kanban-col-header {
+  font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.5px;
+  padding-bottom:6px; border-bottom:2px solid currentColor; margin-bottom:4px;
+}
+.kanban-task {
+  background:#fff; border-radius:8px; padding:10px 12px;
+  box-shadow:0 1px 3px rgba(0,0,0,.08); border-left:3px solid transparent;
+  position:relative;
+}
+.kanban-task:hover .kt-actions { opacity:1; }
+.kt-title { font-size:0.85rem; font-weight:600; color:#1e293b; margin-bottom:4px; }
+.kt-freq {
+  display:inline-block; font-size:0.65rem; font-weight:700;
+  border-radius:10px; padding:1px 8px; margin-bottom:6px;
+}
+.kt-actions { opacity:0; transition:opacity .15s; display:flex; gap:4px; margin-top:6px; }
+.kt-actions button {
+  font-size:0.68rem; padding:2px 8px; border-radius:4px; border:1px solid #e2e8f0;
+  background:#f8fafc; cursor:pointer; font-weight:600; transition:all .15s;
+}
+.kt-actions button:hover { background:#1a2744; color:#fff; border-color:#1a2744; }
+.kt-del { color:#dc2626 !important; }
+.kt-del:hover { background:#dc2626 !important; color:#fff !important; border-color:#dc2626 !important; }
+.kt-add-form { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+.kanban-log-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:6px 10px; border-radius:6px; background:#f8fafc;
+  font-size:0.8rem; cursor:pointer; transition:background .15s;
+}
+.kanban-log-row:hover { background:#e0f2fe; }
 </style>
 </head>
 <body>
@@ -4071,23 +4319,25 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
       </div>
 
+      <!-- Hidden stat placeholders (kept for JS compatibility, outside grid row) -->
+      <div id="statHeadcount" class="d-none"></div>
+      <div id="statFlagged" class="d-none"></div>
+
       <div class="row g-3 mb-4">
-        <div class="col-6 col-lg-3"><div class="stat-card"><div class="val" id="statActive">—</div><div class="lbl">Active</div></div></div>
-        <div class="col-6 col-lg-3"><div class="stat-card"><div class="val" id="statAssociates">—</div><div class="lbl">Associates</div></div></div>
-        <div class="col-6 col-lg-3"><div class="stat-card"><div class="val" id="statInBuilding">—</div><div class="lbl">In Building</div></div></div>
-        <div id="statHeadcount" class="d-none"></div>
-        <div id="statFlagged" class="d-none"></div>
+        <div class="col-6 col-lg-3"><div class="stat-card h-100"><div class="val" id="statActive">—</div><div class="lbl">Active</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat-card h-100"><div class="val" id="statAssociates">—</div><div class="lbl">Associates</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat-card h-100"><div class="val" id="statInBuilding">—</div><div class="lbl">In Building</div></div></div>
         <div class="col-6 col-lg-3">
-          <div class="stat-card" style="display:flex;flex-direction:column;gap:2px">
-            <div class="d-flex justify-content-between align-items-baseline">
+          <div class="stat-card h-100" style="display:flex;flex-direction:column;justify-content:center;gap:6px">
+            <div class="d-flex justify-content-between align-items-center">
               <span class="lbl" style="margin-top:0">Call Outs</span>
               <span class="val" id="statCallOuts" style="font-size:1.4rem">—</span>
             </div>
-            <div class="d-flex justify-content-between align-items-baseline">
+            <div class="d-flex justify-content-between align-items-center">
               <span class="lbl" style="margin-top:0">Early Outs</span>
               <span class="val" id="statEarlyOuts" style="font-size:1.4rem">—</span>
             </div>
-            <div class="d-flex justify-content-between align-items-baseline">
+            <div class="d-flex justify-content-between align-items-center">
               <span class="lbl" style="margin-top:0">Time Off</span>
               <span class="val" id="statTimeOff" style="font-size:1.4rem">—</span>
             </div>
@@ -5282,37 +5532,61 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   </div></div>
 </div>
 
-<!-- Create User -->
-<div class="modal fade" id="newUserModal" tabindex="-1">
-  <div class="modal-dialog"><div class="modal-content">
-    <div class="modal-header border-0 pb-0">
-      <h5 class="modal-title fw-bold">Create Team Account</h5>
-      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+<!-- Kanban Board Modal -->
+<div class="modal fade" id="kanbanModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-header border-0 pb-0" style="background:var(--navy);border-radius:0.5rem 0.5rem 0 0">
+      <h5 class="modal-title fw-bold text-white" id="kbModalTitle"><i class="fas fa-columns me-2" style="color:var(--orange)"></i>Daily Board</h5>
+      <div class="d-flex gap-2 ms-auto me-2">
+        <button class="btn btn-sm d-none" style="background:rgba(255,255,255,0.15);color:#fff;font-size:0.75rem" id="kbBackBtn" onclick="kbBack()">
+          <i class="fas fa-arrow-left me-1"></i>Back
+        </button>
+        <button class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:#fff;font-size:0.75rem" id="kbViewLogsBtn" onclick="kbShowLogs()">
+          <i class="fas fa-history me-1"></i>Past Logs
+        </button>
+        <button class="btn btn-sm" style="background:#f97316;color:#fff;font-size:0.75rem" onclick="kbLog()">
+          <i class="fas fa-check-circle me-1"></i>Log &amp; Clear Done
+        </button>
+      </div>
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
     </div>
-    <div class="modal-body">
-      <form id="newUserForm">
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">Full Name</label>
-          <input type="text" class="form-control" id="newDisplayName" placeholder="First Last">
+    <div class="modal-body" style="background:#f1f5f9;padding:1rem">
+
+      <!-- Add Task Form -->
+      <div id="kbBoardSection">
+        <div class="d-flex gap-2 mb-3 flex-wrap align-items-end">
+          <div style="flex:1;min-width:180px">
+            <label class="form-label small fw-semibold mb-1" style="color:#475569">Task Title</label>
+            <input type="text" class="form-control form-control-sm" id="kbNewTitle" placeholder="e.g. Check productivity reports…" onkeydown="if(event.key==='Enter')kbAddTask()">
+          </div>
+          <div>
+            <label class="form-label small fw-semibold mb-1" style="color:#475569">Frequency</label>
+            <select class="form-select form-select-sm" id="kbNewFreq" style="min-width:130px">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Bi-Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <button class="btn btn-sm btn-orange" onclick="kbAddTask()" style="white-space:nowrap">
+            <i class="fas fa-plus me-1"></i>Add Task
+          </button>
         </div>
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">Email</label>
-          <input type="email" class="form-control" id="newEmail" placeholder="supervisor@carparts.com">
+
+        <!-- Kanban columns -->
+        <div class="d-flex gap-3" id="kbBoard" style="min-height:300px;align-items:flex-start">
+          <div class="kanban-col"><div class="kanban-col-header" style="color:#64748b">To Do</div><p class="text-muted small text-center mt-3">No tasks yet</p></div>
+          <div class="kanban-col"><div class="kanban-col-header" style="color:#f97316">In Progress</div></div>
+          <div class="kanban-col"><div class="kanban-col-header" style="color:#16a34a">Done</div></div>
         </div>
-        <div>
-          <label class="form-label small fw-semibold">Role</label>
-          <select class="form-select" id="newRole">
-            <option value="viewer">Viewer — read only</option>
-            <option value="lead" selected>Lead — add notes, certs, nominate badges, view/add credentials</option>
-            <option value="supervisor">Supervisor — Lead access + private watch notes + delete notes</option>
-            <option value="admin">Admin — full access + user management + badge approvals</option>
-          </select>
-        </div>
-      </form>
-    </div>
-    <div class="modal-footer border-0 pt-0">
-      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-      <button class="btn btn-orange" id="createUserBtn" onclick="createUser()">Create Account</button>
+      </div>
+
+      <!-- Logs list -->
+      <div id="kbLogsSection" class="d-none">
+        <p class="text-muted small mb-2"><i class="fas fa-info-circle me-1"></i>Click a date to view the archived board snapshot.</p>
+        <div id="kbLogsList" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+
     </div>
   </div></div>
 </div>
@@ -5331,8 +5605,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabOcr"><i class="fas fa-camera me-1"></i>OCR from Image</a></li>
       </ul>
       <div class="tab-content">
-
-        <!-- Paste -->
         <div class="tab-pane fade show active" id="tabPaste">
           <p class="text-muted small mb-2">Copy the snapshot from Excel and paste it below — all fields import in one shot.</p>
           <textarea class="form-control mb-2" id="pasteArea" rows="10"
@@ -5340,11 +5612,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div id="pasteStatus" class="small mb-2"></div>
           <button class="btn btn-orange" onclick="parsePastedSnapshot()"><i class="fas fa-file-import me-1"></i>Import Snapshot</button>
         </div>
-
-        <!-- Manual -->
-        <!-- Manual -->
         <div class="tab-pane fade" id="tabManual">
-          <p class="text-muted small mb-3">Enter the values directly from the Performance Sna          <p class="text-muted small mb-3">Enter the values directly from the Performance Snapshot.</p>
+          <p class="text-muted small mb-3">Enter the values directly from the Performance Snapshot.</p>
           <div class="row g-3">
             <div class="col-6">
               <label class="form-label small fw-semibold">Employee ID <span class="text-danger">*</span></label>
@@ -5374,20 +5643,18 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div id="manualStatus" class="text-muted small mt-2"></div>
           <button class="btn btn-orange mt-3" onclick="saveManualEntry()"><i class="fas fa-check me-1"></i>Import Entry</button>
         </div>
-
-        <!-- OCR -->
         <div class="tab-pane fade" id="tabOcr">
           <p class="text-muted small">Upload a clear, cropped screenshot. Results vary by image quality — use Paste Snapshot for best results.</p>
           <input type="file" class="form-control mb-3" accept="image/*" onchange="handleImportFile(this)">
           <div id="importStatus" class="text-muted small mb-2"></div>
           <div id="importPreview"></div>
         </div>
-
       </div>
     </div>
   </div></div>
 </div>
 
+<!-- Time Off Modal -->
 <div class="modal fade" id="timeOffModal" tabindex="-1">
   <div class="modal-dialog"><div class="modal-content">
     <div class="modal-header border-0 pb-0">
