@@ -172,6 +172,7 @@ async function autoExpirePoints() {
 let currentUser = null;
 let currentUserRole = 'viewer';
 let currentAssociateId = null;
+window._getCurrentAssocId = () => currentAssociateId;
 let activeListeners = {};
 let allAssociates = [];
 let allCertsMap = {}; // { associateId: Set of cert keys }
@@ -4469,10 +4470,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">⭐ Points</div>
             </div>
           </div>
-          <button class="kanban-btn d-none" id="profileBoardBtn" onclick="openKanban(currentAssociateId, document.getElementById('profileName').textContent)" style="flex-direction:column;align-items:center;gap:4px;border-radius:12px;padding:14px 20px;min-width:100px">
-            <i class="fas fa-columns" style="font-size:1.4rem;margin-bottom:2px"></i>
-            <span style="font-size:0.8rem">Daily Board</span>
-            <span class="kb-count d-none" id="kb-count-profile" style="margin-top:2px;font-size:0.85rem;padding:3px 12px">—</span>
+          <button class="kanban-btn d-none" id="profileBoardBtn" onclick="openKanban(window._getCurrentAssocId(), document.getElementById('profileName').textContent)" style="flex-direction:column;align-items:center;gap:6px;border-radius:14px;padding:20px 28px;min-width:140px">
+            <i class="fas fa-columns" style="font-size:2rem;margin-bottom:2px"></i>
+            <span style="font-size:1rem;font-weight:700">Daily Board</span>
+            <span class="kb-count d-none" id="kb-count-profile" style="margin-top:2px;font-size:1rem;padding:4px 16px">—</span>
           </button>
         </div>
       </div>
