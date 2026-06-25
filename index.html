@@ -732,7 +732,7 @@ window.openProfile = async (id) => {
     getDocs(collection(db, 'supervisorTasks', id, 'board')).then(snap => {
       const countEl = document.getElementById('kb-count-profile');
       if (snap.empty) { countEl.textContent = '0'; countEl.classList.remove('d-none'); return; }
-      const active = Object.values(snap.data()).filter(t => t.status !== 'done').length;
+      const active = snap.docs.filter(d => d.data().status !== 'done').length;
       countEl.textContent = active;
       countEl.classList.remove('d-none');
     }).catch(() => {});
@@ -931,7 +931,7 @@ window.saveFlag = async () => {
 
 // ─── Notes ───────────────────────────────────────────────────────────
 function listenNotes(associateId) {
-  getDocs(collection(db, 'notes', associateId, 'entries')).then(snap => {
+  activeListeners['notes'] = onSnapshot(collection(db, 'notes', associateId, 'entries'), (snap) => {
     lastNotes = [];
     snap.forEach(d => lastNotes.push({ id: d.id, ...d.data() }));
     lastNotes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -1039,7 +1039,7 @@ function listenCreds(associateId) {
   if (currentUserRole === 'viewer') { section.classList.add('d-none'); return; }
   section.classList.remove('d-none');
 
-  getDocs(collection(db, 'credentials', associateId, 'entries')).then(snap => {
+  activeListeners['creds'] = onSnapshot(collection(db, 'credentials', associateId, 'entries'), (snap) => {
     const creds = [];
     snap.forEach(d => creds.push({ id: d.id, ...d.data() }));
     lastCreds = creds;
@@ -1151,7 +1151,7 @@ function listenWatchNotes(associateId) {
   if (!canSee) { section.classList.add('d-none'); return; }
   section.classList.remove('d-none');
 
-  getDocs(collection(db, 'watchnotes', associateId, 'entries')).then(snap => {
+  activeListeners['watchnotes'] = onSnapshot(collection(db, 'watchnotes', associateId, 'entries'), (snap) => {
     const notes = [];
     snap.forEach(d => notes.push({ id: d.id, ...d.data() }));
     notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -1223,7 +1223,7 @@ window.deleteWatchNote = async (noteId) => {
 // ─── Badges ───────────────────────────────────────────────────────────
 let lastBadges = [];
 function listenBadges(associateId) {
-  getDocs(collection(db, 'badges', associateId, 'entries')).then(snap => {
+  activeListeners['badges'] = onSnapshot(collection(db, 'badges', associateId, 'entries'), (snap) => {
     const badges = [];
     snap.forEach(d => badges.push({ id: d.id, ...d.data() }));
     lastBadges = badges;
@@ -2018,7 +2018,7 @@ function attTypeInfo(key) {
 }
 
 function listenAttendance(associateId) {
-  getDocs(collection(db, 'attendance', associateId, 'entries')).then(snap => {
+  activeListeners['attendance'] = onSnapshot(collection(db, 'attendance', associateId, 'entries'), (snap) => {
     lastAttendance = [];
     snap.forEach(d => lastAttendance.push({ id: d.id, ...d.data() }));
     lastAttendance.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -2100,7 +2100,7 @@ const WARNING_TIERS = [
 let lastWarnings = [];
 
 function listenWarnings(associateId) {
-  getDocs(collection(db, 'warnings', associateId, 'entries')).then(snap => {
+  activeListeners['warnings'] = onSnapshot(collection(db, 'warnings', associateId, 'entries'), (snap) => {
     lastWarnings = [];
     snap.forEach(d => lastWarnings.push({ id: d.id, ...d.data() }));
     lastWarnings.sort((a, b) => new Date(a.issuedAt) - new Date(b.issuedAt));
