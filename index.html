@@ -2151,6 +2151,24 @@ const SHIFT_SCHEDULES = {
   'B1': 'Tuesday – Friday, 5:00 A.M. to 4:30 P.M.'
 };
 
+window.saveSignedWarning = async (data) => {
+  try {
+    await addDoc(collection(db, 'signedWarnings', data.associateId, 'documents'), {
+      associateName: data.associateName,
+      tier: data.tier,
+      tierLabel: data.tierLabel,
+      points: data.points,
+      signedAt: data.signedAt,
+      savedAt: new Date().toISOString(),
+      signatures: data.signatures
+    });
+    console.log('Signed warning saved to HR records for', data.associateName);
+  } catch(e) {
+    console.error('saveSignedWarning error:', e);
+    throw e;
+  }
+};
+
 window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   const resolvedId = overrideAssocId || currentAssociateId;
   const assoc = allAssociates.find(a => a.id === resolvedId);
@@ -2198,13 +2216,13 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 
   const actionMap = {
     'documented-verbal': `A Documented Verbal Warning has been issued. Associate has been informed of their current attendance point total and the consequences of further occurrences. Associate is expected to improve attendance immediately.`,
-    'written-warning':   `A Written Warning has been issued. Associate has been counseled on attendance expectations and the impact of continued absences. Any further attendance infractions may result in a Final Warning or termination.`,
+    'written-warning':   `A Written Warning has been issued. Associate has been coached on attendance expectations and the impact of continued absences. Any further attendance infractions may result in a Final Warning or termination.`,
     'final-warning':     `A Final Warning has been issued. This is the last corrective step before termination. Associate has been advised that any additional attendance violations will result in immediate termination of employment.`,
     'termination':       `Associate has been notified of termination of employment due to continued attendance violations after all prior corrective steps were taken.`
   };
   const planMap = {
     'documented-verbal': `Associate and manager discussed the attendance policy and current point total. Associate is expected to report to work as scheduled. Any future unexcused absences, tardiness, or early departures will result in further disciplinary action.`,
-    'written-warning':   `Associate has been previously counseled regarding attendance. Associate must demonstrate immediate and sustained improvement. Failure to do so will result in a Final Warning or termination.`,
+    'written-warning':   `Associate has previously received coaching regarding attendance. Associate must demonstrate immediate and sustained improvement. Failure to do so will result in a Final Warning or termination.`,
     'final-warning':     `Associate has received prior corrective action for attendance. This is the final opportunity to correct attendance behavior. Associate must have zero unexcused occurrences going forward to remain employed.`,
     'termination':       `N/A — Employment has been terminated.`
   };
@@ -2225,7 +2243,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   @page { margin: 0.75in; }
   .doc-title { text-align:center; border:2px solid #1a2744; padding:10px 0 6px; margin-bottom:0; }
   .doc-title h1 { font-size:16pt; font-weight:bold; letter-spacing:1px; color:#1a2744; text-transform:uppercase; }
-  .doc-title h2 { font-size:11pt; font-weight:bold; color:#555; margin-top:2px; }
+  .doc-title h2 { font-size:11pt; font-weight:bold; color:#333; margin-top:2px; }
   .outer-table { width:100%; border-collapse:collapse; border:1.5px solid #1a2744; }
   .outer-table td, .outer-table th { border:1px solid #aaa; padding:0; vertical-align:top; }
   .sec-header { background:#1a2744; color:#fff; font-weight:bold; font-size:9.5pt; text-transform:uppercase; letter-spacing:0.5px; padding:6px 16px; }
@@ -2267,9 +2285,9 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 <div id="page-wrap" style="margin:48px 80px;">
 
 <div class="doc-title">
-  <div style="font-size:8.5pt;color:#888;letter-spacing:2px;margin-bottom:4px">LAS1 FULFILLMENT CENTER</div>
+  <div style="font-size:8.5pt;color:#555;letter-spacing:2px;margin-bottom:4px">CarParts.com</div>
   <h1>Employee Warning Notice</h1>
-  <h2>Attendance Policy</h2>
+  <h2>CarParts.com Attendance Policy</h2>
 </div>
 
 <table class="outer-table" style="margin-top:0">
@@ -2328,6 +2346,20 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
     <td colspan="4" class="field-cell" style="padding-bottom:6px">
       <div class="field-label" style="font-weight:bold;color:#111;margin-bottom:4px">Description of Infraction :</div>
       <div style="margin-bottom:6px;font-size:10pt">${assoc.name} has accumulated <strong>${pts} attendance point${pts!==1?'s':''}</strong> under the LAS1 Attendance Policy, triggering a <strong>${tier.label}</strong>.</div>
+      <div style="margin-bottom:8px;font-size:9pt;color:#333;border:1px solid #ccc;background:#f9f9f9;padding:8px 10px;border-radius:3px">
+        <div style="font-weight:bold;margin-bottom:4px;font-size:9pt">CarParts.com Attendance Policy (Section 4.2) — Point Schedule:</div>
+        <table style="width:100%;border-collapse:collapse;font-size:8.5pt">
+          <tr><td style="padding:2px 6px;border:1px solid #ddd;width:70%">Late Arrival (up to halfway point of shift)</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+0.5</td></tr>
+          <tr style="background:#f0f0f0"><td style="padding:2px 6px;border:1px solid #ddd">Late Arrival (after halfway point of shift)</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+1</td></tr>
+          <tr><td style="padding:2px 6px;border:1px solid #ddd">Late Return from Break (8+ minutes)</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+0.5</td></tr>
+          <tr style="background:#f0f0f0"><td style="padding:2px 6px;border:1px solid #ddd">Leave Early (after completing more than 50% of shift)</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+0.5</td></tr>
+          <tr><td style="padding:2px 6px;border:1px solid #ddd">Leave Early (after completing less than 50% of shift)</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+1</td></tr>
+          <tr style="background:#f0f0f0"><td style="padding:2px 6px;border:1px solid #ddd">Call-Out (no available Sick time to cover)</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+1</td></tr>
+          <tr><td style="padding:2px 6px;border:1px solid #ddd">Failure to follow advance notice for vacation/floating holiday</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+1</td></tr>
+          <tr style="background:#f0f0f0"><td style="padding:2px 6px;border:1px solid #ddd">No Call / No Show</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+2</td></tr>
+        </table>
+        <div style="margin-top:4px;font-size:8pt;color:#555">Points are removed from the employee's attendance record one (1) calendar year from the date of the occurrence. Legally protected absences (FMLA, ADA, approved sick leave, etc.) are not counted under this policy.</div>
+      </div>
       <table class="att-table">
         <thead><tr><th>Date</th><th>Offense</th><th style="text-align:center">Points</th></tr></thead>
         <tbody>${attRows}</tbody>
@@ -2385,20 +2417,150 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   </tr>
   <tr>
     <td colspan="4" style="padding:0">
-      <table class="sig-table">
+      <table class="sig-table" id="sig-table-print">
         <tr>
-          <td><div class="sig-line">Employee Signature<br><span style="font-size:8.5pt">Date: _______________</span></div></td>
-          <td><div class="sig-line">Manager Signature<br><span style="font-size:8.5pt">Date: _______________</span></div></td>
-          <td><div class="sig-line">Witness Signature <span style="font-size:8pt;color:#888">(if employee refuses to sign)</span><br><span style="font-size:8.5pt">Date: _______________</span></div></td>
+          <td style="padding:6px 8px 4px;vertical-align:top">
+            <div style="font-size:8pt;color:#555;margin-bottom:3px">Employee Signature</div>
+            <div class="sig-canvas-wrap" id="wrap-employee">
+              <canvas id="sig-employee" width="220" height="64" style="border:1.5px solid #555;border-radius:3px;cursor:crosshair;display:block;background:#fff;touch-action:none"></canvas>
+              <button class="clear-btn" onclick="clearSig('sig-employee')">✕ Clear</button>
+            </div>
+            <div class="sig-img-wrap" id="img-employee" style="display:none"><img id="imgdata-employee" style="height:64px;border-bottom:1.5px solid #333"></div>
+            <div style="font-size:8.5pt;margin-top:3px">Date: <span id="sigdate-employee"></span></div>
+          </td>
+          <td style="padding:6px 8px 4px;vertical-align:top">
+            <div style="font-size:8pt;color:#555;margin-bottom:3px">Manager Signature</div>
+            <div class="sig-canvas-wrap" id="wrap-manager">
+              <canvas id="sig-manager" width="220" height="64" style="border:1.5px solid #555;border-radius:3px;cursor:crosshair;display:block;background:#fff;touch-action:none"></canvas>
+              <button class="clear-btn" onclick="clearSig('sig-manager')">✕ Clear</button>
+            </div>
+            <div class="sig-img-wrap" id="img-manager" style="display:none"><img id="imgdata-manager" style="height:64px;border-bottom:1.5px solid #333"></div>
+            <div style="font-size:8.5pt;margin-top:3px">Date: <span id="sigdate-manager"></span></div>
+          </td>
+          <td style="padding:6px 8px 4px;vertical-align:top">
+            <div style="font-size:8pt;color:#555;margin-bottom:3px">Witness Signature <span style="color:#888">(if employee refuses)</span></div>
+            <div class="sig-canvas-wrap" id="wrap-witness">
+              <canvas id="sig-witness" width="220" height="64" style="border:1.5px solid #555;border-radius:3px;cursor:crosshair;display:block;background:#fff;touch-action:none"></canvas>
+              <button class="clear-btn" onclick="clearSig('sig-witness')">✕ Clear</button>
+            </div>
+            <div class="sig-img-wrap" id="img-witness" style="display:none"><img id="imgdata-witness" style="height:64px;border-bottom:1.5px solid #333"></div>
+            <div style="font-size:8.5pt;margin-top:3px">Date: <span id="sigdate-witness"></span></div>
+          </td>
         </tr>
       </table>
     </td>
   </tr>
 </table>
 
-<div style="text-align:center;margin-top:20px">
-  <button onclick="window.print()" style="padding:10px 32px;background:#1a2744;color:#fff;border:none;border-radius:6px;font-size:11pt;cursor:pointer;font-weight:bold">🖨️ Print / Save as PDF</button>
+<div id="action-bar" style="text-align:center;margin-top:20px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+  <button onclick="window.print()" style="padding:10px 28px;background:#555;color:#fff;border:none;border-radius:6px;font-size:10.5pt;cursor:pointer;font-weight:bold">🖨️ Print Unsigned Copy</button>
+  <button onclick="saveAndPrint()" style="padding:10px 28px;background:#1a2744;color:#fff;border:none;border-radius:6px;font-size:10.5pt;cursor:pointer;font-weight:bold">✍️ Save Signed Copy to HR</button>
 </div>
+<div id="save-status" style="text-align:center;margin-top:10px;font-size:10pt;display:none"></div>
+
+<style>
+  .clear-btn { font-size:8pt;padding:2px 8px;margin-top:3px;background:#eee;border:1px solid #bbb;border-radius:3px;cursor:pointer; }
+  @media print { #action-bar, .clear-btn, #save-status { display:none!important; } .sig-canvas-wrap { display:none!important; } .sig-img-wrap { display:block!important; } }
+</style>
+
+<script>
+(function(){
+  const canvases = ['sig-employee','sig-manager','sig-witness'];
+  canvases.forEach(id => {
+    const canvas = document.getElementById(id);
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+    function getPos(e) {
+      const r = canvas.getBoundingClientRect();
+      const src = e.touches ? e.touches[0] : e;
+      return { x: src.clientX - r.left, y: src.clientY - r.top };
+    }
+    function start(e) { e.preventDefault(); drawing = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); }
+    function move(e) { e.preventDefault(); if (!drawing) return; const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); }
+    function end(e) { e.preventDefault(); drawing = false; }
+
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    canvas.addEventListener('mouseup', end);
+    canvas.addEventListener('mouseleave', end);
+    canvas.addEventListener('touchstart', start, {passive:false});
+    canvas.addEventListener('touchmove', move, {passive:false});
+    canvas.addEventListener('touchend', end);
+  });
+
+  window.clearSig = function(id) {
+    const canvas = document.getElementById(id);
+    canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+  };
+
+  function isBlank(canvas) {
+    const d = canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+    for (let i=3; i<d.length; i+=4) { if (d[i] > 0) return false; }
+    return true;
+  }
+
+  function today() {
+    const d = new Date();
+    return (d.getMonth()+1)+'/'+d.getDate()+'/'+d.getFullYear();
+  }
+
+  window.saveAndPrint = async function() {
+    const empCanvas = document.getElementById('sig-employee');
+    const mgrCanvas = document.getElementById('sig-manager');
+    const witCanvas = document.getElementById('sig-witness');
+
+    if (isBlank(empCanvas) && isBlank(mgrCanvas)) {
+      alert('Please provide at least one signature before saving.');
+      return;
+    }
+
+    const todayStr = today();
+    const sigs = {};
+    ['employee','manager','witness'].forEach(role => {
+      const c = document.getElementById('sig-'+role);
+      if (!isBlank(c)) {
+        sigs[role] = c.toDataURL('image/png');
+        document.getElementById('sigdate-'+role).textContent = todayStr;
+        document.getElementById('imgdata-'+role).src = sigs[role];
+        document.getElementById('img-'+role).style.display = 'block';
+        document.getElementById('wrap-'+role).style.display = 'none';
+      }
+    });
+
+    // Save to Firebase via main window
+    const status = document.getElementById('save-status');
+    status.style.display = 'block';
+    status.style.color = '#555';
+    status.textContent = 'Saving to HR records…';
+
+    try {
+      if (window.opener && window.opener.saveSignedWarning) {
+        await window.opener.saveSignedWarning({
+          associateId: '${resolvedId}',
+          associateName: '${assoc.name}',
+          tier: '${tierKey}',
+          tierLabel: '${tier ? tier.label : ''}',
+          points: ${pts},
+          signedAt: todayStr,
+          signatures: sigs
+        });
+        status.style.color = '#16a34a';
+        status.textContent = '✓ Signed copy saved to HR records. Printing associate copy…';
+      } else {
+        status.style.color = '#d97706';
+        status.textContent = '⚠ Could not reach main app — printing signed copy only.';
+      }
+    } catch(e) {
+      status.style.color = '#dc2626';
+      status.textContent = '✗ Save failed: ' + e.message;
+    }
+
+    setTimeout(() => window.print(), 800);
+  };
+})();
+</script>
 
 </div><!-- end #page-wrap -->
 </body>
