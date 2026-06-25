@@ -10,7 +10,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getDatabase, ref, set, get, push, update, remove, onValue, off, onDisconnect, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, set, get, push, update, remove, onValue, off, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMPDpzhZEWZjP9SptREKVSB4dmdhY5cpM",
@@ -204,12 +204,6 @@ onAuthStateChanged(auth, async (user) => {
         document.getElementById('currentUserRole').textContent = 'Admin';
       }
     }
-    // ── Presence tracking ──
-    const presRef = ref(db, `presence/${user.uid}`);
-    const displayName = (await get(ref(db, `users/${user.uid}`))).val()?.displayName || user.email;
-    await set(presRef, { name: displayName, role: currentUserRole, online: true, since: new Date().toISOString() });
-    onDisconnect(presRef).remove();
-
     showApp();
     // Resolve the associate record for the logged-in user (match by displayName)
     const _uSnap = await get(ref(db, `users/${user.uid}`));
@@ -437,6 +431,7 @@ function renderDashboard() {
 
   // Fetch today's attendance for stats + banner update (no recursive renderDashboard)
   const today = new Date().toISOString().split('T')[0];
+  const _todayKey = new Date().toISOString().split('T')[0];
   get(ref(db,'attendance')).then(snap => {
     const callOutTypes  = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('call-out')).map(t => t.key));
     const earlyOutTypes = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('left-early')).map(t => t.key));
@@ -937,9 +932,7 @@ window.saveFlag = async () => {
 
 // ─── Notes ───────────────────────────────────────────────────────────
 function listenNotes(associateId) {
-  const notesRef = ref(db, `notes/${associateId}`);
-  activeListeners['notes'] = notesRef;
-  onValue(notesRef, (snap) => {
+  get(ref(db, `notes/${associateId}`)).then(snap => {
     lastNotes = [];
     if (snap.exists()) Object.entries(snap.val()).forEach(([id, n]) => lastNotes.push({ id, ...n }));
     lastNotes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -1047,9 +1040,7 @@ function listenCreds(associateId) {
   if (currentUserRole === 'viewer') { section.classList.add('d-none'); return; }
   section.classList.remove('d-none');
 
-  const cRef = ref(db, `credentials/${associateId}`);
-  activeListeners['credentials'] = cRef;
-  onValue(cRef, (snap) => {
+  get(ref(db, `credentials/${associateId}`)).then(snap => {
     const creds = [];
     if (snap.exists()) Object.entries(snap.val()).forEach(([id, c]) => creds.push({ id, ...c }));
     lastCreds = creds;
@@ -1161,9 +1152,7 @@ function listenWatchNotes(associateId) {
   if (!canSee) { section.classList.add('d-none'); return; }
   section.classList.remove('d-none');
 
-  const wRef = ref(db, `watchnotes/${associateId}`);
-  activeListeners['watchnotes'] = wRef;
-  onValue(wRef, (snap) => {
+  get(ref(db, `watchnotes/${associateId}`)).then(snap => {
     const notes = [];
     if (snap.exists()) Object.entries(snap.val()).forEach(([id, n]) => notes.push({ id, ...n }));
     notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -1235,9 +1224,7 @@ window.deleteWatchNote = async (noteId) => {
 // ─── Badges ───────────────────────────────────────────────────────────
 let lastBadges = [];
 function listenBadges(associateId) {
-  const badgeRef = ref(db, `badges/${associateId}`);
-  activeListeners['badges'] = badgeRef;
-  onValue(badgeRef, (snap) => {
+  get(ref(db, `badges/${associateId}`)).then(snap => {
     const badges = [];
     if (snap.exists()) Object.entries(snap.val()).forEach(([id, b]) => badges.push({ id, ...b }));
     lastBadges = badges;
@@ -1405,9 +1392,7 @@ window.removeBadge = async (badgeId) => {
 
 // ─── Certifications ───────────────────────────────────────────────────
 function listenCerts(associateId) {
-  const certRef = ref(db, `certs/${associateId}`);
-  activeListeners['certs'] = certRef;
-  onValue(certRef, (snap) => {
+  get(ref(db, `certs/${associateId}`)).then(snap => {
     const certs = snap.exists() ? snap.val() : {};
     const count = Object.keys(certs).length;
     document.getElementById('statCertCount').textContent = count;
@@ -2035,9 +2020,7 @@ function attTypeInfo(key) {
 }
 
 function listenAttendance(associateId) {
-  const attRef = ref(db, `attendance/${associateId}`);
-  activeListeners['attendance'] = attRef;
-  onValue(attRef, snap => {
+  get(ref(db, `attendance/${associateId}`)).then(snap => {
     lastAttendance = [];
     if (snap.exists()) Object.entries(snap.val()).forEach(([id, e]) => lastAttendance.push({ id, ...e }));
     lastAttendance.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -2119,9 +2102,7 @@ const WARNING_TIERS = [
 let lastWarnings = [];
 
 function listenWarnings(associateId) {
-  const wRef = ref(db, `warnings/${associateId}`);
-  activeListeners['warnings'] = wRef;
-  onValue(wRef, snap => {
+  get(ref(db, `warnings/${associateId}`)).then(snap => {
     lastWarnings = [];
     if (snap.exists()) Object.entries(snap.val()).forEach(([id, w]) => lastWarnings.push({ id, ...w }));
     lastWarnings.sort((a, b) => new Date(a.issuedAt) - new Date(b.issuedAt));
@@ -3103,24 +3084,9 @@ window.clearPlFilters = () => {
 };
 
 // ─── Admin Panel ──────────────────────────────────────────────────────
-let activeUsersListOpen = false;
 window.loadAdminPanel = () => {
   showView('admin');
   detachAll();
-
-  // Live presence listener
-  const presRef = ref(db, 'presence');
-  activeListeners['presence'] = presRef;
-  onValue(presRef, (snap) => {
-    const online = [];
-    if (snap.exists()) Object.values(snap.val()).forEach(u => online.push(u));
-    document.getElementById('activeUsersCount').textContent = online.length;
-    const listEl = document.getElementById('activeUsersList');
-    listEl.innerHTML = online.length
-      ? `<div class="fw-semibold small mb-2" style="color:var(--navy)"><i class="fas fa-circle text-success me-1" style="font-size:0.6rem"></i>Currently Online</div>` +
-        online.map(u => `<div class="active-user-row"><span class="active-user-dot"></span><span class="fw-semibold">${escapeHtml(u.name)}</span><span class="badge ${u.role==='admin'?'bg-danger':u.role==='leader'?'bg-primary':'bg-secondary'} ms-1">${capitalize(u.role||'viewer')}</span><span class="text-muted ms-auto">since ${formatTime(u.since)}</span></div>`).join('')
-      : '<div class="text-muted small">No users currently online.</div>';
-  });
 
   const usersRef = ref(db, 'users');
   activeListeners['users'] = usersRef;
@@ -5153,17 +5119,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     <div id="adminView" class="view d-none">
       <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <h1 class="page-title"><i class="fas fa-shield-alt me-2" style="color:var(--orange)"></i>Admin Panel</h1>
-        <div class="d-flex align-items-center gap-2">
-          <div class="active-users-pill" id="activeUsersPill" title="Users currently online" onclick="document.getElementById('activeUsersList').classList.toggle('d-none')">
-            <span class="active-dot"></span>
-            <span id="activeUsersCount">—</span>
-            <span class="active-users-label">online</span>
-          </div>
-          <button class="btn btn-sm btn-orange" onclick="openCreateUser()"><i class="fas fa-user-plus me-1"></i>Create Account</button>
-        </div>
+        <button class="btn btn-sm btn-orange" onclick="openCreateUser()"><i class="fas fa-user-plus me-1"></i>Create Account</button>
       </div>
-      <!-- Active users popover list -->
-      <div id="activeUsersList" class="d-none active-users-list mb-3"></div>
 
       <!-- Tab Visibility -->
       <div class="admin-card mb-4">
