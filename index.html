@@ -916,7 +916,7 @@ window.exportToClaude = async () => {
 window.openFlagModal = () => {
   const assoc = allAssociates.find(a => a.id === currentAssociateId);
   document.getElementById('flagSelect').value = assoc?.flag || '';
-  new bootstrap.Modal(document.getElementById('flagModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('flagModal')).show();
 };
 window.saveFlag = async () => {
   const flag = document.getElementById('flagSelect').value;
@@ -975,7 +975,7 @@ function renderNotes(notes) {
 
 window.openAddNote = () => {
   document.getElementById('noteForm').reset();
-  new bootstrap.Modal(document.getElementById('noteModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('noteModal')).show();
 };
 // ─── Activity Tracking ────────────────────────────────────────────────
 function recordActivity(assocId) {
@@ -1090,7 +1090,7 @@ window.openAddCred = () => {
   document.getElementById('credForm').reset();
   // Reset password field to type=password
   document.getElementById('credPassword').type = 'password';
-  new bootstrap.Modal(document.getElementById('credModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('credModal')).show();
 };
 
 window.toggleCredModalPw = (btn) => {
@@ -1192,7 +1192,7 @@ window.toggleWatchNotes = () => {
 
 window.openAddWatchNote = () => {
   document.getElementById('watchNoteForm').reset();
-  new bootstrap.Modal(document.getElementById('watchNoteModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('watchNoteModal')).show();
 };
 
 window.saveWatchNote = async () => {
@@ -1343,7 +1343,7 @@ window.openNominateBadge = () => {
   const sel = document.getElementById('badgeSelect');
   sel.innerHTML = BADGES.map(b => `<option value="${b.label}">${b.emoji} ${b.label}${b.tier==='elite' ? ' ⭐' : ''}</option>`).join('');
   document.getElementById('badgeReason').value = '';
-  new bootstrap.Modal(document.getElementById('badgeModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('badgeModal')).show();
 };
 window.saveBadgeNomination = async () => {
   const badge  = document.getElementById('badgeSelect').value;
@@ -1440,7 +1440,7 @@ window.openCertModal = async (key, label) => {
   document.getElementById('certBtnCertified').classList.toggle('active', status === 'certified');
   document.getElementById('certBtnTraining').classList.toggle('active', status === 'training');
   document.getElementById('certBtnRemove').classList.toggle('d-none', !_certModalExisting);
-  new bootstrap.Modal(document.getElementById('certModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('certModal')).show();
 };
 
 window.setCertStatus = async (newStatus) => {
@@ -1549,7 +1549,7 @@ window.openAddAssociate = () => {
   document.getElementById('assocForm').reset();
   document.getElementById('assocId').value = '';
   populateReportsTo('');
-  new bootstrap.Modal(document.getElementById('assocModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('assocModal')).show();
 };
 window.openEditAssociate = (id, data) => {
   document.getElementById('assocModalTitle').textContent = 'Edit Associate';
@@ -1565,7 +1565,7 @@ window.openEditAssociate = (id, data) => {
   document.getElementById('assocBirthday').value   = data.birthday   || '';
   document.getElementById('assocOpsManager').value = data.opsManager || '';
   populateReportsTo(data.reportsTo || '');
-  new bootstrap.Modal(document.getElementById('assocModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('assocModal')).show();
 };
 window.saveAssociate = async () => {
   const id   = document.getElementById('assocId').value;
@@ -2086,7 +2086,7 @@ window.openAttendanceModal = () => {
   document.getElementById('attTypeSelect').value = '';
   document.getElementById('attNote').value = '';
   document.getElementById('attDate').value = new Date().toISOString().split('T')[0];
-  new bootstrap.Modal(document.getElementById('attModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('attModal')).show();
 };
 
 // ─── Disciplinary Warning Log ──────────────────────────────────────────
@@ -2155,18 +2155,24 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   const assoc = allAssociates.find(a => a.id === resolvedId);
   if (!assoc) return;
 
-  const tier      = WARNING_TIERS.find(t => t.key === tierKey);
+  // Open the window immediately (must be synchronous from click) to avoid popup blockers
+  const win = window.open('', '_blank');
+  if (!win) { alert('Pop-ups are blocked. Please allow pop-ups for this page to print warning notices.'); return; }
+  win.document.write('<html><body style="font-family:Arial;padding:40px;color:#666;text-align:center"><p style="font-size:14pt">Loading document…</p></body></html>');
+
+  const tier = WARNING_TIERS.find(t => t.key === tierKey);
+
   // Load warnings fresh if coming from team view (no lastWarnings for this assoc)
   let warnSource = lastWarnings;
   if (overrideAssocId && overrideAssocId !== currentAssociateId) {
     const wSnap = await getDocs(collection(db, 'warnings', resolvedId, 'entries'));
-    warnSource = !wSnap.empty ? Object.entries(wSnap.data()).map(([id,w]) => ({id,...w})) : [];
+    warnSource = wSnap.docs.map(d => ({id: d.id, ...d.data()}));
   }
   // Load attendance fresh if coming from team view
   let attSource = lastAttendance;
   if (overrideAssocId && overrideAssocId !== currentAssociateId) {
     const aSnap = await getDocs(collection(db, 'attendance', resolvedId, 'entries'));
-    attSource = !aSnap.empty ? aSnap.docs.map(d => ({id:d.id,...d.data()})) : [];
+    attSource = aSnap.docs.map(d => ({id: d.id, ...d.data()}));
   }
   const warnings  = warnSource.filter(w => w.type === tierKey).sort((a,b) => new Date(b.issuedAt)-new Date(a.issuedAt));
   const latest    = warnings[0];
@@ -2381,7 +2387,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 </body>
 </html>`;
 
-  const win = window.open('', '_blank');
+  win.document.open();
   win.document.write(html);
   win.document.close();
 };
@@ -2572,7 +2578,7 @@ window.openTimeOffModal = (assocId, date) => {
     if (a.id === assocId) o.selected = true;
     sel.appendChild(o);
   });
-  new bootstrap.Modal(document.getElementById('timeOffModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('timeOffModal')).show();
 };
 
 window.saveTimeOff = async () => {
@@ -3462,7 +3468,7 @@ window.submitAttImport = async () => {
 
 window.openCreateUser = () => {
   document.getElementById('newUserForm').reset();
-  new bootstrap.Modal(document.getElementById('newUserModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('newUserModal')).show();
 };
 window.createUser = async () => {
   const email    = document.getElementById('newEmail').value.trim();
@@ -3526,7 +3532,7 @@ window.openImport = () => {
   document.getElementById('manualUnits').value  = '';
   document.getElementById('manualRole').value   = '';
   document.getElementById('manualOnPace').value = '';
-  new bootstrap.Modal(document.getElementById('importModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('importModal')).show();
 };
 
 window.parsePastedSnapshot = async () => {
@@ -3799,7 +3805,7 @@ window.openKanban = async (assocId, assocName) => {
   document.getElementById('kbViewLogsBtn').classList.remove('d-none');
   document.getElementById('kbBackBtn').classList.add('d-none');
   await _kbRefreshBoard();
-  new bootstrap.Modal(document.getElementById('kanbanModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('kanbanModal')).show();
 };
 
 async function _kbRefreshBoard() {
