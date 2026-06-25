@@ -932,7 +932,7 @@ window.saveFlag = async () => {
 
 // ─── Notes ───────────────────────────────────────────────────────────
 function listenNotes(associateId) {
-  activeListeners['notes'] = onSnapshot(collection(db, 'notes', associateId, 'entries'), (snap) => {
+  getDocs(collection(db, 'notes', associateId, 'entries')).then(snap => {
     lastNotes = [];
     snap.forEach(d => lastNotes.push({ id: d.id, ...d.data() }));
     lastNotes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -1040,7 +1040,7 @@ function listenCreds(associateId) {
   if (currentUserRole === 'viewer') { section.classList.add('d-none'); return; }
   section.classList.remove('d-none');
 
-  activeListeners['creds'] = onSnapshot(collection(db, 'credentials', associateId, 'entries'), (snap) => {
+  getDocs(collection(db, 'credentials', associateId, 'entries')).then(snap => {
     const creds = [];
     snap.forEach(d => creds.push({ id: d.id, ...d.data() }));
     lastCreds = creds;
@@ -1152,7 +1152,7 @@ function listenWatchNotes(associateId) {
   if (!canSee) { section.classList.add('d-none'); return; }
   section.classList.remove('d-none');
 
-  activeListeners['watchnotes'] = onSnapshot(collection(db, 'watchnotes', associateId, 'entries'), (snap) => {
+  getDocs(collection(db, 'watchnotes', associateId, 'entries')).then(snap => {
     const notes = [];
     snap.forEach(d => notes.push({ id: d.id, ...d.data() }));
     notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -1224,7 +1224,7 @@ window.deleteWatchNote = async (noteId) => {
 // ─── Badges ───────────────────────────────────────────────────────────
 let lastBadges = [];
 function listenBadges(associateId) {
-  activeListeners['badges'] = onSnapshot(collection(db, 'badges', associateId, 'entries'), (snap) => {
+  getDocs(collection(db, 'badges', associateId, 'entries')).then(snap => {
     const badges = [];
     snap.forEach(d => badges.push({ id: d.id, ...d.data() }));
     lastBadges = badges;
@@ -2019,7 +2019,7 @@ function attTypeInfo(key) {
 }
 
 function listenAttendance(associateId) {
-  activeListeners['attendance'] = onSnapshot(collection(db, 'attendance', associateId, 'entries'), (snap) => {
+  getDocs(collection(db, 'attendance', associateId, 'entries')).then(snap => {
     lastAttendance = [];
     snap.forEach(d => lastAttendance.push({ id: d.id, ...d.data() }));
     lastAttendance.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -2101,7 +2101,7 @@ const WARNING_TIERS = [
 let lastWarnings = [];
 
 function listenWarnings(associateId) {
-  activeListeners['warnings'] = onSnapshot(collection(db, 'warnings', associateId, 'entries'), (snap) => {
+  getDocs(collection(db, 'warnings', associateId, 'entries')).then(snap => {
     lastWarnings = [];
     snap.forEach(d => lastWarnings.push({ id: d.id, ...d.data() }));
     lastWarnings.sort((a, b) => new Date(a.issuedAt) - new Date(b.issuedAt));
@@ -2594,12 +2594,12 @@ window.loadTimeOff = () => {
   showView('timeoff');
   detachAll();
   _allTimeOff = [];
-  const toEntryListeners = new Set();
 
-  activeListeners['toAssociates'] = onSnapshot(collection(db, 'associates'), (snap) => {
+  // One-time read: fetch associates then fetch all their timeOff entries
+  getDocs(collection(db, 'associates')).then(async snap => {
     allAssociates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // Populate filter dropdown once
+    // Populate filter dropdown
     const sel = document.getElementById('toFilterAssoc');
     if (sel && sel.options.length <= 1) {
       sel.innerHTML = '<option value="">All Associates</option>';
@@ -2608,20 +2608,14 @@ window.loadTimeOff = () => {
       });
     }
 
-    // Set up a per-associate entries listener for any associate not yet tracked
-    allAssociates.forEach(assoc => {
-      if (toEntryListeners.has(assoc.id)) return;
-      toEntryListeners.add(assoc.id);
-      activeListeners[`toEnt_${assoc.id}`] = onSnapshot(
-        collection(db, 'timeOff', assoc.id, 'entries'),
-        (entSnap) => {
-          _allTimeOff = _allTimeOff.filter(e => e.assocId !== assoc.id);
-          entSnap.docs.forEach(d => _allTimeOff.push({ id: d.id, assocId: assoc.id, assocName: assoc.name, ...d.data() }));
-          _allTimeOff.sort((a,b) => b.startDate.localeCompare(a.startDate));
-          renderTimeOff();
-        }
-      );
-    });
+    // Fetch all per-associate timeOff entries in parallel (one-time reads)
+    await Promise.all(allAssociates.map(assoc =>
+      getDocs(collection(db, 'timeOff', assoc.id, 'entries')).then(entSnap => {
+        entSnap.docs.forEach(d => _allTimeOff.push({ id: d.id, assocId: assoc.id, assocName: assoc.name, ...d.data() }));
+      })
+    ));
+    _allTimeOff.sort((a,b) => b.startDate.localeCompare(a.startDate));
+    renderTimeOff();
   });
 };
 
@@ -3017,12 +3011,12 @@ window.loadAttendance = () => {
   showView('attendance');
   detachAll();
   _allAttEntries = [];
-  const attEntryListeners = new Set();
 
-  activeListeners['attAssociates'] = onSnapshot(collection(db, 'associates'), (snap) => {
+  // One-time read: fetch associates then fetch all their attendance entries in parallel
+  getDocs(collection(db, 'associates')).then(async snap => {
     allAssociates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // Populate assoc filter dropdown once
+    // Populate assoc filter dropdown
     const assocSel = document.getElementById('attFilterAssoc');
     if (assocSel && assocSel.options.length <= 1) {
       allAssociates.filter(a => a.status === 'active').sort((a,b) => a.name.localeCompare(b.name)).forEach(a => {
@@ -3030,22 +3024,13 @@ window.loadAttendance = () => {
       });
     }
 
-    // Set up a per-associate entries listener for any associate not yet tracked
-    allAssociates.forEach(assoc => {
-      if (attEntryListeners.has(assoc.id)) return;
-      attEntryListeners.add(assoc.id);
-      activeListeners[`attEnt_${assoc.id}`] = onSnapshot(
-        collection(db, 'attendance', assoc.id, 'entries'),
-        (entSnap) => {
-          _allAttEntries = _allAttEntries.filter(e => e.assocId !== assoc.id);
-          entSnap.docs.forEach(d => _allAttEntries.push({ id: d.id, assocId: assoc.id, assocName: assoc.name, ...d.data() }));
-          _allAttEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
-          renderTeamAttendance(_allAttEntries);
-        }
-      );
-    });
-
-    // Re-render risk panel immediately when associate points change
+    // Fetch all per-associate attendance entries in parallel (one-time reads)
+    await Promise.all(allAssociates.map(assoc =>
+      getDocs(collection(db, 'attendance', assoc.id, 'entries')).then(entSnap => {
+        entSnap.docs.forEach(d => _allAttEntries.push({ id: d.id, assocId: assoc.id, assocName: assoc.name, ...d.data() }));
+      })
+    ));
+    _allAttEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
     renderTeamAttendance(_allAttEntries);
   });
 };
@@ -3218,14 +3203,13 @@ window.loadPointsLog = () => {
     [...allAssociates].sort((a,b) => a.name.localeCompare(b.name))
       .map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
 
-  // Listen to all pointslog entries across all associates
-  activeListeners['pointslog'] = onSnapshot(collection(db, 'pointslog'), (snap) => {
+  // One-time read of all pointslog entries across all associates
+  getDocs(collection(db, 'pointslog')).then(snap => {
     allPointsLog = [];
     // pointslog/{assocId} docs each contain the entries as a flat object, but in Firestore
     // we store each entry as a doc in pointslog/{assocId}/entries subcollection.
-    // The onSnapshot here listens to the top-level collection; individual entry docs are
-    // fetched separately. For a live feed we use a collectionGroup query instead.
-    // NOTE: This listener is replaced by a collectionGroup approach below.
+    // The top-level collection read here is used to populate the filter; individual entry docs are
+    // fetched separately via getDocs on demand.
     renderPointsLog();
   });
 };
@@ -5762,186 +5746,4 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <label class="form-label small fw-semibold">Password</label>
           <div class="input-group">
             <input type="password" class="form-control" id="credPassword" placeholder="Password">
-            <button type="button" class="btn btn-outline-secondary" onclick="toggleCredModalPw(this)"><i class="fas fa-eye"></i></button>
-          </div>
-        </div>
-        <div class="mb-2">
-          <label class="form-label small fw-semibold">Notes</label>
-          <input type="text" class="form-control" id="credNotes" placeholder="e.g. temp password, reset on first login…">
-        </div>
-      </form>
-    </div>
-    <div class="modal-footer border-0 pt-0">
-      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-      <button class="btn btn-orange" id="saveCredBtn" onclick="saveCred()">Save</button>
-    </div>
-  </div></div>
-</div>
-
-<!-- Add Watch Note -->
-<div class="modal fade" id="watchNoteModal" tabindex="-1">
-  <div class="modal-dialog"><div class="modal-content">
-    <div class="modal-header border-0 pb-0" style="background:var(--navy);border-radius:0.5rem 0.5rem 0 0">
-      <h5 class="modal-title fw-bold text-white"><i class="fas fa-lock me-2" style="color:var(--orange)"></i>Add Private Watch Note</h5>
-      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-    </div>
-    <div class="modal-body">
-      <p class="small text-muted mb-3"><i class="fas fa-eye-slash me-1"></i>This note is only visible to Leaders and Admins.</p>
-      <form id="watchNoteForm">
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">Category</label>
-          <select class="form-select" id="watchNoteCategory">
-            <option>Attendance</option>
-            <option>Leaving Early</option>
-            <option>Tardiness</option>
-            <option>Points</option>
-            <option>Behavioral</option>
-            <option>Performance Concern</option>
-            <option>Positive Observation</option>
-            <option>Other</option>
-          </select>
-        </div>
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">Note <span class="text-danger">*</span></label>
-          <textarea class="form-control" id="watchNoteText" rows="5"
-            placeholder="Document what you observed, when it happened, and any relevant context…"></textarea>
-        </div>
-      </form>
-    </div>
-    <div class="modal-footer border-0 pt-0">
-      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-      <button class="btn btn-orange" id="saveWatchNoteBtn" onclick="saveWatchNote()">Save Note</button>
-    </div>
-  </div></div>
-</div>
-
-<!-- Kanban Board Modal -->
-<div class="modal fade" id="kanbanModal" tabindex="-1">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
-    <div class="modal-header border-0 pb-0" style="background:var(--navy);border-radius:0.5rem 0.5rem 0 0">
-      <h5 class="modal-title fw-bold text-white" id="kbModalTitle"><i class="fas fa-columns me-2" style="color:var(--orange)"></i>Daily Board</h5>
-      <div class="d-flex gap-2 ms-auto me-2">
-        <button class="btn btn-sm d-none" style="background:rgba(255,255,255,0.15);color:#fff;font-size:0.75rem" id="kbBackBtn" onclick="kbBack()">
-          <i class="fas fa-arrow-left me-1"></i>Back
-        </button>
-        <button class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:#fff;font-size:0.75rem" id="kbViewLogsBtn" onclick="kbShowLogs()">
-          <i class="fas fa-history me-1"></i>Past Logs
-        </button>
-        <button class="btn btn-sm" style="background:#f97316;color:#fff;font-size:0.75rem" onclick="kbLog()">
-          <i class="fas fa-check-circle me-1"></i>Log &amp; Clear Done
-        </button>
-      </div>
-      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-    </div>
-    <div class="modal-body" style="background:#f1f5f9;padding:1rem">
-
-      <!-- Add Task Form (hidden when viewing logs) -->
-      <div id="kbBoardSection">
-        <div id="kbAddForm" class="d-flex gap-2 mb-3 flex-wrap align-items-end">
-          <div style="flex:1;min-width:180px">
-            <label class="form-label small fw-semibold mb-1" style="color:#475569">Task Title</label>
-            <input type="text" class="form-control form-control-sm" id="kbNewTitle" placeholder="e.g. Check productivity reports…" onkeydown="if(event.key==='Enter')kbAddTask()">
-          </div>
-          <div>
-            <label class="form-label small fw-semibold mb-1" style="color:#475569">Frequency</label>
-            <select class="form-select form-select-sm" id="kbNewFreq" style="min-width:130px">
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="biweekly">Bi-Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-          </div>
-          <button class="btn btn-sm btn-orange" onclick="kbAddTask()" style="white-space:nowrap">
-            <i class="fas fa-plus me-1"></i>Add Task
-          </button>
-        </div>
-        <!-- Read-only banner shown when viewing a log -->
-        <div id="kbReadOnlyBanner" class="d-none" style="background:#fef3c7;color:#92400e;padding:8px 14px;border-radius:8px;font-size:0.82rem;font-weight:600;margin-bottom:10px">
-          <i class="fas fa-eye me-1"></i>Viewing archived log — read only
-        </div>
-        <!-- Kanban columns -->
-        <div class="d-flex gap-3" id="kbBoard" style="min-height:300px;align-items:flex-start">
-          <div class="kanban-col"><div class="kanban-col-header" style="color:#64748b">To Do</div><p class="text-muted small text-center mt-3">No tasks yet</p></div>
-          <div class="kanban-col"><div class="kanban-col-header" style="color:#f97316">In Progress</div></div>
-          <div class="kanban-col"><div class="kanban-col-header" style="color:#16a34a">Done</div></div>
-        </div>
-      </div>
-
-      <!-- Logs list -->
-      <div id="kbLogsSection" class="d-none">
-        <p class="text-muted small mb-2"><i class="fas fa-info-circle me-1"></i>Click a date to view the archived board snapshot.</p>
-        <div id="kbLogsList" style="display:flex;flex-direction:column;gap:6px"></div>
-      </div>
-
-    </div>
-  </div></div>
-</div>
-
-<!-- Import Snapshot -->
-<div class="modal fade" id="importModal" tabindex="-1">
-  <div class="modal-dialog modal-lg"><div class="modal-content">
-    <div class="modal-header border-0 pb-0">
-      <h5 class="modal-title fw-bold"><i class="fas fa-camera me-2"></i>Import Snapshot Data</h5>
-      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-    </div>
-    <div class="modal-body">
-      <ul class="nav nav-tabs mb-3">
-        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabPaste"><i class="fas fa-paste me-1"></i>Paste Snapshot</a></li>
-        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabManual"><i class="fas fa-keyboard me-1"></i>Manual Entry</a></li>
-        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabOcr"><i class="fas fa-camera me-1"></i>OCR from Image</a></li>
-      </ul>
-      <div class="tab-content">
-        <div class="tab-pane fade show active" id="tabPaste">
-          <p class="text-muted small mb-2">Copy the snapshot from Excel and paste it below — all fields import in one shot.</p>
-          <textarea class="form-control mb-2" id="pasteArea" rows="10"
-            placeholder="Paste here, e.g.:&#10;Employee Id	NVTNEEL&#10;Role	Large Pack&#10;Shift Date	6/18/2026&#10;Individual Avg UPH	30.2&#10;Units Completed	277&#10;On Pace?	Crushing It"></textarea>
-          <div id="pasteStatus" class="small mb-2"></div>
-          <button class="btn btn-orange" onclick="parsePastedSnapshot()"><i class="fas fa-file-import me-1"></i>Import Snapshot</button>
-        </div>
-        <div class="tab-pane fade" id="tabManual">
-          <p class="text-muted small mb-3">Enter the values directly from the Performance Snapshot.</p>
-          <div class="row g-3">
-            <div class="col-6">
-              <label class="form-label small fw-semibold">Employee ID <span class="text-danger">*</span></label>
-              <input type="text" class="form-control" id="manualEmpId" placeholder="e.g. NVTNEEL">
-            </div>
-            <div class="col-6">
-              <label class="form-label small fw-semibold">Shift Date <span class="text-danger">*</span></label>
-              <input type="date" class="form-control" id="manualDate">
-            </div>
-            <div class="col-6">
-              <label class="form-label small fw-semibold">Individual Avg UPH <span class="text-danger">*</span></label>
-              <input type="number" class="form-control" id="manualUph" step="0.1" placeholder="e.g. 30.2">
-            </div>
-            <div class="col-6">
-              <label class="form-label small fw-semibold">Units Completed</label>
-              <input type="number" class="form-control" id="manualUnits" placeholder="e.g. 277">
-            </div>
-            <div class="col-6">
-              <label class="form-label small fw-semibold">Role</label>
-              <input type="text" class="form-control" id="manualRole" placeholder="e.g. Large Pack">
-            </div>
-            <div class="col-6">
-              <label class="form-label small fw-semibold">On Pace?</label>
-              <input type="text" class="form-control" id="manualOnPace" placeholder="e.g. Crushing It">
-            </div>
-          </div>
-          <div id="manualStatus" class="text-muted small mt-2"></div>
-          <button class="btn btn-orange mt-3" onclick="saveManualEntry()"><i class="fas fa-check me-1"></i>Import Entry</button>
-        </div>
-        <div class="tab-pane fade" id="tabOcr">
-          <p class="text-muted small">Upload a clear, cropped screenshot. Results vary by image quality — use Paste Snapshot for best results.</p>
-          <input type="file" class="form-control mb-3" accept="image/*" onchange="handleImportFile(this)">
-          <div id="importStatus" class="text-muted small mb-2"></div>
-          <div id="importPreview"></div>
-        </div>
-      </div>
-    </div>
-  </div></div>
-</div>
-
-<!-- Time Off Modal -->
-<div class="modal fade" id="timeOffModal" tabindex="-1">
-  <div class="modal-dialog"><div class="modal-content">
-    <div class="modal-header border-0 pb-0">
-      <h5 class="modal-title fw-bold"><i class="fas fa-calendar-minus me-2" style="color:var(--orange)"></i>Add Time Off</h
+    
