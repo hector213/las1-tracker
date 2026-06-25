@@ -2242,6 +2242,17 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 </head>
 <body>
 
+<div style="text-align:center;margin-bottom:12px;padding:6px 0">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 72" width="200" height="55">
+    <g transform="translate(4,4)">
+      <ellipse cx="32" cy="32" rx="30" ry="30" fill="none" stroke="#1B5FA8" stroke-width="8"/>
+      <path d="M32,8 A24,24 0 1,0 56,32" fill="none" stroke="#E8720C" stroke-width="8" stroke-linecap="round"/>
+      <path d="M32,16 A16,16 0 1,0 48,32" fill="none" stroke="#1B5FA8" stroke-width="7" stroke-linecap="round"/>
+    </g>
+    <text x="76" y="33" font-family="Arial,sans-serif" font-weight="900" font-size="24" fill="#1B5FA8">carparts</text>
+    <text x="76" y="56" font-family="Arial,sans-serif" font-weight="900" font-size="18" fill="#E8720C">.com</text>
+  </svg>
+</div>
 <div class="doc-title">
   <div style="font-size:8.5pt;color:#888;letter-spacing:2px;margin-bottom:4px">LAS1 FULFILLMENT CENTER</div>
   <h1>Employee Warning Notice</h1>
@@ -2252,16 +2263,16 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   <!-- Employee Information -->
   <tr><td colspan="4" class="sec-header">Employee Information</td></tr>
   <tr>
-    <td style="width:50%" class="field-cell"><div class="field-label">Employee Name :</div><div class="field-value">${assoc.name}</div></td>
-    <td style="width:50%" class="field-cell"><div class="field-label">Date :</div><div class="field-value">${issuedDate}</div></td>
+    <td style="width:50%" class="field-cell"><div class="field-label">Employee Name :</div><div class="field-value" style="text-align:center">${assoc.name}</div></td>
+    <td style="width:50%" class="field-cell"><div class="field-label">Date :</div><div class="field-value" style="text-align:center">${issuedDate}</div></td>
   </tr>
   <tr>
-    <td class="field-cell"><div class="field-label">Employee ID :</div><div class="field-value">${assoc.employeeId || '&nbsp;'}</div></td>
-    <td class="field-cell"><div class="field-label">Job Title :</div><div class="field-value">${assoc.role || '&nbsp;'}</div></td>
+    <td class="field-cell"><div class="field-label">Employee ID :</div><div class="field-value" style="text-align:center">${assoc.employeeId || '&nbsp;'}</div></td>
+    <td class="field-cell"><div class="field-label">Job Title :</div><div class="field-value" style="text-align:center">${assoc.role || '&nbsp;'}</div></td>
   </tr>
   <tr>
-    <td class="field-cell"><div class="field-label">Manager :</div><div class="field-value">${managerName}</div></td>
-    <td class="field-cell"><div class="field-label">Department :</div><div class="field-value">LAS1 Inbound Operations</div></td>
+    <td class="field-cell"><div class="field-label">Manager :</div><div class="field-value" style="text-align:center">${managerName}</div></td>
+    <td class="field-cell"><div class="field-label">Department :</div><div class="field-value" style="text-align:center">LAS1 Inbound Operations</div></td>
   </tr>
 
   <!-- Type of Warning -->
@@ -2311,8 +2322,19 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
     </td>
   </tr>
   <tr>
-    <td colspan="2" class="field-cell"><div class="field-label">Work schedule for :</div><div class="field-value">${schedule}</div></td>
-    <td colspan="2" style="padding:5px 8px;vertical-align:top">
+    <td class="field-cell" style="width:25%;vertical-align:top">
+      <div class="field-label">Work schedule for :</div>
+      <div class="field-value">${schedule}</div>
+      <div style="margin-top:10px">
+        <div class="field-label">Team Member has accumulated :</div>
+        <div style="font-size:18pt;color:#dc2626;font-weight:900;margin-top:4px;border-bottom:2px solid #dc2626;padding-bottom:4px">${pts} point${pts!==1?'s':''}</div>
+      </div>
+      <div style="margin-top:8px">
+        <div class="field-label">Corrective Given On :</div>
+        <div class="field-value">${issuedDate}</div>
+      </div>
+    </td>
+    <td colspan="3" style="padding:5px 8px;vertical-align:top">
       <table class="pts-inner">
         <tr><th>Points</th><th>Disciplinary Action</th></tr>
         <tr${pts>=3&&pts<6?' class="active"':''}><td>3</td><td>Verbal Warning</td></tr>
@@ -2320,16 +2342,6 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
         <tr${pts>=9&&pts<10?' class="active"':''}><td>9</td><td>Final Warning</td></tr>
         <tr${pts>=10?' class="active"':''}><td>10+</td><td>Termination</td></tr>
       </table>
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2" class="field-cell">
-      <div class="field-label">Team Member has accumulated :</div>
-      <div class="field-value" style="font-size:13pt;color:#dc2626;font-weight:bold">${pts} point${pts!==1?'s':''}</div>
-    </td>
-    <td colspan="2" class="field-cell">
-      <div class="field-label">Corrective Given On :</div>
-      <div class="field-value">${issuedDate}</div>
     </td>
   </tr>
   <tr>
