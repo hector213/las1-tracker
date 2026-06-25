@@ -2153,14 +2153,16 @@ const SHIFT_SCHEDULES = {
 
 window.saveSignedWarning = async (data) => {
   try {
-    await addDoc(collection(db, 'signedWarnings', data.associateId, 'documents'), {
-      associateName: data.associateName,
-      tier: data.tier,
-      tierLabel: data.tierLabel,
-      points: data.points,
-      signedAt: data.signedAt,
+    // Deserialize into main-window object context (cross-window objects fail Firestore instanceof checks)
+    const d = JSON.parse(JSON.stringify(data));
+    await addDoc(collection(db, 'signedWarnings', d.associateId, 'documents'), {
+      associateName: d.associateName,
+      tier: d.tier,
+      tierLabel: d.tierLabel,
+      points: d.points,
+      signedAt: d.signedAt,
       savedAt: new Date().toISOString(),
-      signatures: data.signatures
+      signatures: d.signatures
     });
     console.log('Signed warning saved to HR records for', data.associateName);
   } catch(e) {
