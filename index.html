@@ -2246,7 +2246,10 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   .att-table { width:100%; border-collapse:collapse; }
   .att-table th { background:#e5e7eb; font-size:8.5pt; padding:2px 6px; border:1px solid #aaa; text-align:left; }
   .att-table td { font-size:9pt; padding:2px 6px; border:1px solid #ccc; }
-  @media print { button { display:none !important; } #page-wrap { padding:0; } }
+  @media print {
+    button { display:none !important; }
+    #page-wrap { margin:0 !important; padding:0.3in 0.65in !important; max-width:100% !important; }
+  }
 </style>
 </head>
 <body style="font-family:Arial,sans-serif;font-size:10.5pt;color:#111;background:#fff;">
