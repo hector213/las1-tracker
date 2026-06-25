@@ -2157,7 +2157,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   if (!assoc) return;
 
   // Open the window immediately (must be synchronous from click) to avoid popup blockers
-  const win = window.open('', '_blank');
+  const win = window.open('', '_blank', 'width=1000,height=850,scrollbars=yes,resizable=yes');
   if (!win) { alert('Pop-ups are blocked. Please allow pop-ups for this page to print warning notices.'); return; }
   win.document.write('<html><body style="font-family:Arial;padding:40px;color:#666;text-align:center"><p style="font-size:14pt">Loading document…</p></body></html>');
 
@@ -2217,11 +2217,12 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Employee Warning Notice — ${assoc.name}</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family: Arial, sans-serif; font-size: 10.5pt; color: #111; margin: 0; padding: 0; }
-  #page-wrap { max-width: 820px; margin: 0 auto; padding: 40px 60px; }
+  #page-wrap { max-width: 960px; margin: 0 auto; padding: 40px 60px; }
   .doc-title { text-align:center; border:2px solid #1a2744; padding:10px 0 6px; margin-bottom:0; }
   .doc-title h1 { font-size:16pt; font-weight:bold; letter-spacing:1px; color:#1a2744; text-transform:uppercase; }
   .doc-title h2 { font-size:11pt; font-weight:bold; color:#555; margin-top:2px; }
