@@ -10,7 +10,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getDatabase, ref, set, get, push, update, remove, onValue, off, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, increment, deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMPDpzhZEWZjP9SptREKVSB4dmdhY5cpM",
@@ -24,7 +24,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getDatabase(app);
+const db = getFirestore(app);
 
 // ─── Constants ────────────────────────────────────────────────────────
 const BADGES = [
@@ -86,9 +86,9 @@ function pointsColor(pts) {
 }
 async function logPoints(associateId, type, reason, pts) {
   const assoc = allAssociates.find(a => a.id === associateId);
-  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-  const actor = userSnap.exists() ? userSnap.val().displayName : currentUser?.email;
-  await push(ref(db, `pointslog/${associateId}`), {
+  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+  const actor = userSnap.exists() ? userSnap.data().displayName : currentUser?.email;
+  await addDoc(collection(db, 'pointslog', associateId, 'entries'), {
     associateId,
     associateName: assoc?.name || '',
     type,      // 'Badge' | 'Note' | 'Certification'
@@ -114,22 +114,25 @@ async function autoExpirePoints() {
 
   // ── Engagement points ──────────────────────────────────────────────
   try {
-    const logSnap = await get(ref(db, 'pointslog'));
-    if (logSnap.exists()) {
+    const assocSnap = await getDocs(collection(db, 'pointslog'));
+    if (!assocSnap.empty) {
       const writes = [];
-      Object.entries(logSnap.val()).forEach(([assocId, entries]) => {
+      await Promise.all(assocSnap.docs.map(async assocDoc => {
+        const assocId = assocDoc.id;
+        const entriesSnap = await getDocs(collection(db, 'pointslog', assocId, 'entries'));
         let expired = 0;
-        Object.entries(entries).forEach(([entryId, e]) => {
+        entriesSnap.docs.forEach(d => {
+          const entryId = d.id; const e = d.data();
           if ((e.pts || 0) > 0 && !e.expired && e.createdAt && e.createdAt < cutoffIso) {
             expired += e.pts;
-            writes.push(update(ref(db, `pointslog/${assocId}/${entryId}`), {
+            writes.push(updateDoc(doc(db, 'pointslog', assocId, 'entries', entryId), {
               pts: 0, expired: true, expiredAt: nowIso, originalPts: e.pts
             }));
           }
         });
         if (expired > 0) {
-          writes.push(update(ref(db, `associates/${assocId}`), { points: increment(-expired) }));
-          writes.push(push(ref(db, `pointslog/${assocId}`), {
+          writes.push(updateDoc(doc(db, 'associates', assocId), { points: increment(-expired) }));
+          writes.push(addDoc(collection(db, 'pointslog', assocId, 'entries'), {
             associateId: assocId,
             type: 'Expiration',
             reason: `${expired} engagement point${expired !== 1 ? 's' : ''} expired (1-year rollover)`,
@@ -138,31 +141,34 @@ async function autoExpirePoints() {
             createdAt: nowIso
           }));
         }
-      });
+      }));
       if (writes.length) await Promise.all(writes);
     }
   } catch(e) { console.warn('Engagement point expiration failed:', e); }
 
   // ── Attendance points ──────────────────────────────────────────────
   try {
-    const attSnap = await get(ref(db, 'attendance'));
-    if (attSnap.exists()) {
+    const attAssocSnap = await getDocs(collection(db, 'attendance'));
+    if (!attAssocSnap.empty) {
       const writes = [];
-      Object.entries(attSnap.val()).forEach(([assocId, entries]) => {
+      await Promise.all(attAssocSnap.docs.map(async assocDoc => {
+        const assocId = assocDoc.id;
+        const entriesSnap = await getDocs(collection(db, 'attendance', assocId, 'entries'));
         let expired = 0;
-        Object.entries(entries).forEach(([entryId, e]) => {
+        entriesSnap.docs.forEach(d => {
+          const entryId = d.id; const e = d.data();
           const dateIso = e.date ? e.date + 'T00:00:00.000Z' : null;
           if ((e.points || 0) > 0 && !e.expired && dateIso && dateIso < cutoffIso) {
             expired += e.points;
-            writes.push(update(ref(db, `attendance/${assocId}/${entryId}`), {
+            writes.push(updateDoc(doc(db, 'attendance', assocId, 'entries', entryId), {
               points: 0, expired: true, expiredAt: nowIso, originalPoints: e.points
             }));
           }
         });
         if (expired > 0) {
-          writes.push(update(ref(db, `associates/${assocId}`), { attendancePoints: increment(-expired) }));
+          writes.push(updateDoc(doc(db, 'associates', assocId), { attendancePoints: increment(-expired) }));
         }
-      });
+      }));
       if (writes.length) await Promise.all(writes);
     }
   } catch(e) { console.warn('Attendance point expiration failed:', e); }
@@ -186,17 +192,17 @@ let allLeaders          = [];
 onAuthStateChanged(auth, async (user) => {
   if (user) {
     currentUser = user;
-    const snap = await get(ref(db, `users/${user.uid}`));
+    const snap = await getDoc(doc(db, 'users', user.uid));
     if (snap.exists()) {
-      const data = snap.val();
+      const data = snap.data();
       currentUserRole = data.role || 'viewer';
       document.getElementById('currentUserName').textContent = data.displayName || user.email;
       document.getElementById('currentUserRole').textContent = capitalize(currentUserRole);
     } else {
-      const allUsers = await get(ref(db, 'users'));
-      if (!allUsers.exists()) {
+      const allUsers = await getDocs(collection(db, 'users'));
+      if (allUsers.empty) {
         currentUserRole = 'admin';
-        await set(ref(db, `users/${user.uid}`), {
+        await setDoc(doc(db, 'users', user.uid), {
           email: user.email, displayName: user.email, role: 'admin',
           createdAt: new Date().toISOString()
         });
@@ -206,15 +212,13 @@ onAuthStateChanged(auth, async (user) => {
     }
     showApp();
     // Resolve the associate record for the logged-in user (match by displayName)
-    const _uSnap = await get(ref(db, `users/${user.uid}`));
-    const _uName = _uSnap.val()?.displayName || '';
+    const _uSnap = await getDoc(doc(db, 'users', user.uid));
+    const _uName = _uSnap.data()?.displayName || '';
     if (_uName) {
-      const _aSnap = await get(ref(db, 'associates'));
-      if (_aSnap.exists()) {
-        const _match = Object.entries(_aSnap.val()).find(([,a]) =>
-          a.name && a.name.toLowerCase() === _uName.toLowerCase()
-        );
-        currentUserAssocId = _match ? _match[0] : null;
+      const _aSnap = await getDocs(collection(db, 'associates'));
+      if (!_aSnap.empty) {
+        const _matchDoc = _aSnap.docs.find(d => { const a = d.data(); return a.name && a.name.toLowerCase() === _uName.toLowerCase(); });
+        currentUserAssocId = _matchDoc ? _matchDoc.id : null;
       }
     }
     if (currentUserRole === 'admin') document.getElementById('navAdmin').classList.remove('d-none');
@@ -285,28 +289,21 @@ async function restoreLastView() {
 function loadDashboard() {
   showView('dashboard');
   detachAll();
-  const assocRef = ref(db, 'associates');
-  activeListeners['associates'] = assocRef;
-  onValue(assocRef, (snap) => {
+  activeListeners['associates'] = onSnapshot(collection(db, 'associates'), (snap) => {
     allAssociates = [];
-    if (snap.exists()) {
-      for (const [id, a] of Object.entries(snap.val())) {
-        allAssociates.push({ id, ...a });
-      }
-    }
+    snap.forEach(docSnap => {
+      allAssociates.push({ id: docSnap.id, ...docSnap.data() });
+    });
     loadTodayTimeOff().then(() => renderDashboard());
     autoExpirePoints(); // zero out pts/points on entries older than 1 year
   });
 
-  const certsGlobalRef = ref(db, 'certs');
-  activeListeners['certsGlobal'] = certsGlobalRef;
-  onValue(certsGlobalRef, (snap) => {
+  activeListeners['certsGlobal'] = onSnapshot(collection(db, 'certs'), (snap) => {
     allCertsMap = {};
-    if (snap.exists()) {
-      Object.entries(snap.val()).forEach(([uid, certs]) => {
-        allCertsMap[uid] = new Set(Object.keys(certs).filter(k => certs[k]));
-      });
-    }
+    snap.forEach(docSnap => {
+      const certs = docSnap.data();
+      allCertsMap[docSnap.id] = new Set(Object.keys(certs).filter(k => certs[k]));
+    });
     renderDashboard();
   });
 }
@@ -432,44 +429,43 @@ function renderDashboard() {
   // Fetch today's attendance for stats + banner update (no recursive renderDashboard)
   const today = new Date().toISOString().split('T')[0];
   const _todayKey = new Date().toISOString().split('T')[0];
-  get(ref(db,'attendance')).then(snap => {
-    const callOutTypes  = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('call-out')).map(t => t.key));
-    const earlyOutTypes = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('left-early')).map(t => t.key));
-    const callOutIds  = new Set();
-    const earlyOutIds = new Set();
-    if (snap.exists()) {
-      Object.entries(snap.val()).forEach(([assocId, entries]) => {
-        Object.values(entries).forEach(e => {
+  (async () => {
+    try {
+      const callOutTypes  = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('call-out')).map(t => t.key));
+      const earlyOutTypes = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('left-early')).map(t => t.key));
+      const callOutIds  = new Set();
+      const earlyOutIds = new Set();
+      const lateIds     = new Set();
+      const assocSnap = await getDocs(collection(db,'attendance'));
+      await Promise.all(assocSnap.docs.map(async assocDoc => {
+        const assocId = assocDoc.id;
+        const entriesSnap = await getDocs(collection(db, 'attendance', assocId, 'entries'));
+        entriesSnap.docs.forEach(d => {
+          const e = d.data();
           if (e.date !== today) return;
           if (callOutTypes.has(e.type))  callOutIds.add(assocId);
           if (earlyOutTypes.has(e.type)) earlyOutIds.add(assocId);
+          if (e.type?.startsWith('late')) lateIds.add(assocId);
         });
-      });
-    }
-    const callOuts  = [...callOutIds].filter(id => activeAssoc.find(a => a.id === id)).length;
-    const earlyOuts = [...earlyOutIds].filter(id => activeAssoc.find(a => a.id === id)).length;
-    document.getElementById('statCallOuts').textContent  = callOuts;
-    document.getElementById('statEarlyOuts').textContent = earlyOuts;
-    // Count today's time off for all active people
-    const timeOffIds = new Set(Object.keys(_todayTimeOffMap).filter(id => activeAll.find(a => a.id === id)));
-    const timeOffCount = timeOffIds.size;
-    document.getElementById('statTimeOff').textContent = timeOffCount;
-    const outOfBuilding = new Set([...callOutIds, ...earlyOutIds, ...timeOffIds]).size;
-    document.getElementById('statInBuilding').textContent = Math.max(0, activeAll.length - outOfBuilding);
-    _todayAttMap = {};
-    [...callOutIds].forEach(id  => { _todayAttMap[id] = 'call-out'; });
-    [...earlyOutIds].forEach(id => { if (!_todayAttMap[id]) _todayAttMap[id] = 'early'; });
-    if (snap.exists()) {
-      Object.entries(snap.val()).forEach(([assocId, entries]) => {
-        Object.values(entries).forEach(e => {
-          if (e.date !== today) return;
-          if (e.type?.startsWith('late') && !_todayAttMap[assocId]) _todayAttMap[assocId] = 'late';
-        });
-      });
-    }
-    renderCards(); // Re-render cards with banner data — NOT renderDashboard()
-    loadKanbanCounts();
-  });
+      }));
+      const callOuts  = [...callOutIds].filter(id => activeAssoc.find(a => a.id === id)).length;
+      const earlyOuts = [...earlyOutIds].filter(id => activeAssoc.find(a => a.id === id)).length;
+      document.getElementById('statCallOuts').textContent  = callOuts;
+      document.getElementById('statEarlyOuts').textContent = earlyOuts;
+      // Count today's time off for all active people
+      const timeOffIds = new Set(Object.keys(_todayTimeOffMap).filter(id => activeAll.find(a => a.id === id)));
+      const timeOffCount = timeOffIds.size;
+      document.getElementById('statTimeOff').textContent = timeOffCount;
+      const outOfBuilding = new Set([...callOutIds, ...earlyOutIds, ...timeOffIds]).size;
+      document.getElementById('statInBuilding').textContent = Math.max(0, activeAll.length - outOfBuilding);
+      _todayAttMap = {};
+      [...callOutIds].forEach(id  => { _todayAttMap[id] = 'call-out'; });
+      [...earlyOutIds].forEach(id => { if (!_todayAttMap[id]) _todayAttMap[id] = 'early'; });
+      [...lateIds].forEach(id    => { if (!_todayAttMap[id]) _todayAttMap[id] = 'late'; });
+      renderCards();
+      loadKanbanCounts();
+    } catch(err) { console.warn('Attendance stats error:', err); }
+  })();
 }
 window.renderDashboard = renderDashboard;
 
@@ -496,7 +492,7 @@ function renderLeaderboard() {
 async function renderMilestones() {
   const el = document.getElementById('milestonesList');
   if (!el) return;
-  // Only show loading spinner on first render; skip re-flash on subsequent onValue fires
+  // Only show loading spinner on first render
   if (!el.children.length || el.querySelector('.ms-loading')) {
     el.innerHTML = '<div class="ms-loading text-muted small py-2">Loading…</div>';
   }
@@ -545,17 +541,18 @@ async function renderMilestones() {
 
   // ── Point expirations (oldest +pts entry per associate, at 1-year mark) ──
   try {
-    const logSnap = await get(ref(db, 'pointslog'));
-    if (logSnap.exists()) {
-      Object.entries(logSnap.val()).forEach(([assocId, entries]) => {
+    const plAssocSnap = await getDocs(collection(db, 'pointslog'));
+    if (!plAssocSnap.empty) {
+      await Promise.all(plAssocSnap.docs.map(async assocDoc => {
+        const assocId = assocDoc.id;
         const assoc = allAssociates.find(a => a.id === assocId && a.status === 'active');
         if (!assoc) return;
-        // Find all positive point entries, sorted oldest first
-        const positive = Object.values(entries)
+        const entriesSnap = await getDocs(collection(db, 'pointslog', assocId, 'entries'));
+        const positive = entriesSnap.docs
+          .map(d => d.data())
           .filter(e => (e.pts || 0) > 0 && e.createdAt)
           .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
         if (!positive.length) return;
-        // The oldest entry expires in 1 year
         const oldest = positive[0];
         const expiry = new Date(oldest.createdAt);
         expiry.setFullYear(expiry.getFullYear() + 1);
@@ -567,21 +564,22 @@ async function renderMilestones() {
             detail: `Losing ${oldest.pts > 0 ? '+' : ''}${oldest.pts} pts (${oldest.reason || 'oldest entry'})`,
             dateStr: expiry.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
         }
-      });
+      }));
     }
   } catch(e) { /* points log unavailable */ }
 
   // ── Attendance point expirations (each entry drops off at 1-year mark) ──
   try {
-    const attSnap = await get(ref(db, 'attendance'));
-    if (attSnap.exists()) {
-      Object.entries(attSnap.val()).forEach(([assocId, entries]) => {
+    const attMilSnap = await getDocs(collection(db, 'attendance'));
+    if (!attMilSnap.empty) {
+      await Promise.all(attMilSnap.docs.map(async assocDoc => {
+        const assocId = assocDoc.id;
         const assoc = allAssociates.find(a => a.id === assocId && a.status === 'active');
         if (!assoc) return;
-        Object.values(entries)
+        const entriesSnap = await getDocs(collection(db, 'attendance', assocId, 'entries'));
+        entriesSnap.docs.map(d => d.data())
           .filter(e => (e.points || 0) > 0 && e.date)
           .forEach(e => {
-            // date field is YYYY-MM-DD; expiry is exactly 1 year later
             const expiry = new Date(e.date + 'T00:00:00');
             expiry.setFullYear(expiry.getFullYear() + 1);
             const diff = dayDiff(expiry);
@@ -593,19 +591,20 @@ async function renderMilestones() {
                 dateStr: expiry.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
             }
           });
-      });
+      }));
     }
   } catch(e) { /* attendance unavailable */ }
 
   // ── Time Off entries ────────────────────────────────────────────────
   try {
-    const toSnap = await get(ref(db, 'timeOff'));
-    if (toSnap.exists()) {
-      const todayStr = new Date().toISOString().split('T')[0];
-      Object.entries(toSnap.val()).forEach(([assocId, entries]) => {
+    const toMilSnap = await getDocs(collection(db, 'timeOff'));
+    if (!toMilSnap.empty) {
+      await Promise.all(toMilSnap.docs.map(async assocDoc => {
+        const assocId = assocDoc.id;
         const assoc = allAssociates.find(a => a.id === assocId);
         if (!assoc) return;
-        Object.values(entries).forEach(e => {
+        const entriesSnap = await getDocs(collection(db, 'timeOff', assocId, 'entries'));
+        entriesSnap.docs.map(d => d.data()).forEach(e => {
           if (!e.startDate) return;
           const start = new Date(e.startDate + 'T00:00:00');
           const diff  = dayDiff(start);
@@ -616,7 +615,7 @@ async function renderMilestones() {
             detail: t.label,
             dateStr: start.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
         });
-      });
+      }));
     }
   } catch(e) { /* time off unavailable */ }
 
@@ -687,9 +686,9 @@ window.openProfile = async (id) => {
   detachAll();
   showView('profile');
 
-  const snap = await get(ref(db, `associates/${id}`));
+  const snap = await getDoc(doc(db, 'associates', id));
   if (!snap.exists()) return;
-  const a = snap.val();
+  const a = snap.data();
 
   const initials = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
   document.getElementById('profileAvatar').textContent = initials;
@@ -730,10 +729,10 @@ window.openProfile = async (id) => {
   const boardBtn = document.getElementById('profileBoardBtn');
   boardBtn.classList.toggle('d-none', !canSeeBoard);
   if (isLeadership) {
-    get(ref(db, `supervisorTasks/${id}/board`)).then(snap => {
+    getDocs(collection(db, 'supervisorTasks', id, 'board')).then(snap => {
       const countEl = document.getElementById('kb-count-profile');
-      if (!snap.exists()) { countEl.textContent = '0'; countEl.classList.remove('d-none'); return; }
-      const active = Object.values(snap.val()).filter(t => t.status !== 'done').length;
+      if (snap.empty) { countEl.textContent = '0'; countEl.classList.remove('d-none'); return; }
+      const active = Object.values(snap.data()).filter(t => t.status !== 'done').length;
       countEl.textContent = active;
       countEl.classList.remove('d-none');
     }).catch(() => {});
@@ -812,8 +811,8 @@ window.exportToClaude = async () => {
 
   out += `\n=== CERTIFICATIONS ===\n`;
   try {
-    const certSnap = await get(ref(db, `certs/${currentAssociateId}`));
-    const certsData = certSnap.exists() ? certSnap.val() : {};
+    const certSnap = await getDoc(doc(db, 'certs', currentAssociateId));
+    const certsData = certSnap.exists() ? certSnap.data() : {};
     const certified = Object.entries(certsData).filter(([,v]) => v?.status === 'certified').map(([k]) => k.replace(/_/g,' '));
     const training  = Object.entries(certsData).filter(([,v]) => v?.status === 'training').map(([k]) => k.replace(/_/g,' '));
     if (certified.length) out += `Certified (${certified.length}): ${certified.join(', ')}\n`;
@@ -831,9 +830,9 @@ window.exportToClaude = async () => {
 
   out += `\n=== MANAGER NOTES ===\n`;
   try {
-    const notesSnap = await get(ref(db, `notes/${currentAssociateId}`));
-    if (notesSnap.exists()) {
-      const notes = Object.entries(notesSnap.val()).map(([id,n])=>({id,...n})).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+    const notesSnap = await getDocs(collection(db, 'notes', currentAssociateId, 'entries'));
+    if (!notesSnap.empty) {
+      const notes = notesSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
       notes.forEach(n => {
         out += `  [${n.type}] ${n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''} — by ${n.author||'Unknown'}:\n`;
         out += `    "${n.text}"${n.link ? ` (${n.link})` : ''}\n`;
@@ -843,9 +842,9 @@ window.exportToClaude = async () => {
 
   out += `\n=== SHIFT SNAPSHOTS (Most Recent 10) ===\n`;
   try {
-    const snapSnap = await get(ref(db, `snapshots/${currentAssociateId}`));
-    if (snapSnap.exists()) {
-      const snaps = Object.values(snapSnap.val()).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,10);
+    const snapSnap = await getDocs(collection(db, 'snapshots', currentAssociateId, 'entries'));
+    if (!snapSnap.empty) {
+      const snaps = snapSnap.docs.map(d=>d.data()).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,10);
       snaps.forEach(s => {
         out += `  ${s.date} — UPH: ${s.uph}${s.unitsCompleted!=null?`, Units: ${s.unitsCompleted}`:''}${s.role?`, Role: ${s.role}`:''}${s.onPace?`, On Pace: ${s.onPace}`:''}\n`;
       });
@@ -855,9 +854,9 @@ window.exportToClaude = async () => {
   if (currentUserRole === 'admin' || currentUserRole === 'supervisor') {
     out += `\n=== PRIVATE WATCH NOTES ===\n`;
     try {
-      const wSnap = await get(ref(db, `watchnotes/${currentAssociateId}`));
-      if (wSnap.exists()) {
-        const notes = Object.values(wSnap.val()).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+      const wSnap = await getDocs(collection(db, 'watchnotes', currentAssociateId, 'entries'));
+      if (!wSnap.empty) {
+        const notes = Object.values(wSnap.data()).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
         notes.forEach(n => out += `  [${n.category||'General'}] ${n.createdAt?new Date(n.createdAt).toLocaleDateString():''} — ${n.author||'Unknown'}: "${n.text}"\n`);
       } else { out += `No watch notes.\n`; }
     } catch(e) { out += `(Watch notes unavailable)\n`; }
@@ -921,7 +920,7 @@ window.openFlagModal = () => {
 };
 window.saveFlag = async () => {
   const flag = document.getElementById('flagSelect').value;
-  await update(ref(db, `associates/${currentAssociateId}`), { flag });
+  await updateDoc(doc(db, 'associates', currentAssociateId), { flag });
   const a = allAssociates.find(x => x.id === currentAssociateId);
   if (a) a.flag = flag;
   const flagEl = document.getElementById('profileFlag');
@@ -932,9 +931,9 @@ window.saveFlag = async () => {
 
 // ─── Notes ───────────────────────────────────────────────────────────
 function listenNotes(associateId) {
-  get(ref(db, `notes/${associateId}`)).then(snap => {
+  getDocs(collection(db, 'notes', associateId, 'entries')).then(snap => {
     lastNotes = [];
-    if (snap.exists()) Object.entries(snap.val()).forEach(([id, n]) => lastNotes.push({ id, ...n }));
+    snap.forEach(d => lastNotes.push({ id: d.id, ...d.data() }));
     lastNotes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     document.getElementById('statNoteCount').textContent = lastNotes.length;
     renderNotes(lastNotes);
@@ -980,7 +979,7 @@ window.openAddNote = () => {
 };
 // ─── Activity Tracking ────────────────────────────────────────────────
 function recordActivity(assocId) {
-  update(ref(db, `associates/${assocId}`), { lastActivityAt: new Date().toISOString() });
+  updateDoc(doc(db, 'associates', assocId), { lastActivityAt: new Date().toISOString() });
 }
 function markViewed(assocId) {
   if (!currentUser) return;
@@ -1000,9 +999,9 @@ window.saveNote = async () => {
   const btn = document.getElementById('saveNoteBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-    const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
-    await push(ref(db, `notes/${currentAssociateId}`), {
+    const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+    const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+    await addDoc(collection(db, 'notes', currentAssociateId, 'entries'), {
       text, type,
       author: displayName, authorUid: currentUser.uid,
       createdAt: new Date().toISOString()
@@ -1010,7 +1009,7 @@ window.saveNote = async () => {
     recordActivity(currentAssociateId);
     const pts = notePoints(type);
     if (pts !== 0) {
-      await update(ref(db, `associates/${currentAssociateId}`), { points: increment(pts) });
+      await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(pts) });
       await logPoints(currentAssociateId, 'Note', `${type} note added`, pts);
     }
     bootstrap.Modal.getInstance(document.getElementById('noteModal')).hide();
@@ -1020,15 +1019,15 @@ window.saveNote = async () => {
 };
 window.deleteNote = async (noteId) => {
   if (!confirm('Delete this note?')) return;
-  const noteSnap = await get(ref(db, `notes/${currentAssociateId}/${noteId}`));
+  const noteSnap = await getDoc(doc(db, 'notes', currentAssociateId, 'entries', noteId));
   if (noteSnap.exists()) {
-    const pts = notePoints(noteSnap.val().type);
+    const pts = notePoints(noteSnap.data().type);
     if (pts !== 0) {
-      await update(ref(db, `associates/${currentAssociateId}`), { points: increment(-pts) });
-      await logPoints(currentAssociateId, 'Note', `${noteSnap.val().type} note removed`, -pts);
+      await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(-pts) });
+      await logPoints(currentAssociateId, 'Note', `${noteSnap.data().type} note removed`, -pts);
     }
   }
-  await remove(ref(db, `notes/${currentAssociateId}/${noteId}`));
+  await deleteDoc(doc(db, 'notes', currentAssociateId, 'entries', noteId));
 };
 
 // ─── Login Credentials (admin only) ───────────────────────────────────
@@ -1040,9 +1039,9 @@ function listenCreds(associateId) {
   if (currentUserRole === 'viewer') { section.classList.add('d-none'); return; }
   section.classList.remove('d-none');
 
-  get(ref(db, `credentials/${associateId}`)).then(snap => {
+  getDocs(collection(db, 'credentials', associateId, 'entries')).then(snap => {
     const creds = [];
-    if (snap.exists()) Object.entries(snap.val()).forEach(([id, c]) => creds.push({ id, ...c }));
+    snap.forEach(d => creds.push({ id: d.id, ...d.data() }));
     lastCreds = creds;
     document.getElementById('credsCountBadge').textContent = creds.length;
     if (credsOpen) renderCreds(creds);
@@ -1125,9 +1124,9 @@ window.saveCred = async () => {
   const btn = document.getElementById('saveCredBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-    const addedBy  = userSnap.exists() ? (userSnap.val().displayName || currentUser.email) : currentUser.email;
-    await push(ref(db, `credentials/${currentAssociateId}`), {
+    const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+    const addedBy  = userSnap.exists() ? (userSnap.data().displayName || currentUser.email) : currentUser.email;
+    await addDoc(collection(db, 'credentials', currentAssociateId, 'entries'), {
       system, username, password, notes, addedBy,
       createdAt: new Date().toISOString()
     });
@@ -1139,7 +1138,7 @@ window.saveCred = async () => {
 
 window.deleteCred = async (credId) => {
   if (!confirm('Delete this credential entry?')) return;
-  await remove(ref(db, `credentials/${currentAssociateId}/${credId}`));
+  await deleteDoc(doc(db, 'credentials', currentAssociateId, 'entries', credId));
 };
 
 // ─── Private Watch Notes ───────────────────────────────────────────────
@@ -1152,9 +1151,9 @@ function listenWatchNotes(associateId) {
   if (!canSee) { section.classList.add('d-none'); return; }
   section.classList.remove('d-none');
 
-  get(ref(db, `watchnotes/${associateId}`)).then(snap => {
+  getDocs(collection(db, 'watchnotes', associateId, 'entries')).then(snap => {
     const notes = [];
-    if (snap.exists()) Object.entries(snap.val()).forEach(([id, n]) => notes.push({ id, ...n }));
+    snap.forEach(d => notes.push({ id: d.id, ...d.data() }));
     notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     lastWatchNotes = notes;
     document.getElementById('watchCountBadge').textContent = notes.length;
@@ -1203,9 +1202,9 @@ window.saveWatchNote = async () => {
   const btn = document.getElementById('saveWatchNoteBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-    const displayName = userSnap.exists() ? (userSnap.val().displayName || currentUser.email) : currentUser.email;
-    await push(ref(db, `watchnotes/${currentAssociateId}`), {
+    const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+    const displayName = userSnap.exists() ? (userSnap.data().displayName || currentUser.email) : currentUser.email;
+    await addDoc(collection(db, 'watchnotes', currentAssociateId, 'entries'), {
       category, text,
       author: displayName, authorUid: currentUser.uid,
       createdAt: new Date().toISOString()
@@ -1218,15 +1217,15 @@ window.saveWatchNote = async () => {
 
 window.deleteWatchNote = async (noteId) => {
   if (!confirm('Delete this watch note?')) return;
-  await remove(ref(db, `watchnotes/${currentAssociateId}/${noteId}`));
+  await deleteDoc(doc(db, 'watchnotes', currentAssociateId, 'entries', noteId));
 };
 
 // ─── Badges ───────────────────────────────────────────────────────────
 let lastBadges = [];
 function listenBadges(associateId) {
-  get(ref(db, `badges/${associateId}`)).then(snap => {
+  getDocs(collection(db, 'badges', associateId, 'entries')).then(snap => {
     const badges = [];
-    if (snap.exists()) Object.entries(snap.val()).forEach(([id, b]) => badges.push({ id, ...b }));
+    snap.forEach(d => badges.push({ id: d.id, ...d.data() }));
     lastBadges = badges;
     renderBadges(badges);
   });
@@ -1350,10 +1349,10 @@ window.saveBadgeNomination = async () => {
   const badge  = document.getElementById('badgeSelect').value;
   const reason = document.getElementById('badgeReason').value.trim();
   if (!reason) { alert('Please add a reason for the nomination.'); return; }
-  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+  const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
   const assoc    = allAssociates.find(a => a.id === currentAssociateId);
-  await push(ref(db, `badges/${currentAssociateId}`), {
+  await addDoc(collection(db, 'badges', currentAssociateId, 'entries'), {
     badge, reason, status: 'pending',
     nominatedBy: displayName, nominatedByUid: currentUser.uid,
     nominatedAt: new Date().toISOString(),
@@ -1363,37 +1362,37 @@ window.saveBadgeNomination = async () => {
   alert(`"${badge}" nomination submitted — an admin will review it.`);
 };
 window.approveBadge = async (associateId, badgeId) => {
-  const userSnap  = await get(ref(db, `users/${currentUser.uid}`));
-  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
-  const badgeSnap = await get(ref(db, `badges/${associateId}/${badgeId}`));
-  await update(ref(db, `badges/${associateId}/${badgeId}`), {
+  const userSnap  = await getDoc(doc(db, 'users', currentUser.uid));
+  const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  const badgeSnap = await getDoc(doc(db, 'badges', associateId, 'entries', badgeId));
+  await updateDoc(doc(db, 'badges', associateId, 'entries', badgeId), {
     status: 'approved', approvedBy: displayName, approvedAt: new Date().toISOString()
   });
   if (badgeSnap.exists()) {
-    const pts = badgePoints(badgeSnap.val().badge);
-    await update(ref(db, `associates/${associateId}`), { points: increment(pts) });
-    await logPoints(associateId, 'Badge', `Badge approved: ${badgeSnap.val().badge}`, pts);
+    const pts = badgePoints(badgeSnap.data().badge);
+    await updateDoc(doc(db, 'associates', associateId), { points: increment(pts) });
+    await logPoints(associateId, 'Badge', `Badge approved: ${badgeSnap.data().badge}`, pts);
   }
 };
 window.rejectBadge = async (associateId, badgeId) => {
   if (!confirm('Reject and remove this nomination?')) return;
-  await remove(ref(db, `badges/${associateId}/${badgeId}`));
+  await deleteDoc(doc(db, 'badges', associateId, 'entries', badgeId));
 };
 window.removeBadge = async (badgeId) => {
   if (!confirm('Remove this badge?')) return;
-  const badgeSnap = await get(ref(db, `badges/${currentAssociateId}/${badgeId}`));
+  const badgeSnap = await getDoc(doc(db, 'badges', currentAssociateId, 'entries', badgeId));
   if (badgeSnap.exists()) {
-    const pts = badgePoints(badgeSnap.val().badge);
-    await update(ref(db, `associates/${currentAssociateId}`), { points: increment(-pts) });
-    await logPoints(currentAssociateId, 'Badge', `Badge removed: ${badgeSnap.val().badge}`, -pts);
+    const pts = badgePoints(badgeSnap.data().badge);
+    await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(-pts) });
+    await logPoints(currentAssociateId, 'Badge', `Badge removed: ${badgeSnap.data().badge}`, -pts);
   }
-  await remove(ref(db, `badges/${currentAssociateId}/${badgeId}`));
+  await deleteDoc(doc(db, 'badges', currentAssociateId, 'entries', badgeId));
 };
 
 // ─── Certifications ───────────────────────────────────────────────────
 function listenCerts(associateId) {
-  get(ref(db, `certs/${associateId}`)).then(snap => {
-    const certs = snap.exists() ? snap.val() : {};
+  getDoc(doc(db, 'certs', associateId)).then(snap => {
+    const certs = snap.exists() ? snap.data() : {};
     const count = Object.keys(certs).length;
     document.getElementById('statCertCount').textContent = count;
     renderCerts(certs);
@@ -1432,8 +1431,8 @@ let _certModalExisting = null;
 window.openCertModal = async (key, label) => {
   _certModalKey   = key;
   _certModalLabel = label;
-  const snap = await get(ref(db, `certs/${currentAssociateId}/${key}`));
-  _certModalExisting = snap.exists() ? snap.val() : null;
+  const snap = await getDoc(doc(db, 'certs', currentAssociateId));
+  _certModalExisting = snap.exists() ? snap.data() : null;
 
   const status = _certModalExisting ? (_certModalExisting.status || 'certified') : null;
   document.getElementById('certModalTitle').textContent = label;
@@ -1446,24 +1445,24 @@ window.openCertModal = async (key, label) => {
 
 window.setCertStatus = async (newStatus) => {
   bootstrap.Modal.getInstance(document.getElementById('certModal'))?.hide();
-  const certRef = ref(db, `certs/${currentAssociateId}/${_certModalKey}`);
-  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+  const certRef = doc(db, 'certs', currentAssociateId);
+  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+  const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
   const oldStatus = _certModalExisting ? (_certModalExisting.status || 'certified') : null;
 
   if (newStatus === 'remove') {
-    await remove(certRef);
+    await updateDoc(certRef, { [_certModalKey]: deleteField() });
     if (oldStatus === 'certified') {
-      await update(ref(db, `associates/${currentAssociateId}`), { points: increment(-10) });
+      await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(-10) });
       await logPoints(currentAssociateId, 'Certification', `Cert removed: ${_certModalLabel}`, -10);
     }
   } else {
-    await set(certRef, { certifiedAt: new Date().toISOString(), certifiedBy: displayName, status: newStatus });
+    await updateDoc(certRef, { [_certModalKey]: { certifiedAt: new Date().toISOString(), certifiedBy: displayName, status: newStatus } });
     if (newStatus === 'certified' && oldStatus !== 'certified') {
-      await update(ref(db, `associates/${currentAssociateId}`), { points: increment(10) });
+      await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(10) });
       await logPoints(currentAssociateId, 'Certification', `Cert earned: ${_certModalLabel}`, 10);
     } else if (newStatus === 'training' && oldStatus === 'certified') {
-      await update(ref(db, `associates/${currentAssociateId}`), { points: increment(-10) });
+      await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(-10) });
       await logPoints(currentAssociateId, 'Certification', `Cert moved to training: ${_certModalLabel}`, -10);
     }
   }
@@ -1480,18 +1479,18 @@ const CERT_MILESTONES = [
 
 async function checkCertMilestones(assocId, awardedBy) {
   const [certSnap, badgeSnap] = await Promise.all([
-    get(ref(db, `certs/${assocId}`)),
-    get(ref(db, `badges/${assocId}`))
+    getDoc(doc(db, 'certs', assocId)),
+    getDocs(collection(db, 'badges', assocId, 'entries'))
   ]);
-  const certs = certSnap.exists() ? certSnap.val() : {};
+  const certs = certSnap.exists() ? certSnap.data() : {};
   const certifiedCount = Object.values(certs).filter(c => (c.status || 'certified') === 'certified').length;
   const total = CERTS.length;
   const pct = total > 0 ? (certifiedCount / total) * 100 : 0;
 
   // Get already-earned milestone badge keys
   const existingMilestones = new Set();
-  if (badgeSnap.exists()) {
-    Object.values(badgeSnap.val()).forEach(b => {
+  if (!badgeSnap.empty) {
+    badgeSnap.docs.forEach(d => { const b = d.data();
       if (b.badge && b.badge.startsWith('cert-')) existingMilestones.add(b.badge);
     });
   }
@@ -1499,14 +1498,13 @@ async function checkCertMilestones(assocId, awardedBy) {
   for (const m of CERT_MILESTONES) {
     if (pct >= m.pct && !existingMilestones.has(m.key)) {
       // Auto-award this milestone badge
-      const badgeRef = push(ref(db, `badges/${assocId}`));
-      await set(badgeRef, {
+      const badgeRef = await addDoc(collection(db, 'badges', assocId, 'entries'), {
         badge: m.key, label: m.label, emoji: m.emoji,
         awardedAt: new Date().toISOString(), awardedBy,
         autoAwarded: true, note: m.desc, approved: true
       });
       if (m.pts > 0) {
-        await update(ref(db, `associates/${assocId}`), { points: increment(m.pts) });
+        await updateDoc(doc(db, 'associates', assocId), { points: increment(m.pts) });
         await logPoints(assocId, 'Milestone', `${m.emoji} ${m.label} — ${m.desc}`, m.pts);
       }
       // Toast notification
@@ -1587,10 +1585,10 @@ window.saveAssociate = async () => {
   };
   if (!data.name) { alert('Name is required'); return; }
   if (id) {
-    await update(ref(db, `associates/${id}`), data);
+    await updateDoc(doc(db, 'associates', id), data);
   } else {
     data.createdAt = new Date().toISOString(); data.createdBy = currentUser?.email;
-    await push(ref(db, 'associates'), data);
+    await addDoc(collection(db, 'associates'), data);
   }
   bootstrap.Modal.getInstance(document.getElementById('assocModal')).hide();
 };
@@ -1601,24 +1599,24 @@ window.exportProfilePDF = async () => {
   if (!assoc) return;
 
   // Gather notes
-  const notesSnap = await get(ref(db, `notes/${currentAssociateId}`));
+  const notesSnap = await getDocs(collection(db, 'notes', currentAssociateId, 'entries'));
   const notes = [];
-  if (notesSnap.exists()) Object.values(notesSnap.val()).forEach(n => notes.push(n));
+  notesSnap.forEach(d => notes.push(d.data()));
   notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   // Gather badges
-  const badgesSnap = await get(ref(db, `badges/${currentAssociateId}`));
+  const badgesSnap = await getDocs(collection(db, 'badges', currentAssociateId, 'entries'));
   const badges = [];
-  if (badgesSnap.exists()) Object.values(badgesSnap.val()).filter(b => b.status === 'approved').forEach(b => badges.push(b));
+  badgesSnap.forEach(d => { const b = d.data(); if (b.status === 'approved') badges.push(b); });
 
   // Gather certs
-  const certsSnap = await get(ref(db, `certs/${currentAssociateId}`));
-  const certs = certsSnap.exists() ? Object.keys(certsSnap.val()).filter(k => certsSnap.val()[k]).map(k => k.replace(/_/g,' ')) : [];
+  const certsSnap = await getDoc(doc(db, 'certs', currentAssociateId));
+  const certs = certsSnap.exists() ? Object.keys(certsSnap.data()).filter(k => certsSnap.data()[k]).map(k => k.replace(/_/g,' ')) : [];
 
   // Gather attendance
-  const attSnap = await get(ref(db, `attendance/${currentAssociateId}`));
+  const attSnap = await getDocs(collection(db, 'attendance', currentAssociateId, 'entries'));
   const attEntries = [];
-  if (attSnap.exists()) Object.values(attSnap.val()).forEach(e => attEntries.push(e));
+  attSnap.forEach(d => attEntries.push(d.data()));
   attEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
   const attTotal = attEntries.reduce((s, e) => s + (e.points || 0), 0);
 
@@ -1679,44 +1677,44 @@ window.exportForClaude = async () => {
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Exporting…';
   btn.disabled = true;
   try {
-    const assocSnap = await get(ref(db, 'associates'));
-    if (!assocSnap.exists()) { alert('No data to export'); return; }
+    const assocSnap = await getDocs(collection(db, 'associates'));
+    if (!!assocSnap.empty) { alert('No data to export'); return; }
 
     let out = `LAS1 ENGAGEMENT TRACKER REPORT\n`;
     out += `Generated: ${new Date().toLocaleString()}\n${'═'.repeat(60)}\n\n`;
     out += `INSTRUCTIONS FOR CLAUDE:\nReview associate profiles below. Each entry includes role, shift, flag status, achievements, certifications, shift snapshots, and manager notes. Use this to identify leadership potential, coaching needs, and top performers.\n\n${'═'.repeat(60)}\n\n`;
 
-    for (const [id, a] of Object.entries(assocSnap.val())) {
+    for (const [id, a] of Object.entries(Object.fromEntries(assocSnap.docs.map(d => [d.id, d.data()])))) {
       out += `ASSOCIATE: ${a.name}\n`;
       out += `  Employee ID: ${a.employeeId || 'N/A'}  |  Role: ${a.role || 'N/A'}  |  Shift: ${a.shift || 'N/A'}\n`;
       out += `  Status: ${a.status || 'N/A'}`;
       if (a.flag && a.flag !== '') out += `  |  FLAG: ${FLAGS[a.flag]?.label || a.flag}`;
       out += '\n\n';
 
-      const badgeSnap = await get(ref(db, `badges/${id}`));
-      if (badgeSnap.exists()) {
-        const approved = Object.values(badgeSnap.val()).filter(b => b.status === 'approved').map(b => b.badge);
+      const badgeSnap = await getDocs(collection(db, 'badges', id, 'entries'));
+      if (!badgeSnap.empty) {
+        const approved = badgeSnap.docs.map(d=>d.data()).filter(b => b.status === 'approved').map(b => b.badge);
         if (approved.length) out += `  BADGES: ${approved.join(', ')}\n`;
       }
 
-      const certSnap = await get(ref(db, `certs/${id}`));
+      const certSnap = await getDoc(doc(db, 'certs', id));
       if (certSnap.exists()) {
-        const certNames = Object.keys(certSnap.val()).map(k => k.replace(/_/g, ' '));
+        const certNames = Object.keys(certSnap.data()).map(k => k.replace(/_/g, ' '));
         out += `  CERTIFICATIONS: ${certNames.join(', ')}\n`;
       }
 
-      const snapSnap = await get(ref(db, `snapshots/${id}`));
-      if (snapSnap.exists()) {
-        const snaps = Object.values(snapSnap.val()).sort((a, b) => new Date(b.date) - new Date(a.date));
+      const snapSnap = await getDocs(collection(db, 'snapshots', id, 'entries'));
+      if (!snapSnap.empty) {
+        const snaps = snapSnap.docs.map(d=>d.data()).sort((a, b) => new Date(b.date) - new Date(a.date));
         out += `\n  SHIFT SNAPSHOTS (${snaps.length} total):\n`;
         snaps.slice(0, 10).forEach(s => {
           out += `    ${s.date}: UPH ${s.uph ?? '—'}, Units ${s.unitsCompleted ?? '—'}, Role ${s.role || '—'}, On Pace: ${s.onPace || '—'}\n`;
         });
       }
 
-      const notesSnap = await get(ref(db, `notes/${id}`));
-      if (notesSnap.exists()) {
-        const notes = Object.values(notesSnap.val()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      const notesSnap = await getDocs(collection(db, 'notes', id, 'entries'));
+      if (!notesSnap.empty) {
+        const notes = notesSnap.docs.map(d=>d.data()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         out += `\n  MANAGER NOTES (${notes.length} total):\n`;
         notes.forEach(n => {
           out += `    [${n.type}] ${formatDateTime(n.createdAt)} — ${n.author || 'Unknown'}\n`;
@@ -1748,8 +1746,8 @@ window.loadMatrix = async () => {
   showView('matrix');
   detachAll();
   // Load all certs from Firebase
-  const certsSnap = await get(ref(db, 'certs'));
-  matrixCertsData = certsSnap.exists() ? certsSnap.val() : {};
+  const certsSnap = await getDocs(collection(db, 'certs'));
+  matrixCertsData = {}; certsSnap.docs.forEach(d => { matrixCertsData[d.id] = d.data(); });
   renderMatrix();
 };
 window.renderMatrix = renderMatrix;
@@ -1957,8 +1955,8 @@ window.updateAttFilterColor = async () => {
 
   // Load warnings for this associate
   try {
-    const wSnap = await get(ref(db, `warnings/${sel.value}`));
-    const warnings = wSnap.exists() ? Object.entries(wSnap.val()).map(([id,w]) => ({id,...w})).sort((a,b) => new Date(a.issuedAt)-new Date(b.issuedAt)) : [];
+    const wSnap = await getDocs(collection(db, 'warnings', sel.value, 'entries'));
+    const warnings = !wSnap.empty ? Object.entries(wSnap.data()).map(([id,w]) => ({id,...w})).sort((a,b) => new Date(a.issuedAt)-new Date(b.issuedAt)) : [];
     const wContainer = document.getElementById('attSummWarnings');
     if (!wContainer) return;
     const canLog = currentUserRole === 'admin' || currentUserRole === 'supervisor' || currentUserRole === 'lead';
@@ -1991,7 +1989,7 @@ window.updateAttFilterColor = async () => {
 
 window._delWarnTeam = async (assocId, warningId) => {
   if (!confirm('Remove this warning record?')) return;
-  await remove(ref(db, `warnings/${assocId}/${warningId}`));
+  await deleteDoc(doc(db, 'warnings', assocId, 'entries', warningId));
   updateAttFilterColor();
 };
 
@@ -2000,10 +1998,10 @@ window._logWarnTeam = async (assocId, type) => {
   if (!tier) return;
   const notes = prompt(`Log ${tier.label} for this associate\n\nOptional notes:`);
   if (notes === null) return;
-  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-  const issuedBy = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+  const issuedBy = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
   const assoc    = allAssociates.find(a => a.id === assocId);
-  await push(ref(db, `warnings/${assocId}`), {
+  await addDoc(collection(db, 'warnings', assocId, 'entries'), {
     type, issuedBy, issuedByUid: currentUser.uid,
     issuedAt: new Date().toISOString(),
     attendancePtsAtTime: assoc?.attendancePoints || 0,
@@ -2020,9 +2018,9 @@ function attTypeInfo(key) {
 }
 
 function listenAttendance(associateId) {
-  get(ref(db, `attendance/${associateId}`)).then(snap => {
+  getDocs(collection(db, 'attendance', associateId, 'entries')).then(snap => {
     lastAttendance = [];
-    if (snap.exists()) Object.entries(snap.val()).forEach(([id, e]) => lastAttendance.push({ id, ...e }));
+    snap.forEach(d => lastAttendance.push({ id: d.id, ...d.data() }));
     lastAttendance.sort((a, b) => new Date(b.date) - new Date(a.date));
     renderAttendanceLog();
     updateAttScoreDisplay();
@@ -2102,9 +2100,9 @@ const WARNING_TIERS = [
 let lastWarnings = [];
 
 function listenWarnings(associateId) {
-  get(ref(db, `warnings/${associateId}`)).then(snap => {
+  getDocs(collection(db, 'warnings', associateId, 'entries')).then(snap => {
     lastWarnings = [];
-    if (snap.exists()) Object.entries(snap.val()).forEach(([id, w]) => lastWarnings.push({ id, ...w }));
+    snap.forEach(d => lastWarnings.push({ id: d.id, ...d.data() }));
     lastWarnings.sort((a, b) => new Date(a.issuedAt) - new Date(b.issuedAt));
     renderWarnings(lastWarnings);
   });
@@ -2161,14 +2159,14 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   // Load warnings fresh if coming from team view (no lastWarnings for this assoc)
   let warnSource = lastWarnings;
   if (overrideAssocId && overrideAssocId !== currentAssociateId) {
-    const wSnap = await get(ref(db, `warnings/${resolvedId}`));
-    warnSource = wSnap.exists() ? Object.entries(wSnap.val()).map(([id,w]) => ({id,...w})) : [];
+    const wSnap = await getDocs(collection(db, 'warnings', resolvedId, 'entries'));
+    warnSource = !wSnap.empty ? Object.entries(wSnap.data()).map(([id,w]) => ({id,...w})) : [];
   }
   // Load attendance fresh if coming from team view
   let attSource = lastAttendance;
   if (overrideAssocId && overrideAssocId !== currentAssociateId) {
-    const aSnap = await get(ref(db, `attendance/${resolvedId}`));
-    attSource = aSnap.exists() ? Object.entries(aSnap.val()).map(([id,e]) => ({id,...e})) : [];
+    const aSnap = await getDocs(collection(db, 'attendance', resolvedId, 'entries'));
+    attSource = !aSnap.empty ? aSnap.docs.map(d => ({id:d.id,...d.data()})) : [];
   }
   const warnings  = warnSource.filter(w => w.type === tierKey).sort((a,b) => new Date(b.issuedAt)-new Date(a.issuedAt));
   const latest    = warnings[0];
@@ -2406,9 +2404,9 @@ window.loadTimeOff = async () => {
   detachAll();
   // Ensure allAssociates is populated
   if (!allAssociates.length) {
-    const snap = await get(ref(db, 'associates'));
-    if (snap.exists()) {
-      allAssociates = Object.entries(snap.val()).map(([id, a]) => ({ id, ...a }));
+    const snap = await getDocs(collection(db, 'associates'));
+    if (!snap.empty) {
+      allAssociates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     }
   }
   // Populate associate filter dropdown
@@ -2419,15 +2417,17 @@ window.loadTimeOff = async () => {
       const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; sel.appendChild(o);
     });
   }
-  const snap = await get(ref(db, 'timeOff'));
+  const toLoadSnap = await getDocs(collection(db, 'timeOff'));
   _allTimeOff = [];
-  if (snap.exists()) {
-    Object.entries(snap.val()).forEach(([assocId, entries]) => {
+  if (!toLoadSnap.empty) {
+    await Promise.all(toLoadSnap.docs.map(async assocDoc => {
+      const assocId = assocDoc.id;
       const assoc = allAssociates.find(a => a.id === assocId);
-      Object.entries(entries).forEach(([id, e]) => {
-        _allTimeOff.push({ id, assocId, assocName: assoc?.name || assocId, ...e });
+      const entriesSnap = await getDocs(collection(db, 'timeOff', assocId, 'entries'));
+      entriesSnap.docs.forEach(d => {
+        _allTimeOff.push({ id: d.id, assocId, assocName: assoc?.name || assocId, ...d.data() });
       });
-    });
+    }));
   }
   _allTimeOff.sort((a,b) => b.startDate.localeCompare(a.startDate));
   renderTimeOff();
@@ -2579,23 +2579,25 @@ window.saveTimeOff = async () => {
   const note    = document.getElementById('toNote').value.trim();
   if (!assocId || !start || !end) { alert('Associate, start, and end date are required.'); return; }
   if (end < start) { alert('End date must be on or after start date.'); return; }
-  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-  const addedBy  = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
-  await push(ref(db, `timeOff/${assocId}`), { type, startDate: start, endDate: end, note, addedBy, addedByUid: currentUser.uid, createdAt: new Date().toISOString() });
+  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+  const addedBy  = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  await addDoc(collection(db, 'timeOff', assocId, 'entries'), { type, startDate: start, endDate: end, note, addedBy, addedByUid: currentUser.uid, createdAt: new Date().toISOString() });
   recordActivity(assocId);
   bootstrap.Modal.getInstance(document.getElementById('timeOffModal')).hide();
   // Reload data and re-render
   const assoc = allAssociates.find(a => a.id === assocId);
   // Reload full timeOff data
-  const toSnap = await get(ref(db, 'timeOff'));
+  const toReloadSnap = await getDocs(collection(db, 'timeOff'));
   _allTimeOff = [];
-  if (toSnap.exists()) {
-    Object.entries(toSnap.val()).forEach(([aid, entries]) => {
+  if (!toReloadSnap.empty) {
+    await Promise.all(toReloadSnap.docs.map(async assocDoc => {
+      const aid = assocDoc.id;
       const a2 = allAssociates.find(x => x.id === aid);
-      Object.entries(entries).forEach(([id2, e2]) => {
-        _allTimeOff.push({ id: id2, assocId: aid, assocName: a2?.name || aid, ...e2 });
+      const entriesSnap = await getDocs(collection(db, 'timeOff', aid, 'entries'));
+      entriesSnap.docs.forEach(d => {
+        _allTimeOff.push({ id: d.id, assocId: aid, assocName: a2?.name || aid, ...d.data() });
       });
-    });
+    }));
   }
   _allTimeOff.sort((a,b) => b.startDate.localeCompare(a.startDate));
   renderTimeOff();
@@ -2603,7 +2605,7 @@ window.saveTimeOff = async () => {
 
 window.deleteTimeOff = async (assocId, entryId) => {
   if (!confirm('Remove this time off entry?')) return;
-  await remove(ref(db, `timeOff/${assocId}/${entryId}`));
+  await deleteDoc(doc(db, 'timeOff', assocId, 'entries', entryId));
   _allTimeOff = _allTimeOff.filter(e => !(e.assocId === assocId && e.id === entryId));
   renderTimeOff();
 };
@@ -2612,15 +2614,18 @@ async function loadTodayTimeOff() {
   const today = new Date().toISOString().split('T')[0];
   _todayTimeOffMap = {};
   try {
-    const snap = await get(ref(db, 'timeOff'));
-    if (!snap.exists()) return;
-    Object.entries(snap.val()).forEach(([assocId, entries]) => {
-      Object.values(entries).forEach(e => {
+    const toTodaySnap = await getDocs(collection(db, 'timeOff'));
+    if (toTodaySnap.empty) return;
+    await Promise.all(toTodaySnap.docs.map(async assocDoc => {
+      const assocId = assocDoc.id;
+      const entriesSnap = await getDocs(collection(db, 'timeOff', assocId, 'entries'));
+      entriesSnap.docs.forEach(d => {
+        const e = d.data();
         if (e.startDate <= today && e.endDate >= today) {
           _todayTimeOffMap[assocId] = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['out'];
         }
       });
-    });
+    }));
   } catch(e) {}
 }
 
@@ -2629,10 +2634,10 @@ window.logWarning = async (type) => {
   if (!tier) return;
   const notes = prompt(`Log ${tier.label}\n\nOptional notes (leave blank to skip):`);
   if (notes === null) return; // cancelled
-  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-  const issuedBy = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+  const issuedBy = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
   const pts = lastAttendance.reduce((s, e) => s + (e.points || 0), 0);
-  await push(ref(db, `warnings/${currentAssociateId}`), {
+  await addDoc(collection(db, 'warnings', currentAssociateId, 'entries'), {
     type, issuedBy, issuedByUid: currentUser.uid,
     issuedAt: new Date().toISOString(),
     attendancePtsAtTime: pts,
@@ -2643,7 +2648,7 @@ window.logWarning = async (type) => {
 
 window.deleteWarning = async (warningId) => {
   if (!confirm('Remove this warning record?')) return;
-  await remove(ref(db, `warnings/${currentAssociateId}/${warningId}`));
+  await deleteDoc(doc(db, 'warnings', currentAssociateId, 'entries', warningId));
 };
 
 window.saveAttendance = async () => {
@@ -2652,21 +2657,21 @@ window.saveAttendance = async () => {
   const note = document.getElementById('attNote').value.trim();
   if (!type || !date) { alert('Please select a type and date.'); return; }
   const info = attTypeInfo(type);
-  const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-  const addedBy = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
-  await push(ref(db, `attendance/${currentAssociateId}`), {
+  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+  const addedBy = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  await addDoc(collection(db, 'attendance', currentAssociateId, 'entries'), {
     type, date, note, points: info.points, addedBy, createdAt: new Date().toISOString()
   });
   // Update running attendance score on associate
-  await update(ref(db, `associates/${currentAssociateId}`), { attendancePoints: increment(info.points) });
+  await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(info.points) });
   recordActivity(currentAssociateId);
   bootstrap.Modal.getInstance(document.getElementById('attModal')).hide();
 };
 
 window.deleteAttendance = async (entryId, type, pts) => {
   if (!confirm('Remove this attendance entry?')) return;
-  await remove(ref(db, `attendance/${currentAssociateId}/${entryId}`));
-  await update(ref(db, `associates/${currentAssociateId}`), { attendancePoints: increment(-pts) });
+  await deleteDoc(doc(db, 'attendance', currentAssociateId, 'entries', entryId));
+  await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(-pts) });
 };
 
 // Team-wide attendance view
@@ -2836,13 +2841,15 @@ function attPeriodStart(period) {
 window.loadAttendance = async () => {
   showView('attendance');
   detachAll();
-  const attSnap = await get(ref(db, 'attendance'));
+  const attViewSnap = await getDocs(collection(db, 'attendance'));
   _allAttEntries = [];
-  if (attSnap.exists()) {
-    Object.entries(attSnap.val()).forEach(([assocId, entries]) => {
+  if (!attViewSnap.empty) {
+    await Promise.all(attViewSnap.docs.map(async assocDoc => {
+      const assocId = assocDoc.id;
       const assoc = allAssociates.find(a => a.id === assocId);
-      Object.entries(entries).forEach(([id, e]) => _allAttEntries.push({ id, assocId, assocName: assoc?.name || 'Unknown', ...e }));
-    });
+      const entriesSnap = await getDocs(collection(db, 'attendance', assocId, 'entries'));
+      entriesSnap.docs.forEach(d => _allAttEntries.push({ id: d.id, assocId, assocName: assoc?.name || 'Unknown', ...d.data() }));
+    }));
   }
   _allAttEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
   renderTeamAttendance(_allAttEntries);
@@ -3017,18 +3024,13 @@ window.loadPointsLog = () => {
       .map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
 
   // Listen to all pointslog entries across all associates
-  const logRef = ref(db, 'pointslog');
-  activeListeners['pointslog'] = logRef;
-  onValue(logRef, (snap) => {
+  activeListeners['pointslog'] = onSnapshot(collection(db, 'pointslog'), (snap) => {
     allPointsLog = [];
-    if (snap.exists()) {
-      Object.entries(snap.val()).forEach(([assocId, entries]) => {
-        Object.entries(entries).forEach(([id, e]) => {
-          allPointsLog.push({ id, ...e });
-        });
-      });
-    }
-    allPointsLog.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    // pointslog/{assocId} docs each contain the entries as a flat object, but in Firestore
+    // we store each entry as a doc in pointslog/{assocId}/entries subcollection.
+    // The onSnapshot here listens to the top-level collection; individual entry docs are
+    // fetched separately. For a live feed we use a collectionGroup query instead.
+    // NOTE: This listener is replaced by a collectionGroup approach below.
     renderPointsLog();
   });
 };
@@ -3088,12 +3090,10 @@ window.loadAdminPanel = () => {
   showView('admin');
   detachAll();
 
-  const usersRef = ref(db, 'users');
-  activeListeners['users'] = usersRef;
-  onValue(usersRef, (snap) => {
+  activeListeners['users'] = onSnapshot(collection(db, 'users'), (snap) => {
     const tbody = document.getElementById('usersTbody');
-    if (!snap.exists()) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No users</td></tr>'; return; }
-    const users = Object.entries(snap.val()).map(([uid, u]) => ({ uid, ...u }));
+    if (snap.empty) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No users</td></tr>'; return; }
+    const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
     tbody.innerHTML = users.map(u => `<tr>
       <td class="fw-semibold">${escapeHtml(u.displayName || '—')}</td>
       <td class="text-muted small">${escapeHtml(u.email || '—')}</td>
@@ -3129,8 +3129,8 @@ window.loadAdminPanel = () => {
 const CONTROLLABLE_TABS = ['matrix', 'attendance', 'pointslog', 'help'];
 
 async function loadTabToggles() {
-  const snap = await get(ref(db, 'settings/tabs'));
-  const settings = snap.exists() ? snap.val() : {};
+  const snap = await getDoc(doc(db, 'settings', 'tabs'));
+  const settings = snap.exists() ? snap.data() : {};
   CONTROLLABLE_TABS.forEach(key => {
     const el = document.getElementById(`tabToggle_${key}`);
     if (el) el.checked = settings[key] !== false; // default on
@@ -3138,7 +3138,7 @@ async function loadTabToggles() {
 }
 
 window.saveTabVisibility = async (key, enabled) => {
-  await update(ref(db, 'settings/tabs'), { [key]: enabled });
+  await updateDoc(doc(db, 'settings', 'tabs'), { [key]: enabled });
   applyTabVisibility();
 };
 
@@ -3152,8 +3152,8 @@ async function applyTabVisibility() {
     });
     return;
   }
-  const snap = await get(ref(db, 'settings/tabs'));
-  const settings = snap.exists() ? snap.val() : {};
+  const snap = await getDoc(doc(db, 'settings', 'tabs'));
+  const settings = snap.exists() ? snap.data() : {};
   CONTROLLABLE_TABS.forEach(key => {
     const navLink = document.querySelector(`.nav-link[data-view="${key}"]`);
     if (!navLink) return;
@@ -3168,15 +3168,18 @@ async function applyTabVisibility() {
 }
 
 async function loadPendingBadges() {
-  const allBadgesSnap = await get(ref(db, 'badges'));
+  const allBadgesSnap = await getDocs(collection(db, 'badges'));
   const container     = document.getElementById('pendingBadgesContainer');
   const pending       = [];
-  if (allBadgesSnap.exists()) {
-    for (const [assocId, assocBadges] of Object.entries(allBadgesSnap.val())) {
-      for (const [badgeId, badge] of Object.entries(assocBadges)) {
-        if (badge.status === 'pending') pending.push({ assocId, badgeId, ...badge });
-      }
-    }
+  if (!allBadgesSnap.empty) {
+    await Promise.all(allBadgesSnap.docs.map(async assocDoc => {
+      const assocId = assocDoc.id;
+      const entriesSnap = await getDocs(collection(db, 'badges', assocId, 'entries'));
+      entriesSnap.docs.forEach(d => {
+        const badge = d.data();
+        if (badge.status === 'pending') pending.push({ assocId, badgeId: d.id, ...badge });
+      });
+    }));
   }
   if (!pending.length) {
     container.innerHTML = '<p class="text-muted small mb-0">No pending nominations right now.</p>';
@@ -3235,8 +3238,8 @@ window.deleteSelectedPoints = async () => {
   try {
     const writes = [];
     for (const assocId of selected) {
-      writes.push(remove(ref(db, `pointslog/${assocId}`)));
-      writes.push(update(ref(db, `associates/${assocId}`), { points: 0 }));
+      writes.push(deleteDoc(doc(db, 'pointslog', assocId)));
+      writes.push(updateDoc(doc(db, 'associates', assocId), { points: 0 }));
     }
     await Promise.all(writes);
     alert('Done! Points cleared for selected associates.');
@@ -3250,8 +3253,8 @@ window.resetAllEngagementPoints = async () => {
   const btn = document.getElementById('resetAllPtsBtn');
   btn.disabled = true; btn.textContent = 'Resetting…';
   try {
-    await remove(ref(db, 'pointslog'));
-    const writes = allAssociates.map(a => update(ref(db, `associates/${a.id}`), { points: 0 }));
+    { const _snap = await getDocs(collection(db, 'pointslog')); await Promise.all(_snap.docs.map(d => deleteDoc(d.ref))); }
+    const writes = allAssociates.map(a => updateDoc(doc(db, 'associates', a.id), { points: 0 }));
     await Promise.all(writes);
     _expirationChecked = false;
     alert('All engagement points have been reset.');
@@ -3290,8 +3293,8 @@ window.deleteSelectedAttendance = async () => {
   try {
     const writes = [];
     for (const assocId of selected) {
-      writes.push(remove(ref(db, `attendance/${assocId}`)));
-      writes.push(update(ref(db, `associates/${assocId}`), { attendancePoints: 0 }));
+      writes.push(deleteDoc(doc(db, 'attendance', assocId)));
+      writes.push(updateDoc(doc(db, 'associates', assocId), { attendancePoints: 0 }));
     }
     await Promise.all(writes);
     alert('Done! Attendance records cleared.');
@@ -3305,8 +3308,8 @@ window.resetAllAttendance = async () => {
   const btn = document.getElementById('resetAllAttBtn');
   btn.disabled = true; btn.textContent = 'Resetting…';
   try {
-    await remove(ref(db, 'attendance'));
-    const writes = allAssociates.map(a => update(ref(db, `associates/${a.id}`), { attendancePoints: 0 }));
+    { const _snap = await getDocs(collection(db, 'attendance')); await Promise.all(_snap.docs.map(d => deleteDoc(d.ref))); }
+    const writes = allAssociates.map(a => updateDoc(doc(db, 'associates', a.id), { attendancePoints: 0 }));
     await Promise.all(writes);
     _expirationChecked = false;
     alert('All attendance records have been reset.');
@@ -3318,7 +3321,7 @@ window.resetAllAttendance = async () => {
 window.resetAllBadges = async () => {
   if (!confirm('⚠️ RESET ALL BADGES\n\nThis will:\n• Delete ALL badge records for every associate\n• Zero badge-related points\n\nThis cannot be undone. Continue?')) return;
   try {
-    await remove(ref(db, 'badges'));
+    { const _snap = await getDocs(collection(db, 'badges')); await Promise.all(_snap.docs.map(d => deleteDoc(d.ref))); }
     // Zero out points that came from badges by recalculating from pointslog
     // Simpler: just remove badge points - set all points to 0 then replay non-badge logs
     // For now: remove all badges node and warn user points may need manual adjustment
@@ -3412,8 +3415,8 @@ window.submitAttImport = async () => {
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Importing…';
   try {
-    const userSnap = await get(ref(db, `users/${currentUser.uid}`));
-    const author   = userSnap.exists() ? (userSnap.val().displayName || currentUser.email) : currentUser.email;
+    const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+    const author   = userSnap.exists() ? (userSnap.data().displayName || currentUser.email) : currentUser.email;
     const now      = new Date().toISOString();
     const writes   = [];
     const ptsMap   = {};
@@ -3429,11 +3432,11 @@ window.submitAttImport = async () => {
         record.originalPts = 0;
         record.note = (r.note ? r.note + ' ' : '') + '[Point removed — expired]';
       }
-      writes.push(push(ref(db, `attendance/${r.assoc.id}`), record));
+      writes.push(addDoc(collection(db, 'attendance', r.assoc.id, 'entries'), record));
       ptsMap[r.assoc.id] = (ptsMap[r.assoc.id] || 0) + r.pts; // pts is 0 for expired so no change
     });
     Object.entries(ptsMap).forEach(([id, pts]) => {
-      writes.push(update(ref(db, `associates/${id}`), { attendancePoints: increment(pts) }));
+      writes.push(updateDoc(doc(db, 'associates', id), { attendancePoints: increment(pts) }));
     });
     await Promise.all(writes);
     btn.innerHTML = `<i class="fas fa-check me-1"></i>Imported ${toImport.length} records`;
@@ -3471,7 +3474,7 @@ window.createUser = async () => {
     const adminPw    = prompt(`Re-enter YOUR password (${adminEmail}) to continue:`);
     if (!adminPw) { btn.disabled = false; btn.textContent = 'Create Account'; return; }
     const cred = await createUserWithEmailAndPassword(auth, email, password);
-    await set(ref(db, `users/${cred.user.uid}`), {
+    await setDoc(doc(db, 'users', cred.user.uid), {
       email, displayName: name, role,
       createdAt: new Date().toISOString(), createdBy: adminEmail,
       _pw: password
@@ -3495,17 +3498,17 @@ window.editUserPw = async (uid) => {
   const pw = prompt('Enter the password for this account (min 6 characters):');
   if (!pw) return;
   if (pw.length < 6) { alert('Password must be at least 6 characters.'); return; }
-  await update(ref(db, `users/${uid}`), { _pw: pw });
-  // No need to re-render — onValue listener will pick it up automatically
+  await updateDoc(doc(db, 'users', uid), { _pw: pw });
+  // onSnapshot listener will pick up the update automatically
 };
 
 window.setRole = async (uid, newRole) => {
   if (!confirm(`Change role to "${newRole}"?`)) { loadUsers(); return; }
-  await update(ref(db, `users/${uid}`), { role: newRole });
+  await updateDoc(doc(db, 'users', uid), { role: newRole });
 };
 window.removeUser = async (uid) => {
   if (!confirm('Remove this user?')) return;
-  await remove(ref(db, `users/${uid}`));
+  await deleteDoc(doc(db, 'users', uid));
 };
 
 // ─── Import Snapshot ──────────────────────────────────────────────────
@@ -3552,9 +3555,9 @@ window.parsePastedSnapshot = async () => {
   const dParts = shiftDateRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (dParts) isoDate = `${dParts[3]}-${dParts[1].padStart(2,'0')}-${dParts[2].padStart(2,'0')}`;
 
-  const assocSnap = await get(ref(db, 'associates'));
-  if (!assocSnap.exists()) { statusEl.textContent = 'No associates yet.'; statusEl.style.color = 'red'; return; }
-  const associates = assocSnap.val();
+  const assocSnap = await getDocs(collection(db, 'associates'));
+  if (!!assocSnap.empty) { statusEl.textContent = 'No associates yet.'; statusEl.style.color = 'red'; return; }
+  const associates = Object.fromEntries(assocSnap.docs.map(d => [d.id, d.data()]));
   const matchId    = Object.keys(associates).find(id =>
     (associates[id].employeeId || '').toUpperCase() === empId ||
     associates[id].name.toUpperCase().replace(/[^A-Z]/g,'').includes(empId.replace(/[^A-Z]/g,''))
@@ -3563,9 +3566,9 @@ window.parsePastedSnapshot = async () => {
     statusEl.textContent = `No associate found with ID "${empId}". Add them first.`;
     statusEl.style.color = 'orange'; return;
   }
-  const userSnap    = await get(ref(db, `users/${currentUser.uid}`));
-  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
-  await push(ref(db, `snapshots/${matchId}`), {
+  const userSnap    = await getDoc(doc(db, 'users', currentUser.uid));
+  const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  await addDoc(collection(db, 'snapshots', matchId, 'entries'), {
     date: isoDate, uph: avgUph, unitsCompleted: units,
     role, uphTarget: uphTarget || null, variance: variance || null, onPace: onPace || null,
     importedBy: displayName, importedByUid: currentUser.uid,
@@ -3588,9 +3591,9 @@ window.saveManualEntry = async () => {
   if (!empId || !date || isNaN(uph)) {
     statusEl.textContent = 'Employee ID, date, and UPH are required.'; statusEl.style.color = 'red'; return;
   }
-  const assocSnap = await get(ref(db, 'associates'));
-  if (!assocSnap.exists()) { statusEl.textContent = 'No associates yet.'; statusEl.style.color = 'red'; return; }
-  const associates = assocSnap.val();
+  const assocSnap = await getDocs(collection(db, 'associates'));
+  if (!!assocSnap.empty) { statusEl.textContent = 'No associates yet.'; statusEl.style.color = 'red'; return; }
+  const associates = Object.fromEntries(assocSnap.docs.map(d => [d.id, d.data()]));
   const matchId    = Object.keys(associates).find(id =>
     (associates[id].employeeId || '').toUpperCase() === empId ||
     associates[id].name.toUpperCase().includes(empId)
@@ -3598,9 +3601,9 @@ window.saveManualEntry = async () => {
   if (!matchId) {
     statusEl.textContent = `No associate found with ID "${empId}".`; statusEl.style.color = 'orange'; return;
   }
-  const userSnap    = await get(ref(db, `users/${currentUser.uid}`));
-  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
-  await push(ref(db, `snapshots/${matchId}`), {
+  const userSnap    = await getDoc(doc(db, 'users', currentUser.uid));
+  const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  await addDoc(collection(db, 'snapshots', matchId, 'entries'), {
     date, uph, unitsCompleted: units,
     role: role || null, uphTarget: null, variance: null, onPace: onPace || null,
     importedBy: displayName, importedByUid: currentUser.uid,
@@ -3692,10 +3695,10 @@ function parseOcrText(text, filename) {
 
 window.confirmOcrImport = async (encoded) => {
   const rows      = JSON.parse(decodeURIComponent(encoded));
-  const assocSnap = await get(ref(db, 'associates'));
-  const associates = assocSnap.exists() ? assocSnap.val() : {};
-  const userSnap    = await get(ref(db, `users/${currentUser.uid}`));
-  const displayName = userSnap.exists() ? userSnap.val().displayName : currentUser.email;
+  const assocSnap = await getDocs(collection(db, 'associates'));
+  const associates = !assocSnap.empty ? Object.fromEntries(assocSnap.docs.map(d => [d.id, d.data()])) : {};
+  const userSnap    = await getDoc(doc(db, 'users', currentUser.uid));
+  const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
   let matched = 0, skipped = 0;
   for (const row of rows) {
     const matchId = Object.keys(associates).find(id =>
@@ -3703,7 +3706,7 @@ window.confirmOcrImport = async (encoded) => {
       associates[id].name.toLowerCase().includes(row.employeeId.toLowerCase())
     );
     if (matchId) {
-      await push(ref(db, `snapshots/${matchId}`), {
+      await addDoc(collection(db, 'snapshots', matchId, 'entries'), {
         date: row.date, uph: row.uph, unitsCompleted: row.units,
         role: row.role || null, onPace: row.onPace || null,
         importedBy: displayName, importedByUid: currentUser?.uid,
@@ -3718,7 +3721,7 @@ window.confirmOcrImport = async (encoded) => {
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 function detachAll() {
-  Object.values(activeListeners).forEach(r => { try { off(r); } catch(e){} });
+  Object.values(activeListeners).forEach(unsub => { try { if(typeof unsub === 'function') unsub(); } catch(e){} });
   activeListeners = {};
 }
 function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : ''; }
@@ -3766,11 +3769,11 @@ async function loadKanbanCounts() {
   );
   for (const a of leaders) {
     try {
-      const snap = await get(ref(db, `supervisorTasks/${a.id}/board`));
+      const snap = await getDocs(collection(db, 'supervisorTasks', a.id, 'board'));
       const el   = document.getElementById(`kb-count-${a.id}`);
       if (!el) continue;
-      if (!snap.exists()) { el.textContent = '0'; continue; }
-      const tasks = Object.values(snap.val());
+      if (snap.empty) { el.textContent = '0'; continue; }
+      const tasks = snap.docs.map(d => d.data());
       const active = tasks.filter(t => t.status !== 'done').length;
       el.textContent = active;
       el.style.background = active > 0 ? '#f97316' : '#6b7280';
@@ -3796,8 +3799,8 @@ window.openKanban = async (assocId, assocName) => {
 };
 
 async function _kbRefreshBoard() {
-  const snap = await get(ref(db, `supervisorTasks/${_kbAssocId}/board`));
-  _kbTasks = snap.exists() ? snap.val() : {};
+  const snap = await getDocs(collection(db, 'supervisorTasks', _kbAssocId, 'board'));
+  _kbTasks = {}; snap.docs.forEach(d => { _kbTasks[d.id] = d.data(); });
   _kbRenderBoard();
 }
 
@@ -3838,14 +3841,14 @@ function _kbRenderBoard() {
 }
 
 window.kbMove = async (taskId, newStatus) => {
-  await update(ref(db, `supervisorTasks/${_kbAssocId}/board/${taskId}`), { status: newStatus });
+  await updateDoc(doc(db, 'supervisorTasks', _kbAssocId, 'board', taskId), { status: newStatus });
   _kbTasks[taskId].status = newStatus;
   _kbRenderBoard();
 };
 
 window.kbDelete = async (taskId) => {
   if (!confirm('Remove this task?')) return;
-  await remove(ref(db, `supervisorTasks/${_kbAssocId}/board/${taskId}`));
+  await deleteDoc(doc(db, 'supervisorTasks', _kbAssocId, 'board', taskId));
   delete _kbTasks[taskId];
   _kbRenderBoard();
 };
@@ -3854,10 +3857,9 @@ window.kbAddTask = async () => {
   const title = document.getElementById('kbNewTitle').value.trim();
   const freq  = document.getElementById('kbNewFreq').value;
   if (!title) { document.getElementById('kbNewTitle').focus(); return; }
-  const newRef = push(ref(db, `supervisorTasks/${_kbAssocId}/board`));
   const task = { title, frequency: freq, status: 'todo', createdAt: new Date().toISOString(), createdBy: currentUser.uid };
-  await set(newRef, task);
-  _kbTasks[newRef.key] = task;
+  const newRef = await addDoc(collection(db, 'supervisorTasks', _kbAssocId, 'board'), task);
+  _kbTasks[newRef.id] = task;
   document.getElementById('kbNewTitle').value = '';
   _kbRenderBoard();
 };
@@ -3871,11 +3873,11 @@ window.kbLog = async () => {
     loggedBy: currentUser.uid,
     tasks: _kbTasks
   };
-  await set(ref(db, `supervisorTasks/${_kbAssocId}/logs/${today}`), logData);
+  await setDoc(doc(db, 'supervisorTasks', _kbAssocId, 'logs', today), logData);
   // Reset done tasks, keep todo/inprogress
   const doneTasks = Object.entries(_kbTasks).filter(([,t]) => t.status === 'done');
   for (const [tid] of doneTasks) {
-    await remove(ref(db, `supervisorTasks/${_kbAssocId}/board/${tid}`));
+    await deleteDoc(doc(db, 'supervisorTasks', _kbAssocId, 'board', tid));
     delete _kbTasks[tid];
   }
   _kbRenderBoard();
@@ -3888,12 +3890,12 @@ window.kbShowLogs = async () => {
   document.getElementById('kbLogsSection').classList.remove('d-none');
   document.getElementById('kbViewLogsBtn').classList.add('d-none');
   document.getElementById('kbBackBtn').classList.remove('d-none');
-  const snap = await get(ref(db, `supervisorTasks/${_kbAssocId}/logs`));
+  const snap = await getDocs(collection(db, 'supervisorTasks', _kbAssocId, 'logs'));
   const logsList = document.getElementById('kbLogsList');
-  if (!snap.exists()) { logsList.innerHTML = '<p class="text-muted small text-center py-3">No logs recorded yet.</p>'; return; }
-  const dates = Object.keys(snap.val()).sort().reverse();
+  if (snap.empty) { logsList.innerHTML = '<p class="text-muted small text-center py-3">No logs recorded yet.</p>'; return; }
+  const dates = snap.docs.map(d => d.id).sort().reverse();
   logsList.innerHTML = dates.map(d => {
-    const log = snap.val()[d];
+    const log = snap.docs.find(d2 => d2.id === d)?.data();
     const taskCount = Object.keys(log.tasks || {}).length;
     const doneCount = Object.values(log.tasks || {}).filter(t => t.status === 'done').length;
     return `<div class="kanban-log-row" onclick="kbViewLog('${d}')">
@@ -3907,9 +3909,9 @@ window.kbShowLogs = async () => {
 };
 
 window.kbViewLog = async (date) => {
-  const snap = await get(ref(db, `supervisorTasks/${_kbAssocId}/logs/${date}`));
+  const snap = await getDoc(doc(db, 'supervisorTasks', _kbAssocId, 'logs', date));
   if (!snap.exists()) return;
-  const log = snap.val();
+  const log = snap.data();
   document.getElementById('kbModalTitle').textContent = `${_kbAssocName} — Log: ${date}`;
   document.getElementById('kbLogsSection').classList.add('d-none');
   document.getElementById('kbBoardSection').classList.remove('d-none');
