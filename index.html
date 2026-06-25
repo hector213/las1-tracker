@@ -2248,12 +2248,18 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   .att-table td { font-size:9pt; padding:2px 6px; border:1px solid #ccc; }
   @media print {
     button { display:none !important; }
-    #page-wrap { margin:0 !important; padding:0.2in 0.5in !important; max-width:100% !important; }
+    #page-wrap { margin:0 !important; padding:0.15in 0.45in !important; max-width:100% !important; }
     * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
-    .text-area-cell { min-height:40px !important; }
-    .text-area-cell.short { min-height:28px !important; }
-    .sig-table td { padding:16px 10px 4px !important; }
-    body { font-size:9.5pt !important; }
+    body { font-size:9pt !important; }
+    .text-area-cell { min-height:32px !important; padding:4px 10px !important; }
+    .text-area-cell.short { min-height:22px !important; }
+    .sig-table td { padding:12px 8px 3px !important; }
+    .att-table td, .att-table th { padding:1px 5px !important; font-size:8pt !important; }
+    .pts-inner td, .pts-inner th { padding:2px 6px !important; font-size:8pt !important; }
+    .field-cell { padding:4px 10px 3px !important; }
+    .sec-header { padding:3px 10px !important; }
+    .check-table td { padding:3px 10px !important; }
+    .doc-title h1 { font-size:14pt !important; }
   }
 </style>
 </head>
