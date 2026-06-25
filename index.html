@@ -2537,6 +2537,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
     status.style.color = '#555';
     status.textContent = 'Saving to HR records…';
 
+    let saved = false;
     try {
       if (window.opener && window.opener.saveSignedWarning) {
         await window.opener.saveSignedWarning({
@@ -2548,20 +2549,17 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
           signedAt: todayStr,
           signatures: sigs
         });
+        saved = true;
         status.style.color = '#16a34a';
-        status.textContent = '✓ Signed copy saved. Downloading file…';
+        status.innerHTML = '✓ Signed copy saved to HR records. <button onclick="window.print()" style="margin-left:10px;padding:6px 18px;background:#1a2744;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:10pt;font-weight:bold">🖨️ Print / Save as PDF</button>';
       } else {
         status.style.color = '#d97706';
-        status.textContent = '⚠ Could not reach main app — downloading signed copy only.';
+        status.innerHTML = '⚠ Could not reach main app. <button onclick="window.print()" style="margin-left:10px;padding:6px 18px;background:#555;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:10pt;font-weight:bold">🖨️ Print / Save as PDF</button>';
       }
     } catch(e) {
       status.style.color = '#dc2626';
       status.textContent = '✗ Save failed: ' + e.message;
     }
-
-    // Open print dialog — user selects "Save as PDF" to download
-    status.textContent = '✓ Signed copy saved. Opening print dialog — select "Save as PDF" to download.';
-    setTimeout(() => window.print(), 800);
   };
 })();
 <\/script>
