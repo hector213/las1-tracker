@@ -2239,6 +2239,8 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Employee Warning Notice — ${assoc.name}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
   #page-wrap { max-width: 960px; margin: 0 auto; padding: 48px 72px; background:#fff; }
@@ -2549,17 +2551,43 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
           signatures: sigs
         });
         status.style.color = '#16a34a';
-        status.textContent = '✓ Signed copy saved to HR records. Printing associate copy…';
+        status.textContent = '✓ Signed copy saved. Downloading file…';
       } else {
         status.style.color = '#d97706';
-        status.textContent = '⚠ Could not reach main app — printing signed copy only.';
+        status.textContent = '⚠ Could not reach main app — downloading signed copy only.';
       }
     } catch(e) {
       status.style.color = '#dc2626';
       status.textContent = '✗ Save failed: ' + e.message;
     }
 
-    setTimeout(() => window.print(), 800);
+    // Download signed document as PDF to Downloads folder
+    try {
+      const actionBar = document.getElementById('action-bar');
+      const wrap = document.getElementById('page-wrap');
+      if (actionBar) actionBar.style.display = 'none';
+      const canvas = await html2canvas(wrap, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      if (actionBar) actionBar.style.display = '';
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgH = (canvas.height * pageW) / canvas.width;
+      let y = 0;
+      while (y < imgH) {
+        if (y > 0) pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, -y, pageW, imgH);
+        y += pageH;
+      }
+      const safeName = '${assoc.name}'.replace(/[^a-z0-9]/gi, '_');
+      const safeDate = todayStr.replace(/\//g, '-');
+      pdf.save('WarningNotice_' + safeName + '_' + safeDate + '.pdf');
+    } catch(e) {
+      console.warn('PDF download failed:', e);
+    }
+
+    setTimeout(() => window.print(), 1200);
   };
 })();
 <\/script>
