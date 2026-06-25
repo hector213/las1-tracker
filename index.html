@@ -2220,7 +2220,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 <title>Employee Warning Notice — ${assoc.name}</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family: Arial, sans-serif; font-size: 10.5pt; color: #111; padding: 28px 36px; max-width: 820px; margin: 0 auto; }
+  body { font-family: Arial, sans-serif; font-size: 10.5pt; color: #111; padding: 36px 56px; max-width: 820px; margin: 0 auto; }
   .doc-title { text-align:center; border:2px solid #1a2744; padding:10px 0 6px; margin-bottom:0; }
   .doc-title h1 { font-size:16pt; font-weight:bold; letter-spacing:1px; color:#1a2744; text-transform:uppercase; }
   .doc-title h2 { font-size:11pt; font-weight:bold; color:#555; margin-top:2px; }
@@ -2244,14 +2244,11 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   .att-table { width:100%; border-collapse:collapse; }
   .att-table th { background:#e5e7eb; font-size:8.5pt; padding:2px 6px; border:1px solid #aaa; text-align:left; }
   .att-table td { font-size:9pt; padding:2px 6px; border:1px solid #ccc; }
-  @media print { button { display:none !important; } body { padding:14px 20px; } }
+  @media print { button { display:none !important; } body { padding:20px 36px; } }
 </style>
 </head>
 <body>
 
-<div style="text-align:center;margin-bottom:12px;padding:6px 0">
-  <img src="data:image/png;base64,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" style="height:64px;width:auto" alt="CarParts.com">
-</div>
 <div class="doc-title">
   <div style="font-size:8.5pt;color:#888;letter-spacing:2px;margin-bottom:4px">LAS1 FULFILLMENT CENTER</div>
   <h1>Employee Warning Notice</h1>
@@ -2410,38 +2407,39 @@ let _toYear  = new Date().getFullYear();
 const TO_MONTHS       = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const TO_MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-window.loadTimeOff = async () => {
+window.loadTimeOff = () => {
   showView('timeoff');
   detachAll();
-  // Ensure allAssociates is populated
-  if (!allAssociates.length) {
-    const snap = await getDocs(collection(db, 'associates'));
-    if (!snap.empty) {
-      allAssociates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    }
-  }
-  // Populate associate filter dropdown
-  const sel = document.getElementById('toFilterAssoc');
-  if (sel) {
-    sel.innerHTML = '<option value="">All Associates</option>';
-    allAssociates.filter(a => a.status === 'active').sort((a,b) => a.name.localeCompare(b.name)).forEach(a => {
-      const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; sel.appendChild(o);
-    });
-  }
-  const toLoadSnap = await getDocs(collection(db, 'timeOff'));
   _allTimeOff = [];
-  if (!toLoadSnap.empty) {
-    await Promise.all(toLoadSnap.docs.map(async assocDoc => {
-      const assocId = assocDoc.id;
-      const assoc = allAssociates.find(a => a.id === assocId);
-      const entriesSnap = await getDocs(collection(db, 'timeOff', assocId, 'entries'));
-      entriesSnap.docs.forEach(d => {
-        _allTimeOff.push({ id: d.id, assocId, assocName: assoc?.name || assocId, ...d.data() });
+  const toEntryListeners = new Set();
+
+  activeListeners['toAssociates'] = onSnapshot(collection(db, 'associates'), (snap) => {
+    allAssociates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // Populate filter dropdown once
+    const sel = document.getElementById('toFilterAssoc');
+    if (sel && sel.options.length <= 1) {
+      sel.innerHTML = '<option value="">All Associates</option>';
+      allAssociates.filter(a => a.status === 'active').sort((a,b) => a.name.localeCompare(b.name)).forEach(a => {
+        const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; sel.appendChild(o);
       });
-    }));
-  }
-  _allTimeOff.sort((a,b) => b.startDate.localeCompare(a.startDate));
-  renderTimeOff();
+    }
+
+    // Set up a per-associate entries listener for any associate not yet tracked
+    allAssociates.forEach(assoc => {
+      if (toEntryListeners.has(assoc.id)) return;
+      toEntryListeners.add(assoc.id);
+      activeListeners[`toEnt_${assoc.id}`] = onSnapshot(
+        collection(db, 'timeOff', assoc.id, 'entries'),
+        (entSnap) => {
+          _allTimeOff = _allTimeOff.filter(e => e.assocId !== assoc.id);
+          entSnap.docs.forEach(d => _allTimeOff.push({ id: d.id, assocId: assoc.id, assocName: assoc.name, ...d.data() }));
+          _allTimeOff.sort((a,b) => b.startDate.localeCompare(a.startDate));
+          renderTimeOff();
+        }
+      );
+    });
+  });
 };
 
 window.toChangeYear = (delta) => { _toYear += delta; renderTimeOff(); };
@@ -2595,30 +2593,13 @@ window.saveTimeOff = async () => {
   await addDoc(collection(db, 'timeOff', assocId, 'entries'), { type, startDate: start, endDate: end, note, addedBy, addedByUid: currentUser.uid, createdAt: new Date().toISOString() });
   recordActivity(assocId);
   bootstrap.Modal.getInstance(document.getElementById('timeOffModal')).hide();
-  // Reload data and re-render
-  const assoc = allAssociates.find(a => a.id === assocId);
-  // Reload full timeOff data
-  const toReloadSnap = await getDocs(collection(db, 'timeOff'));
-  _allTimeOff = [];
-  if (!toReloadSnap.empty) {
-    await Promise.all(toReloadSnap.docs.map(async assocDoc => {
-      const aid = assocDoc.id;
-      const a2 = allAssociates.find(x => x.id === aid);
-      const entriesSnap = await getDocs(collection(db, 'timeOff', aid, 'entries'));
-      entriesSnap.docs.forEach(d => {
-        _allTimeOff.push({ id: d.id, assocId: aid, assocName: a2?.name || aid, ...d.data() });
-      });
-    }));
-  }
-  _allTimeOff.sort((a,b) => b.startDate.localeCompare(a.startDate));
-  renderTimeOff();
+  // listener handles re-render automatically
 };
 
 window.deleteTimeOff = async (assocId, entryId) => {
   if (!confirm('Remove this time off entry?')) return;
   await deleteDoc(doc(db, 'timeOff', assocId, 'entries', entryId));
-  _allTimeOff = _allTimeOff.filter(e => !(e.assocId === assocId && e.id === entryId));
-  renderTimeOff();
+  // listener handles re-render automatically
 };
 
 async function loadTodayTimeOff() {
@@ -2849,21 +2830,41 @@ function attPeriodStart(period) {
   return null; // all time
 }
 
-window.loadAttendance = async () => {
+window.loadAttendance = () => {
   showView('attendance');
   detachAll();
-  const attViewSnap = await getDocs(collection(db, 'attendance'));
   _allAttEntries = [];
-  if (!attViewSnap.empty) {
-    await Promise.all(attViewSnap.docs.map(async assocDoc => {
-      const assocId = assocDoc.id;
-      const assoc = allAssociates.find(a => a.id === assocId);
-      const entriesSnap = await getDocs(collection(db, 'attendance', assocId, 'entries'));
-      entriesSnap.docs.forEach(d => _allAttEntries.push({ id: d.id, assocId, assocName: assoc?.name || 'Unknown', ...d.data() }));
-    }));
-  }
-  _allAttEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
-  renderTeamAttendance(_allAttEntries);
+  const attEntryListeners = new Set();
+
+  activeListeners['attAssociates'] = onSnapshot(collection(db, 'associates'), (snap) => {
+    allAssociates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // Populate assoc filter dropdown once
+    const assocSel = document.getElementById('attFilterAssoc');
+    if (assocSel && assocSel.options.length <= 1) {
+      allAssociates.filter(a => a.status === 'active').sort((a,b) => a.name.localeCompare(b.name)).forEach(a => {
+        const opt = document.createElement('option'); opt.value = a.id; opt.textContent = a.name; assocSel.appendChild(opt);
+      });
+    }
+
+    // Set up a per-associate entries listener for any associate not yet tracked
+    allAssociates.forEach(assoc => {
+      if (attEntryListeners.has(assoc.id)) return;
+      attEntryListeners.add(assoc.id);
+      activeListeners[`attEnt_${assoc.id}`] = onSnapshot(
+        collection(db, 'attendance', assoc.id, 'entries'),
+        (entSnap) => {
+          _allAttEntries = _allAttEntries.filter(e => e.assocId !== assoc.id);
+          entSnap.docs.forEach(d => _allAttEntries.push({ id: d.id, assocId: assoc.id, assocName: assoc.name, ...d.data() }));
+          _allAttEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
+          renderTeamAttendance(_allAttEntries);
+        }
+      );
+    });
+
+    // Re-render risk panel immediately when associate points change
+    renderTeamAttendance(_allAttEntries);
+  });
 };
 
 function renderTeamAttendance(entries) {
@@ -2918,7 +2919,7 @@ function renderTeamAttendance(entries) {
   // Update calendar
   renderAttCalendar();
 }
-window.renderTeamAttendance = () => window.loadAttendance();
+window.renderTeamAttendance = () => renderTeamAttendance(_allAttEntries);
 
 // ─── Attendance Calendar ──────────────────────────────────────────────
 let _attCalYear  = new Date().getFullYear();
@@ -5760,26 +5761,4 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 <div class="modal fade" id="timeOffModal" tabindex="-1">
   <div class="modal-dialog"><div class="modal-content">
     <div class="modal-header border-0 pb-0">
-      <h5 class="modal-title fw-bold"><i class="fas fa-calendar-minus me-2" style="color:var(--orange)"></i>Add Time Off</h5>
-      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="toEditId">
-      <input type="hidden" id="toEditAssocId">
-      <div class="row g-3">
-        <div class="col-12">
-          <label class="form-label small fw-semibold">Associate <span class="text-danger">*</span></label>
-          <select class="form-select" id="toAssoc"></select>
-        </div>
-        <div class="col-12">
-          <label class="form-label small fw-semibold">Type <span class="text-danger">*</span></label>
-          <select class="form-select" id="toType">
-            <option value="vacation">Vacation</option>
-            <option value="unpaid">Unpaid Day Off</option>
-            <option value="fmla">FMLA / Medical</option>
-            <option value="leave">Leave of Absence</option>
-            <option value="prehire">Pre-Hire Approved</option>
-          </select>
-        </div>
-        <div class="col-6">
-          <label class="form-label s
+      <h5 class="modal-title fw-bold"><i class="fas fa-calendar-minus me-2" style="color:var(--orange)"></i>Add Time Off</h
