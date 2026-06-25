@@ -11,7 +11,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, increment, deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, collectionGroup, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, increment, deleteField, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMPDpzhZEWZjP9SptREKVSB4dmdhY5cpM",
@@ -282,6 +282,7 @@ async function restoreLastView() {
   if (view === 'pointslog') { loadPointsLog(); return; }
   if (view === 'admin')     { loadAdminPanel(); return; }
   if (view === 'timeoff')   { loadTimeOff();    return; }
+  if (view === 'hrrecords') { loadHRRecords(); return; }
   if (view === 'help')      { showView('help'); return; }
   loadDashboard();
 }
@@ -3264,6 +3265,152 @@ window.clearPlFilters = () => {
   renderPointsLog();
 };
 
+// ─── HR Records ───────────────────────────────────────────────────────
+window.loadHRRecords = async () => {
+  showView('hrrecords');
+  detachAll();
+  const container = document.getElementById('hrRecordsList');
+  container.innerHTML = '<div class="text-center text-muted py-5"><i class="fas fa-spinner fa-spin me-2"></i>Loading records…</div>';
+
+  try {
+    // Fetch all associateIds from signedWarnings, then their documents subcollections
+    const parentSnap = await getDocs(collection(db, 'signedWarnings'));
+    if (parentSnap.empty) {
+      container.innerHTML = '<div class="text-center text-muted py-5">No signed warnings on file.</div>';
+      return;
+    }
+    const all = [];
+    await Promise.all(parentSnap.docs.map(async parentDoc => {
+      const docsSnap = await getDocs(collection(db, 'signedWarnings', parentDoc.id, 'documents'));
+      docsSnap.docs.forEach(d => all.push({ id: d.id, associateId: parentDoc.id, ...d.data() }));
+    }));
+    all.sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
+    window._hrRecords = all;
+    renderHRRecords(all);
+  } catch(e) {
+    container.innerHTML = `<div class="text-center text-danger py-5"><i class="fas fa-exclamation-triangle me-2"></i>Failed to load: ${e.message}</div>`;
+  }
+};
+
+function renderHRRecords(records) {
+  const search = (document.getElementById('hrSearch') || {}).value || '';
+  const tierF  = (document.getElementById('hrTierFilter') || {}).value || '';
+  let filtered = records.filter(r => {
+    const matchName = !search || (r.associateName || '').toLowerCase().includes(search.toLowerCase());
+    const matchTier = !tierF || r.tier === tierF;
+    return matchName && matchTier;
+  });
+
+  const container = document.getElementById('hrRecordsList');
+  if (!filtered.length) {
+    container.innerHTML = '<div class="text-center text-muted py-4">No records match the filter.</div>';
+    return;
+  }
+
+  const TIER_COLORS = {
+    'documented-verbal': '#6366f1',
+    'written-warning':   '#f59e0b',
+    'final-warning':     '#ef4444',
+    'termination':       '#111'
+  };
+
+  container.innerHTML = `
+    <table class="table table-hover align-middle" style="font-size:0.9rem">
+      <thead style="background:var(--navy);color:#fff">
+        <tr>
+          <th style="padding:10px 14px">Associate</th>
+          <th style="padding:10px 14px">Tier</th>
+          <th style="padding:10px 14px;text-align:center">Points</th>
+          <th style="padding:10px 14px">Date Signed</th>
+          <th style="padding:10px 14px">Signatures</th>
+          <th style="padding:10px 14px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map((r, i) => {
+          const sigs = r.signatures || {};
+          const sigBadges = ['employee','manager','witness']
+            .filter(k => sigs[k])
+            .map(k => `<span class="badge" style="background:#e2e8f0;color:#333;font-weight:500;margin-right:3px;font-size:0.72rem">${k.charAt(0).toUpperCase()+k.slice(1)}</span>`)
+            .join('');
+          const color = TIER_COLORS[r.tier] || '#555';
+          return `<tr>
+            <td style="padding:10px 14px;font-weight:600">${r.associateName || '—'}</td>
+            <td style="padding:10px 14px"><span style="color:${color};font-weight:600;font-size:0.82rem">${r.tierLabel || r.tier || '—'}</span></td>
+            <td style="padding:10px 14px;text-align:center">${r.points ?? '—'}</td>
+            <td style="padding:10px 14px;color:#555">${r.signedAt || '—'}</td>
+            <td style="padding:10px 14px">${sigBadges || '<span class="text-muted" style="font-size:0.8rem">none</span>'}</td>
+            <td style="padding:10px 14px;text-align:right">
+              <button class="btn btn-sm btn-orange" onclick="viewHRRecord(${i})"><i class="fas fa-eye me-1"></i>View</button>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+window.filterHRRecords = () => renderHRRecords(window._hrRecords || []);
+
+window.viewHRRecord = (idx) => {
+  const r = (window._hrRecords || [])[idx];
+  if (!r) return;
+  const sigs = r.signatures || {};
+
+  const sigBlock = (role) => sigs[role]
+    ? `<div style="text-align:center">
+         <div style="font-size:8pt;color:#666;margin-bottom:2px">${role.charAt(0).toUpperCase()+role.slice(1)} Signature</div>
+         <img src="${sigs[role]}" style="height:56px;border-bottom:1px solid #333;display:block;margin:0 auto">
+         <div style="font-size:8pt;margin-top:2px">${r.signedAt || ''}</div>
+       </div>`
+    : `<div style="text-align:center;color:#aaa;font-size:8.5pt">${role.charAt(0).toUpperCase()+role.slice(1)}<br><span style="border-bottom:1px solid #ccc;display:inline-block;width:120px;margin-top:20px"></span></div>`;
+
+  const win = window.open('', '_blank', 'width=860,height=700,scrollbars=yes,resizable=yes');
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Signed Warning — ${r.associateName}</title>
+  <style>
+    body { font-family:Arial,sans-serif;font-size:10.5pt;color:#111;padding:40px 60px;background:#fff; }
+    h1 { font-size:15pt;text-align:center;margin:6px 0 2px; }
+    h2 { font-size:11pt;text-align:center;color:#333;margin:0 0 10px; }
+    .header-box { border:2px solid #1a2744;padding:10px;text-align:center;margin-bottom:16px; }
+    .label { font-size:8pt;color:#666; }
+    .val { font-weight:bold; }
+    table.info { width:100%;border-collapse:collapse;margin-bottom:12px; }
+    table.info td { padding:6px 10px;border:1px solid #ccc;font-size:9.5pt; }
+    .sig-row { display:flex;gap:24px;justify-content:space-around;margin-top:20px;padding-top:10px;border-top:2px solid #1a2744; }
+    @media print { button { display:none!important; } }
+  </style></head><body>
+  <div class="header-box">
+    <div style="font-size:8pt;color:#555;letter-spacing:2px">CarParts.com</div>
+    <h1>Employee Warning Notice</h1>
+    <h2>CarParts.com Attendance Policy</h2>
+  </div>
+  <table class="info">
+    <tr>
+      <td><div class="label">Associate Name</div><div class="val">${r.associateName || '—'}</div></td>
+      <td><div class="label">Date Signed</div><div class="val">${r.signedAt || '—'}</div></td>
+    </tr>
+    <tr>
+      <td><div class="label">Disciplinary Tier</div><div class="val" style="color:${({'written-warning':'#f59e0b','final-warning':'#ef4444','termination':'#111','documented-verbal':'#6366f1'}[r.tier]||'#333')}">${r.tierLabel || r.tier || '—'}</div></td>
+      <td><div class="label">Attendance Points at Time of Warning</div><div class="val">${r.points ?? '—'}</div></td>
+    </tr>
+    <tr>
+      <td colspan="2"><div class="label">Saved to HR</div><div class="val">${r.savedAt ? new Date(r.savedAt).toLocaleString() : '—'}</div></td>
+    </tr>
+  </table>
+  <div class="sig-row">
+    ${sigBlock('employee')}
+    ${sigBlock('manager')}
+    ${sigBlock('witness')}
+  </div>
+  <div style="text-align:center;margin-top:24px">
+    <button onclick="window.print()" style="padding:8px 24px;background:#1a2744;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:10pt">🖨️ Print / Save as PDF</button>
+  </div>
+  <\/body><\/html>`;
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+};
+
 // ─── Admin Panel ──────────────────────────────────────────────────────
 window.loadAdminPanel = () => {
   showView('admin');
@@ -4538,6 +4685,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <a class="nav-link" data-view="pointslog" onclick="loadPointsLog()">
         <i class="fas fa-star"></i><span>Engagement Points Log</span>
       </a>
+      <a class="nav-link" data-view="hrrecords" onclick="loadHRRecords()">
+        <i class="fas fa-file-signature"></i><span>HR Records</span>
+      </a>
       <a class="nav-link d-none" id="navAdmin" data-view="admin" onclick="loadAdminPanel()">
         <i class="fas fa-shield-alt"></i><span>Admin</span>
       </a>
@@ -5293,6 +5443,31 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </table>
         </div>
         <div class="mt-2 small text-muted" id="plSummary"></div>
+      </div>
+    </div>
+
+    <!-- HR RECORDS VIEW -->
+    <div id="hrrecordsView" class="view d-none">
+      <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h1 class="page-title"><i class="fas fa-file-signature me-2" style="color:var(--orange)"></i>HR Records — Signed Warnings</h1>
+        <button class="btn btn-sm btn-orange" onclick="loadHRRecords()"><i class="fas fa-sync me-1"></i>Refresh</button>
+      </div>
+      <div class="card shadow-sm mb-3" style="border:none">
+        <div class="card-body py-2 px-3 d-flex gap-2 flex-wrap align-items-center">
+          <input id="hrSearch" type="text" class="form-control form-control-sm" style="max-width:220px" placeholder="Search by name…" oninput="filterHRRecords()">
+          <select id="hrTierFilter" class="form-select form-select-sm" style="max-width:200px" onchange="filterHRRecords()">
+            <option value="">All Tiers</option>
+            <option value="documented-verbal">Documented Verbal</option>
+            <option value="written-warning">Written Warning</option>
+            <option value="final-warning">Final Warning</option>
+            <option value="termination">Termination</option>
+          </select>
+        </div>
+      </div>
+      <div class="card shadow-sm" style="border:none">
+        <div class="card-body p-0">
+          <div id="hrRecordsList" class="p-3"></div>
+        </div>
       </div>
     </div>
 
