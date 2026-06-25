@@ -2221,8 +2221,8 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 <title>Employee Warning Notice — ${assoc.name}</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family: Arial, sans-serif; font-size: 10.5pt; color: #111; margin: 0; padding: 0; }
-  #page-wrap { max-width: 960px; margin: 0 auto; padding: 40px 60px; }
+  #page-wrap { max-width: 960px; margin: 0 auto; padding: 48px 72px; background:#fff; }
+  @page { margin: 0.75in; }
   .doc-title { text-align:center; border:2px solid #1a2744; padding:10px 0 6px; margin-bottom:0; }
   .doc-title h1 { font-size:16pt; font-weight:bold; letter-spacing:1px; color:#1a2744; text-transform:uppercase; }
   .doc-title h2 { font-size:11pt; font-weight:bold; color:#555; margin-top:2px; }
@@ -2246,10 +2246,10 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   .att-table { width:100%; border-collapse:collapse; }
   .att-table th { background:#e5e7eb; font-size:8.5pt; padding:2px 6px; border:1px solid #aaa; text-align:left; }
   .att-table td { font-size:9pt; padding:2px 6px; border:1px solid #ccc; }
-  @media print { button { display:none !important; } #page-wrap { padding:20px 40px; } }
+  @media print { button { display:none !important; } #page-wrap { padding:0; } }
 </style>
 </head>
-<body>
+<body style="font-family:Arial,sans-serif;font-size:10.5pt;color:#111;background:#fff;">
 <div id="page-wrap">
 
 <div class="doc-title">
