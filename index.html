@@ -2156,7 +2156,8 @@ window.saveSignedWarning = async (data) => {
   try {
     // Deserialize into main-window object context (cross-window objects fail Firestore instanceof checks)
     const d = JSON.parse(JSON.stringify(data));
-    await addDoc(collection(db, 'signedWarnings', d.associateId, 'documents'), {
+    await addDoc(collection(db, 'signedWarnings'), {
+      associateId: d.associateId,
       associateName: d.associateName,
       tier: d.tier,
       tierLabel: d.tierLabel,
@@ -3273,17 +3274,12 @@ window.loadHRRecords = async () => {
   container.innerHTML = '<div class="text-center text-muted py-5"><i class="fas fa-spinner fa-spin me-2"></i>Loading records…</div>';
 
   try {
-    // Fetch all associateIds from signedWarnings, then their documents subcollections
-    const parentSnap = await getDocs(collection(db, 'signedWarnings'));
-    if (parentSnap.empty) {
+    const snap = await getDocs(collection(db, 'signedWarnings'));
+    if (snap.empty) {
       container.innerHTML = '<div class="text-center text-muted py-5">No signed warnings on file.</div>';
       return;
     }
-    const all = [];
-    await Promise.all(parentSnap.docs.map(async parentDoc => {
-      const docsSnap = await getDocs(collection(db, 'signedWarnings', parentDoc.id, 'documents'));
-      docsSnap.docs.forEach(d => all.push({ id: d.id, associateId: parentDoc.id, ...d.data() }));
-    }));
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     all.sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
     window._hrRecords = all;
     renderHRRecords(all);
@@ -5922,3 +5918,69 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="input-group">
             <input type="password" class="form-control" id="credPassword" placeholder="Password">
     
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="const i=document.getElementById('credPassword');i.type=i.type==='password'?'text':'password'">Show</button>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Notes</label>
+          <textarea class="form-control" id="credNotes" rows="2" placeholder="Optional notes…"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer border-0 pt-0">
+      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-orange" id="saveCredBtn" onclick="saveCred()">Save</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Kanban Board Modal -->
+<div class="modal fade" id="kanbanModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-header border-0 pb-0" style="background:var(--navy);border-radius:0.5rem 0.5rem 0 0">
+      <h5 class="modal-title fw-bold text-white" id="kbModalTitle"><i class="fas fa-columns me-2" style="color:var(--orange)"></i>Daily Board</h5>
+      <div class="d-flex gap-2 ms-auto me-2">
+        <button class="btn btn-sm btn-outline-light d-none" id="kbBackBtn" onclick="kbBack()"><i class="fas fa-arrow-left me-1"></i>Back</button>
+        <button class="btn btn-sm btn-outline-light" id="kbViewLogsBtn" onclick="kbShowLogs()"><i class="fas fa-history me-1"></i>View Logs</button>
+        <button class="btn btn-sm btn-orange" onclick="kbLog()"><i class="fas fa-save me-1"></i>Log Day</button>
+      </div>
+      <button type="button" class="btn-close btn-close-white ms-1" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Board Section -->
+      <div id="kbBoardSection">
+        <div id="kbReadOnlyBanner" class="alert alert-warning py-2 px-3 mb-3 d-none" style="font-size:0.85rem">
+          <i class="fas fa-eye me-1"></i>Viewing archived snapshot — read only.
+        </div>
+        <div id="kbBoard" style="display:flex;gap:16px;min-height:300px;overflow-x:auto;padding-bottom:8px"></div>
+        <div id="kbAddForm" class="mt-3 pt-3 border-top d-flex gap-2 flex-wrap align-items-end">
+          <div style="flex:1;min-width:200px">
+            <label class="form-label small fw-semibold mb-1">New Task</label>
+            <input type="text" class="form-control form-control-sm" id="kbNewTitle" placeholder="Task title…" onkeydown="if(event.key==='Enter')kbAddTask()">
+          </div>
+          <div>
+            <label class="form-label small fw-semibold mb-1">Frequency</label>
+            <select class="form-select form-select-sm" id="kbNewFreq" style="width:130px">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Bi-Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <button class="btn btn-sm btn-orange" onclick="kbAddTask()"><i class="fas fa-plus me-1"></i>Add Task</button>
+        </div>
+      </div>
+
+      <!-- Logs Section -->
+      <div id="kbLogsSection" class="d-none">
+        <p class="text-muted small mb-3">Select a date to view that day's board snapshot.</p>
+        <div id="kbLogsList"></div>
+      </div>
+
+    </div>
+  </div></div>
+</div>
+
+</body>
+</html>
