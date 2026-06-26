@@ -2575,6 +2575,17 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   win.document.close();
 };
 
+// ─── View Data Cache (5-minute TTL to prevent read amplification) ──────
+const _viewCache = {};
+const VIEW_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+function getCached(key) {
+  const entry = _viewCache[key];
+  if (entry && (Date.now() - entry.ts) < VIEW_CACHE_TTL) return entry.data;
+  return null;
+}
+function setCache(key, data) { _viewCache[key] = { ts: Date.now(), data }; }
+function clearCache(key) { delete _viewCache[key]; }
+
 // ─── Time Off ──────────────────────────────────────────────────────────
 const TIME_OFF_TYPES = {
   'vacation':   { label: 'Vacation',              color: '#0ea5e9', bg: '#e0f2fe', text: '#0c4a6e' },
@@ -2595,13 +2606,14 @@ const TO_MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','
 window.loadTimeOff = () => {
   showView('timeoff');
   detachAll();
-  _allTimeOff = [];
 
-  // One-time read: fetch associates then fetch all their timeOff entries
+  const cached = getCached('timeoff');
+  if (cached) { allAssociates = cached.associates; _allTimeOff = cached.entries; renderTimeOff(); return; }
+
+  _allTimeOff = [];
   getDocs(collection(db, 'associates')).then(async snap => {
     allAssociates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // Populate filter dropdown
     const sel = document.getElementById('toFilterAssoc');
     if (sel && sel.options.length <= 1) {
       sel.innerHTML = '<option value="">All Associates</option>';
@@ -2610,13 +2622,13 @@ window.loadTimeOff = () => {
       });
     }
 
-    // Fetch all per-associate timeOff entries in parallel (one-time reads)
     await Promise.all(allAssociates.map(assoc =>
       getDocs(collection(db, 'timeOff', assoc.id, 'entries')).then(entSnap => {
         entSnap.docs.forEach(d => _allTimeOff.push({ id: d.id, assocId: assoc.id, assocName: assoc.name, ...d.data() }));
       })
     ));
     _allTimeOff.sort((a,b) => b.startDate.localeCompare(a.startDate));
+    setCache('timeoff', { associates: allAssociates, entries: _allTimeOff });
     renderTimeOff();
   });
 };
@@ -2770,9 +2782,9 @@ window.saveTimeOff = async () => {
   const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
   const addedBy  = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
   await addDoc(collection(db, 'timeOff', assocId, 'entries'), { type, startDate: start, endDate: end, note, addedBy, addedByUid: currentUser.uid, createdAt: new Date().toISOString() });
+  clearCache('timeoff');
   recordActivity(assocId);
   bootstrap.Modal.getInstance(document.getElementById('timeOffModal')).hide();
-  // listener handles re-render automatically
 };
 
 window.deleteTimeOff = async (assocId, entryId) => {
@@ -2833,8 +2845,8 @@ window.saveAttendance = async () => {
   await addDoc(collection(db, 'attendance', currentAssociateId, 'entries'), {
     type, date, note, points: info.points, addedBy, createdAt: new Date().toISOString()
   });
-  // Update running attendance score on associate
   await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(info.points) });
+  clearCache('attendance');
   recordActivity(currentAssociateId);
   bootstrap.Modal.getInstance(document.getElementById('attModal')).hide();
 };
@@ -3012,13 +3024,14 @@ function attPeriodStart(period) {
 window.loadAttendance = () => {
   showView('attendance');
   detachAll();
-  _allAttEntries = [];
 
-  // One-time read: fetch associates then fetch all their attendance entries in parallel
+  const cached = getCached('attendance');
+  if (cached) { allAssociates = cached.associates; _allAttEntries = cached.entries; renderTeamAttendance(_allAttEntries); return; }
+
+  _allAttEntries = [];
   getDocs(collection(db, 'associates')).then(async snap => {
     allAssociates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // Populate assoc filter dropdown
     const assocSel = document.getElementById('attFilterAssoc');
     if (assocSel && assocSel.options.length <= 1) {
       allAssociates.filter(a => a.status === 'active').sort((a,b) => a.name.localeCompare(b.name)).forEach(a => {
@@ -3026,13 +3039,13 @@ window.loadAttendance = () => {
       });
     }
 
-    // Fetch all per-associate attendance entries in parallel (one-time reads)
     await Promise.all(allAssociates.map(assoc =>
       getDocs(collection(db, 'attendance', assoc.id, 'entries')).then(entSnap => {
         entSnap.docs.forEach(d => _allAttEntries.push({ id: d.id, assocId: assoc.id, assocName: assoc.name, ...d.data() }));
       })
     ));
     _allAttEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
+    setCache('attendance', { associates: allAssociates, entries: _allAttEntries });
     renderTeamAttendance(_allAttEntries);
   });
 };
