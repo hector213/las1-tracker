@@ -2846,12 +2846,15 @@ window.saveAttendance = async () => {
   clearCache('attendance');
   recordActivity(currentAssociateId);
   bootstrap.Modal.getInstance(document.getElementById('attModal')).hide();
+  listenAttendance(currentAssociateId); // refresh the attendance list immediately
 };
 
 window.deleteAttendance = async (entryId, type, pts) => {
   if (!confirm('Remove this attendance entry?')) return;
   await deleteDoc(doc(db, 'attendance', currentAssociateId, 'entries', entryId));
   await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(-pts) });
+  clearCache('attendance');
+  listenAttendance(currentAssociateId); // refresh the attendance list immediately
 };
 
 // Team-wide attendance view
