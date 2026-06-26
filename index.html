@@ -3362,7 +3362,7 @@ function renderHRRecords(records) {
             <td style="padding:10px 14px">${sigBadges || '<span class="text-muted" style="font-size:0.8rem">none</span>'}</td>
             <td style="padding:10px 14px;text-align:right">
               <button class="btn btn-sm btn-orange" onclick="viewHRRecord(${i})"><i class="fas fa-eye me-1"></i>View</button>
-              <button class="btn btn-sm btn-outline-secondary ms-1" onclick="downloadHRRecord(${i})" title="Download as HTML file"><i class="fas fa-download me-1"></i>Download</button>
+              <button class="btn btn-sm btn-outline-secondary ms-1" onclick="downloadHRRecord(${i})" title="Download as PDF"><i class="fas fa-file-pdf me-1"></i>PDF</button>
             </td>
           </tr>`;
         }).join('')}
@@ -3372,21 +3372,104 @@ function renderHRRecords(records) {
 
 window.filterHRRecords = () => renderHRRecords(window._hrRecords || []);
 
-window.downloadHRRecord = (idx) => {
+function _loadScript(src, globalCheck) {
+  return new Promise((resolve, reject) => {
+    if (window[globalCheck]) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => { window[globalCheck] = true; resolve(); };
+    s.onerror = () => reject(new Error('Failed to load: ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+window.downloadHRRecord = async (idx) => {
   const r = (window._hrRecords || [])[idx];
   if (!r) return;
-  const html = r.documentHtml || `<!DOCTYPE html><html><body><p>No full document saved for this record.</p></body></html>`;
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const safeName = (r.associateName || 'associate').replace(/[^a-z0-9]/gi, '_');
-  const dateStr = (r.signedAt || r.savedAt || 'unknown').slice(0, 10);
-  a.href = url;
-  a.download = `Warning_${safeName}_${dateStr}.html`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+
+  // Find button and show loading state
+  const allBtns = document.querySelectorAll(`button[onclick="downloadHRRecord(${idx})"]`);
+  const btn = allBtns[0];
+  const origHtml = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Generating…'; }
+
+  try {
+    // Load libraries on demand
+    await _loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', '_h2cLoaded');
+    await _loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', '_jspdfLoaded');
+
+    const docHtml = r.documentHtml || '<!DOCTYPE html><html><body><p>No document saved for this record.</p></body></html>';
+
+    // Render document in a hidden iframe (same-origin via srcdoc)
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:850px;height:1100px;border:none;visibility:hidden;';
+    document.body.appendChild(iframe);
+
+    await new Promise((resolve, reject) => {
+      iframe.onload = resolve;
+      iframe.onerror = reject;
+      // Hide action buttons before capture
+      const cleanHtml = docHtml.replace(/<div[^>]*id=["']action-bar["'][^>]*>[\s\S]*?<\/div>/i, '');
+      iframe.srcdoc = cleanHtml;
+    });
+
+    // Let styles settle
+    await new Promise(res => setTimeout(res, 600));
+
+    const captureTarget = iframe.contentDocument.body;
+
+    const canvas = await window.html2canvas(captureTarget, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      windowWidth: 850,
+      scrollX: 0,
+      scrollY: 0,
+    });
+
+    document.body.removeChild(iframe);
+
+    // Build PDF — letter size (612 x 792 pt)
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 36; // 0.5 inch margins
+    const contentW = pageW - margin * 2;
+    const imgRatio = canvas.height / canvas.width;
+    const contentH = contentW * imgRatio;
+
+    // Multi-page: slice canvas at page boundaries
+    const pxPerPt = canvas.width / contentW;
+    const pageHeightPx = (pageH - margin * 2) * pxPerPt;
+    let yPx = 0;
+    let pageNum = 0;
+
+    while (yPx < canvas.height) {
+      if (pageNum > 0) pdf.addPage();
+      const sliceH = Math.min(pageHeightPx, canvas.height - yPx);
+      const sliceCanvas = document.createElement('canvas');
+      sliceCanvas.width = canvas.width;
+      sliceCanvas.height = sliceH;
+      sliceCanvas.getContext('2d').drawImage(canvas, 0, yPx, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+      const sliceImg = sliceCanvas.toDataURL('image/jpeg', 0.92);
+      const slicePtH = sliceH / pxPerPt;
+      pdf.addImage(sliceImg, 'JPEG', margin, margin, contentW, slicePtH);
+      yPx += sliceH;
+      pageNum++;
+    }
+
+    const safeName = (r.associateName || 'associate').replace(/[^a-z0-9]/gi, '_');
+    const dateStr = (r.signedAt || r.savedAt || 'unknown').slice(0, 10);
+    pdf.save(`Warning_${safeName}_${dateStr}.pdf`);
+
+  } catch(e) {
+    console.error('PDF generation error:', e);
+    alert('PDF generation failed: ' + e.message + '\n\nTry using the View button and print to PDF instead.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
+  }
 };
 
 window.viewHRRecord = (idx) => {
