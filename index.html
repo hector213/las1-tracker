@@ -2350,21 +2350,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   <tr>
     <td colspan="4" class="field-cell" style="padding-bottom:6px">
       <div class="field-label" style="font-weight:bold;color:#111;margin-bottom:4px">Description of Infraction :</div>
-      <div style="margin-bottom:6px;font-size:10pt">${assoc.name} has accumulated <strong>${pts} attendance point${pts!==1?'s':''}</strong> under the LAS1 Attendance Policy, triggering a <strong>${tier.label}</strong>.</div>
-      <div style="margin-bottom:8px;font-size:9pt;color:#333;border:1px solid #ccc;background:#f9f9f9;padding:8px 10px;border-radius:3px">
-        <div style="font-weight:bold;margin-bottom:4px;font-size:9pt">CarParts.com Attendance Policy (Section 4.2) — Point Schedule:</div>
-        <table style="width:100%;border-collapse:collapse;font-size:8.5pt">
-          <tr><td style="padding:2px 6px;border:1px solid #ddd;width:70%">Late Arrival (up to halfway point of shift)</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+0.5</td></tr>
-          <tr style="background:#f0f0f0"><td style="padding:2px 6px;border:1px solid #ddd">Late Arrival (after halfway point of shift)</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+1</td></tr>
-          <tr><td style="padding:2px 6px;border:1px solid #ddd">Late Return from Break (8+ minutes)</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+0.5</td></tr>
-          <tr style="background:#f0f0f0"><td style="padding:2px 6px;border:1px solid #ddd">Leave Early (after completing more than 50% of shift)</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+0.5</td></tr>
-          <tr><td style="padding:2px 6px;border:1px solid #ddd">Leave Early (after completing less than 50% of shift)</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+1</td></tr>
-          <tr style="background:#f0f0f0"><td style="padding:2px 6px;border:1px solid #ddd">Call-Out (no available Sick time to cover)</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+1</td></tr>
-          <tr><td style="padding:2px 6px;border:1px solid #ddd">Failure to follow advance notice for vacation/floating holiday</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+1</td></tr>
-          <tr style="background:#f0f0f0"><td style="padding:2px 6px;border:1px solid #ddd">No Call / No Show</td><td style="padding:2px 6px;border:1px solid #ddd;text-align:center">+2</td></tr>
-        </table>
-        <div style="margin-top:4px;font-size:8pt;color:#555">Points are removed from the employee's attendance record one (1) calendar year from the date of the occurrence. Legally protected absences (FMLA, ADA, approved sick leave, etc.) are not counted under this policy.</div>
-      </div>
+      <div style="margin-bottom:8px;font-size:10pt">${assoc.name} has accumulated <strong>${pts} attendance point${pts!==1?'s':''}</strong> under the LAS1 Attendance Policy (Section 4.2), triggering a <strong>${tier.label}</strong>. Points are removed from the employee's attendance record one (1) calendar year from the date of the occurrence. Legally protected absences (FMLA, ADA, approved sick leave, etc.) are not counted under this policy.</div>
       <table class="att-table">
         <thead><tr><th>Date</th><th>Offense</th><th style="text-align:center">Points</th></tr></thead>
         <tbody>${attRows}</tbody>
@@ -3455,10 +3441,12 @@ window.downloadHRRecord = async (idx) => {
       scrollX: 0,
       scrollY: 0,
       onclone: (clonedDoc) => {
-        // Remove any browser-default margin/padding on <html> that creates a gap at the top
+        // Remove browser-default spacing on <html> that creates a gap at the top
         clonedDoc.documentElement.style.margin = '0';
         clonedDoc.documentElement.style.padding = '0';
-        // Also strip the action bar if it survived the regex cleanup
+        // Reduce body side padding so content fills the full PDF page width
+        clonedDoc.body.style.padding = '30px 20px';
+        // Strip action bar and status elements
         const ab = clonedDoc.getElementById('action-bar');
         if (ab) ab.remove();
         const ss = clonedDoc.getElementById('save-status');
