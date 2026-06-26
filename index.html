@@ -292,13 +292,21 @@ async function restoreLastView() {
 function loadDashboard() {
   showView('dashboard');
   detachAll();
+  let _dashFirstLoad = true;
+
   activeListeners['associates'] = onSnapshot(collection(db, 'associates'), (snap) => {
     allAssociates = [];
     snap.forEach(docSnap => {
       allAssociates.push({ id: docSnap.id, ...docSnap.data() });
     });
-    loadTodayTimeOff().then(() => renderDashboard());
-    autoExpirePoints(); // zero out pts/points on entries older than 1 year
+    loadTodayTimeOff().then(() => {
+      renderDashboard();
+      if (_dashFirstLoad) {
+        _dashFirstLoad = false;
+        renderMilestones(); // only on initial load — expensive subcollection reads
+      }
+    });
+    autoExpirePoints();
   });
 
   activeListeners['certsGlobal'] = onSnapshot(collection(db, 'certs'), (snap) => {
@@ -307,7 +315,7 @@ function loadDashboard() {
       const certs = docSnap.data();
       allCertsMap[docSnap.id] = new Set(Object.keys(certs).filter(k => certs[k]));
     });
-    renderDashboard();
+    renderDashboard(); // just re-filters cards, no Firestore reads
   });
 }
 window.loadDashboard = loadDashboard;
@@ -356,7 +364,8 @@ function renderDashboard() {
   }
 
   renderLeaderboard();
-  renderMilestones();
+  // renderMilestones is called once on dashboard load, not on every snapshot re-fire
+  // (it has its own cache and is expensive — see loadDashboard)
 
   const grid = document.getElementById('associateGrid');
   const leaderPositions = new Set(['ops-manager', 'supervisor', 'lead']);
@@ -2849,6 +2858,7 @@ window.saveTimeOff = async () => {
   const addedBy  = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
   await addDoc(collection(db, 'timeOff', assocId, 'entries'), { type, startDate: start, endDate: end, note, addedBy, addedByUid: currentUser.uid, createdAt: new Date().toISOString() });
   clearCache('timeoff');
+  clearCache('todayTimeOff');
   clearCache('milestones_firestore');
   recordActivity(assocId);
   bootstrap.Modal.getInstance(document.getElementById('timeOffModal')).hide();
@@ -2857,15 +2867,21 @@ window.saveTimeOff = async () => {
 window.deleteTimeOff = async (assocId, entryId) => {
   if (!confirm('Remove this time off entry?')) return;
   await deleteDoc(doc(db, 'timeOff', assocId, 'entries', entryId));
+  clearCache('todayTimeOff');
+  clearCache('milestones_firestore');
   // listener handles re-render automatically
 };
 
 async function loadTodayTimeOff() {
+  // Cache for 10 minutes — called on every associates snapshot fire so must be cheap
+  const cached = getCached('todayTimeOff');
+  if (cached) { _todayTimeOffMap = cached; return; }
+
   const today = new Date().toISOString().split('T')[0];
   _todayTimeOffMap = {};
   try {
     const toTodaySnap = await getDocs(collection(db, 'timeOff'));
-    if (toTodaySnap.empty) return;
+    if (toTodaySnap.empty) { setCache('todayTimeOff', {}); return; }
     await Promise.all(toTodaySnap.docs.map(async assocDoc => {
       const assocId = assocDoc.id;
       const entriesSnap = await getDocs(collection(db, 'timeOff', assocId, 'entries'));
@@ -2876,6 +2892,7 @@ async function loadTodayTimeOff() {
         }
       });
     }));
+    setCache('todayTimeOff', _todayTimeOffMap);
   } catch(e) {}
 }
 
