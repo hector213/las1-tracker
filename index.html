@@ -3410,8 +3410,10 @@ window.downloadHRRecord = async (idx) => {
     await new Promise((resolve, reject) => {
       iframe.onload = resolve;
       iframe.onerror = reject;
-      // Strip action bar buttons so they don't appear in PDF
-      const cleanHtml = docHtml.replace(/<div[^>]*id=["']action-bar["'][^>]*>[\s\S]*?<\/div>/i, '');
+      // Strip scripts (prevent re-running and duplicating rendered content) and action bar
+      const cleanHtml = docHtml
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<div[^>]*id=["']action-bar["'][^>]*>[\s\S]*?<\/div>/i, '');
       iframe.srcdoc = cleanHtml;
     });
 
@@ -3449,23 +3451,30 @@ window.downloadHRRecord = async (idx) => {
       y: 0,
       scrollX: 0,
       scrollY: 0,
+      onclone: (clonedDoc) => {
+        // Remove any browser-default margin/padding on <html> that creates a gap at the top
+        clonedDoc.documentElement.style.margin = '0';
+        clonedDoc.documentElement.style.padding = '0';
+        // Also strip the action bar if it survived the regex cleanup
+        const ab = clonedDoc.getElementById('action-bar');
+        if (ab) ab.remove();
+        const ss = clonedDoc.getElementById('save-status');
+        if (ss) ss.remove();
+      },
     });
 
     document.body.removeChild(iframe);
 
-    // Build PDF — letter size (612 x 792 pt)
+    // Build PDF — letter size, no margins so page slices join seamlessly
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 36; // 0.5 inch margins
-    const contentW = pageW - margin * 2;
-    const imgRatio = canvas.height / canvas.width;
-    const contentH = contentW * imgRatio;
 
-    // Multi-page: slice canvas at page boundaries
+    // Fill full page width — the document HTML has its own internal padding
+    const contentW = pageW;
     const pxPerPt = canvas.width / contentW;
-    const pageHeightPx = (pageH - margin * 2) * pxPerPt;
+    const pageHeightPx = Math.floor(pageH * pxPerPt);
     let yPx = 0;
     let pageNum = 0;
 
@@ -3476,9 +3485,9 @@ window.downloadHRRecord = async (idx) => {
       sliceCanvas.width = canvas.width;
       sliceCanvas.height = sliceH;
       sliceCanvas.getContext('2d').drawImage(canvas, 0, yPx, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
-      const sliceImg = sliceCanvas.toDataURL('image/jpeg', 0.92);
+      const sliceImg = sliceCanvas.toDataURL('image/jpeg', 0.95);
       const slicePtH = sliceH / pxPerPt;
-      pdf.addImage(sliceImg, 'JPEG', margin, margin, contentW, slicePtH);
+      pdf.addImage(sliceImg, 'JPEG', 0, 0, contentW, slicePtH);
       yPx += sliceH;
       pageNum++;
     }
