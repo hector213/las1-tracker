@@ -3362,6 +3362,7 @@ function renderHRRecords(records) {
             <td style="padding:10px 14px">${sigBadges || '<span class="text-muted" style="font-size:0.8rem">none</span>'}</td>
             <td style="padding:10px 14px;text-align:right">
               <button class="btn btn-sm btn-orange" onclick="viewHRRecord(${i})"><i class="fas fa-eye me-1"></i>View</button>
+              <button class="btn btn-sm btn-outline-secondary ms-1" onclick="downloadHRRecord(${i})" title="Download as HTML file"><i class="fas fa-download me-1"></i>Download</button>
             </td>
           </tr>`;
         }).join('')}
@@ -3370,6 +3371,23 @@ function renderHRRecords(records) {
 }
 
 window.filterHRRecords = () => renderHRRecords(window._hrRecords || []);
+
+window.downloadHRRecord = (idx) => {
+  const r = (window._hrRecords || [])[idx];
+  if (!r) return;
+  const html = r.documentHtml || `<!DOCTYPE html><html><body><p>No full document saved for this record.</p></body></html>`;
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = (r.associateName || 'associate').replace(/[^a-z0-9]/gi, '_');
+  const dateStr = (r.signedAt || r.savedAt || 'unknown').slice(0, 10);
+  a.href = url;
+  a.download = `Warning_${safeName}_${dateStr}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
 
 window.viewHRRecord = (idx) => {
   const r = (window._hrRecords || [])[idx];
