@@ -2164,7 +2164,8 @@ window.saveSignedWarning = async (data) => {
       points: d.points,
       signedAt: d.signedAt,
       savedAt: new Date().toISOString(),
-      signatures: d.signatures
+      signatures: d.signatures,
+      documentHtml: d.documentHtml || ''
     });
     console.log('Signed warning saved to HR records for', data.associateName);
   } catch(e) {
@@ -2539,6 +2540,15 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
     status.style.color = '#555';
     status.textContent = 'Saving to HR records…';
 
+    // Capture full document HTML (hide buttons first so they don't appear in saved copy)
+    const actionBar = document.getElementById('action-bar');
+    const saveStatus = document.getElementById('save-status');
+    if (actionBar) actionBar.style.display = 'none';
+    if (saveStatus) saveStatus.style.display = 'none';
+    const documentHtml = '<!DOCTYPE html>' + document.documentElement.outerHTML;
+    if (actionBar) actionBar.style.display = '';
+    if (saveStatus) { saveStatus.style.display = 'block'; }
+
     let saved = false;
     try {
       if (window.opener && window.opener.saveSignedWarning) {
@@ -2549,7 +2559,8 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
           tierLabel: '${tier ? tier.label : ''}',
           points: ${pts},
           signedAt: todayStr,
-          signatures: sigs
+          signatures: sigs,
+          documentHtml: documentHtml
         });
         saved = true;
         status.style.color = '#16a34a';
@@ -3363,6 +3374,17 @@ window.filterHRRecords = () => renderHRRecords(window._hrRecords || []);
 window.viewHRRecord = (idx) => {
   const r = (window._hrRecords || [])[idx];
   if (!r) return;
+
+  // If the full document HTML was saved, open it directly
+  if (r.documentHtml) {
+    const win = window.open('', '_blank', 'width=1000,height=850,scrollbars=yes,resizable=yes');
+    win.document.open();
+    win.document.write(r.documentHtml);
+    win.document.close();
+    return;
+  }
+
+  // Fallback: build summary view from stored fields
   const sigs = r.signatures || {};
 
   const sigBlock = (role) => sigs[role]
@@ -3461,7 +3483,7 @@ window.loadAdminPanel = () => {
 };
 
 // ─── Tab Visibility ───────────────────────────────────────────────────
-const CONTROLLABLE_TABS = ['matrix', 'attendance', 'pointslog', 'help'];
+const CONTROLLABLE_TABS = ['matrix', 'attendance', 'timeoff', 'pointslog', 'hrrecords', 'help'];
 
 async function loadTabToggles() {
   const snap = await getDoc(doc(db, 'settings', 'tabs'));
@@ -5493,7 +5515,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-eye me-2" style="color:var(--orange)"></i>Tab Visibility <span class="text-muted fw-normal small">(admin always sees all)</span></h6>
         </div>
         <div class="row g-2" id="tabTogglesContainer">
-          <div class="col-6 col-md-3">
+          <div class="col-6 col-md-2">
             <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#f8f9fa">
               <div class="form-check form-switch mb-0">
                 <input class="form-check-input" type="checkbox" id="tabToggle_matrix" onchange="saveTabVisibility('matrix', this.checked)">
@@ -5501,7 +5523,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               </div>
             </div>
           </div>
-          <div class="col-6 col-md-3">
+          <div class="col-6 col-md-2">
             <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#f8f9fa">
               <div class="form-check form-switch mb-0">
                 <input class="form-check-input" type="checkbox" id="tabToggle_attendance" onchange="saveTabVisibility('attendance', this.checked)">
@@ -5509,15 +5531,31 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               </div>
             </div>
           </div>
-          <div class="col-6 col-md-3">
+          <div class="col-6 col-md-2">
             <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#f8f9fa">
               <div class="form-check form-switch mb-0">
-                <input class="form-check-input" type="checkbox" id="tabToggle_pointslog" onchange="saveTabVisibility('pointslog', this.checked)">
-                <label class="form-check-label small fw-semibold" for="tabToggle_pointslog"><i class="fas fa-star me-1" style="color:var(--navy)"></i>Engagement Points Log</label>
+                <input class="form-check-input" type="checkbox" id="tabToggle_timeoff" onchange="saveTabVisibility('timeoff', this.checked)">
+                <label class="form-check-label small fw-semibold" for="tabToggle_timeoff"><i class="fas fa-calendar-minus me-1" style="color:var(--navy)"></i>Time Off</label>
               </div>
             </div>
           </div>
-          <div class="col-6 col-md-3">
+          <div class="col-6 col-md-2">
+            <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#f8f9fa">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="tabToggle_pointslog" onchange="saveTabVisibility('pointslog', this.checked)">
+                <label class="form-check-label small fw-semibold" for="tabToggle_pointslog"><i class="fas fa-star me-1" style="color:var(--navy)"></i>Points Log</label>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-2">
+            <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#f8f9fa">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="tabToggle_hrrecords" onchange="saveTabVisibility('hrrecords', this.checked)">
+                <label class="form-check-label small fw-semibold" for="tabToggle_hrrecords"><i class="fas fa-file-signature me-1" style="color:var(--navy)"></i>HR Records</label>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-2">
             <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#f8f9fa">
               <div class="form-check form-switch mb-0">
                 <input class="form-check-input" type="checkbox" id="tabToggle_help" onchange="saveTabVisibility('help', this.checked)">
