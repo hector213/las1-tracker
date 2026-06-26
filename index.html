@@ -3405,6 +3405,9 @@ window.downloadHRRecord = async (idx) => {
     const iframe = document.createElement('iframe');
     // Off-screen but fully laid out — opacity:0 keeps it in layout flow
     iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:850px;height:1100px;border:none;opacity:0;pointer-events:none;';
+    // sandbox prevents scripts from re-running (which would duplicate already-rendered table rows)
+    // allow-same-origin keeps html2canvas able to read the DOM
+    iframe.setAttribute('sandbox', 'allow-same-origin');
     document.body.appendChild(iframe);
 
     await new Promise((resolve, reject) => {
@@ -3465,32 +3468,15 @@ window.downloadHRRecord = async (idx) => {
 
     document.body.removeChild(iframe);
 
-    // Build PDF — letter size, no margins so page slices join seamlessly
+    // Build PDF — single page sized to fit full document content (no splitting)
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
+    const pageW = 612; // standard letter width in points (8.5in)
+    const pxPerPt = canvas.width / pageW;
+    const pageH = Math.ceil(canvas.height / pxPerPt);
 
-    // Fill full page width — the document HTML has its own internal padding
-    const contentW = pageW;
-    const pxPerPt = canvas.width / contentW;
-    const pageHeightPx = Math.floor(pageH * pxPerPt);
-    let yPx = 0;
-    let pageNum = 0;
-
-    while (yPx < canvas.height) {
-      if (pageNum > 0) pdf.addPage();
-      const sliceH = Math.min(pageHeightPx, canvas.height - yPx);
-      const sliceCanvas = document.createElement('canvas');
-      sliceCanvas.width = canvas.width;
-      sliceCanvas.height = sliceH;
-      sliceCanvas.getContext('2d').drawImage(canvas, 0, yPx, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
-      const sliceImg = sliceCanvas.toDataURL('image/jpeg', 0.95);
-      const slicePtH = sliceH / pxPerPt;
-      pdf.addImage(sliceImg, 'JPEG', 0, 0, contentW, slicePtH);
-      yPx += sliceH;
-      pageNum++;
-    }
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: [pageW, pageH] });
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    pdf.addImage(imgData, 'JPEG', 0, 0, pageW, pageH);
 
     const safeName = (r.associateName || 'associate').replace(/[^a-z0-9]/gi, '_');
     const dateStr = (r.signedAt || r.savedAt || 'unknown').slice(0, 10);
