@@ -3402,28 +3402,50 @@ window.downloadHRRecord = async (idx) => {
 
     // Render document in a hidden iframe (same-origin via srcdoc)
     const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:850px;height:1100px;border:none;visibility:hidden;';
+    // Off-screen but fully laid out — opacity:0 keeps it in layout flow
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:850px;height:1100px;border:none;opacity:0;pointer-events:none;';
     document.body.appendChild(iframe);
 
     await new Promise((resolve, reject) => {
       iframe.onload = resolve;
       iframe.onerror = reject;
-      // Hide action buttons before capture
+      // Strip action bar buttons so they don't appear in PDF
       const cleanHtml = docHtml.replace(/<div[^>]*id=["']action-bar["'][^>]*>[\s\S]*?<\/div>/i, '');
       iframe.srcdoc = cleanHtml;
     });
 
-    // Let styles settle
-    await new Promise(res => setTimeout(res, 600));
+    // Let styles and fonts settle
+    await new Promise(res => setTimeout(res, 800));
 
-    const captureTarget = iframe.contentDocument.body;
+    const iframeDoc = iframe.contentDocument;
+    const iframeWin = iframe.contentWindow;
 
-    const canvas = await window.html2canvas(captureTarget, {
+    // Remove any body margin that browsers add by default
+    iframeDoc.body.style.margin = '0';
+    iframeDoc.body.style.padding = '0';
+
+    // Expand iframe to full content height so nothing is clipped
+    const contentHeight = Math.max(
+      iframeDoc.documentElement.scrollHeight,
+      iframeDoc.body.scrollHeight
+    );
+    iframe.style.height = contentHeight + 'px';
+
+    // Reset scroll to absolute top before capture
+    iframeWin.scrollTo(0, 0);
+    await new Promise(res => setTimeout(res, 100));
+
+    const canvas = await window.html2canvas(iframeDoc.documentElement, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
       windowWidth: 850,
+      windowHeight: contentHeight,
+      width: 850,
+      height: contentHeight,
+      x: 0,
+      y: 0,
       scrollX: 0,
       scrollY: 0,
     });
