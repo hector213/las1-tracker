@@ -98,9 +98,45 @@ async function logPoints(associateId, type, reason, pts) {
     addedBy: actor,
     createdAt: new Date().toISOString()
   });
-  clearCache('milestones_firestore'); // point expiration dates may have changed
+  // Recalc expiry field on associate doc (non-blocking)
+  recalcPointExpiry(associateId);
 }
 window.logPoints = logPoints;
+
+// ── Recalculate nextPointExpiry on associate doc ──────────────────────
+// Called after any pointslog write so renderMilestones can read it from memory
+async function recalcPointExpiry(associateId) {
+  try {
+    const snap = await getDocs(collection(db, 'pointslog', associateId, 'entries'));
+    const positive = snap.docs.map(d => d.data())
+      .filter(e => (e.pts || 0) > 0 && e.createdAt)
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    const expiryStr = positive.length
+      ? (() => { const d = new Date(positive[0].createdAt); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(0,10); })()
+      : '';
+    await updateDoc(doc(db, 'associates', associateId), { nextPointExpiry: expiryStr });
+    const assoc = allAssociates.find(a => a.id === associateId);
+    if (assoc) assoc.nextPointExpiry = expiryStr;
+  } catch(e) { /* non-critical */ }
+}
+
+// ── Recalculate nextAttExpiry on associate doc ────────────────────────
+// Called after any attendance write so renderMilestones can read it from memory
+async function recalcAttExpiry(associateId) {
+  try {
+    const snap = await getDocs(collection(db, 'attendance', associateId, 'entries'));
+    const today = new Date(); today.setHours(0,0,0,0);
+    const upcoming = snap.docs.map(d => d.data())
+      .filter(e => (e.points || 0) > 0 && e.date)
+      .map(e => { const d = new Date(e.date + 'T00:00:00'); d.setFullYear(d.getFullYear() + 1); return d; })
+      .filter(d => d >= today)
+      .sort((a, b) => a - b);
+    const expiryStr = upcoming.length ? upcoming[0].toISOString().slice(0,10) : '';
+    await updateDoc(doc(db, 'associates', associateId), { nextAttExpiry: expiryStr });
+    const assoc = allAssociates.find(a => a.id === associateId);
+    if (assoc) assoc.nextAttExpiry = expiryStr;
+  } catch(e) { /* non-critical */ }
+}
 
 // ─── Auto-expire points (runs once per session on dashboard load) ──────
 let _expirationChecked = false;
@@ -561,66 +597,34 @@ async function renderMilestones() {
     }
   });
 
-  // ── Firestore events — cached for 5 minutes ──────────────────────────
+  // ── Point expirations — read from associate doc field (free, in memory) ──
+  allAssociates.filter(a => a.nextPointExpiry && a.status === 'active').forEach(a => {
+    const expiry = new Date(a.nextPointExpiry + 'T00:00:00');
+    const diff = dayDiff(expiry);
+    if (inWindow(diff)) {
+      memEvents.push({ diff, id: a.id, name: a.name,
+        icon: 'fa-star-half-alt', color: '#dc2626',
+        detail: 'Engagement points expiring',
+        dateStr: expiry.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
+    }
+  });
+
+  // ── Attendance point expirations — read from associate doc field (free, in memory) ──
+  allAssociates.filter(a => a.nextAttExpiry && a.status === 'active').forEach(a => {
+    const expiry = new Date(a.nextAttExpiry + 'T00:00:00');
+    const diff = dayDiff(expiry);
+    if (inWindow(diff)) {
+      memEvents.push({ diff, id: a.id, name: a.name,
+        icon: 'fa-calendar-minus', color: '#dc2626',
+        detail: 'Attendance point expiring',
+        dateStr: expiry.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
+    }
+  });
+
+  // ── Time Off — still Firestore but cached ────────────────────────────
   let fsEvents = getCached('milestones_firestore');
   if (!fsEvents) {
     fsEvents = [];
-
-    // Point expirations
-    try {
-      const plSnap = await getDocs(collection(db, 'pointslog'));
-      if (!plSnap.empty) {
-        await Promise.all(plSnap.docs.map(async assocDoc => {
-          const assocId = assocDoc.id;
-          const assoc = allAssociates.find(a => a.id === assocId && a.status === 'active');
-          if (!assoc) return;
-          const entriesSnap = await getDocs(collection(db, 'pointslog', assocId, 'entries'));
-          const positive = entriesSnap.docs.map(d => d.data())
-            .filter(e => (e.pts || 0) > 0 && e.createdAt)
-            .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-          if (!positive.length) return;
-          const oldest = positive[0];
-          const expiry = new Date(oldest.createdAt);
-          expiry.setFullYear(expiry.getFullYear() + 1); expiry.setHours(0,0,0,0);
-          const diff = dayDiff(expiry);
-          if (inWindow(diff)) {
-            fsEvents.push({ diff, id: assocId, name: assoc.name,
-              icon: 'fa-star-half-alt', color: '#dc2626',
-              detail: `Losing ${oldest.pts > 0 ? '+' : ''}${oldest.pts} pts (${oldest.reason || 'oldest entry'})`,
-              dateStr: expiry.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
-          }
-        }));
-      }
-    } catch(e) { /* unavailable */ }
-
-    // Attendance point expirations
-    try {
-      const attSnap = await getDocs(collection(db, 'attendance'));
-      if (!attSnap.empty) {
-        await Promise.all(attSnap.docs.map(async assocDoc => {
-          const assocId = assocDoc.id;
-          const assoc = allAssociates.find(a => a.id === assocId && a.status === 'active');
-          if (!assoc) return;
-          const entriesSnap = await getDocs(collection(db, 'attendance', assocId, 'entries'));
-          entriesSnap.docs.map(d => d.data())
-            .filter(e => (e.points || 0) > 0 && e.date)
-            .forEach(e => {
-              const expiry = new Date(e.date + 'T00:00:00');
-              expiry.setFullYear(expiry.getFullYear() + 1);
-              const diff = dayDiff(expiry);
-              if (inWindow(diff)) {
-                const info = ATTENDANCE_TYPES.find(t => t.key === e.type) || { label: e.type || 'Attendance event' };
-                fsEvents.push({ diff, id: assocId, name: assoc.name,
-                  icon: 'fa-calendar-minus', color: '#dc2626',
-                  detail: `Losing +${e.points} att. pt — ${info.label}`,
-                  dateStr: expiry.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
-              }
-            });
-        }));
-      }
-    } catch(e) { /* unavailable */ }
-
-    // Time Off
     try {
       const toSnap = await getDocs(collection(db, 'timeOff'));
       if (!toSnap.empty) {
@@ -643,7 +647,6 @@ async function renderMilestones() {
         }));
       }
     } catch(e) { /* unavailable */ }
-
     setCache('milestones_firestore', fsEvents);
   }
 
@@ -2932,6 +2935,7 @@ window.saveAttendance = async () => {
   await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(info.points) });
   clearCache('attendance');
   clearCache('milestones_firestore');
+  recalcAttExpiry(currentAssociateId); // update nextAttExpiry on associate doc (non-blocking)
   recordActivity(currentAssociateId);
   bootstrap.Modal.getInstance(document.getElementById('attModal')).hide();
   listenAttendance(currentAssociateId); // refresh the attendance list immediately
@@ -2943,6 +2947,7 @@ window.deleteAttendance = async (entryId, type, pts) => {
   await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(-pts) });
   clearCache('attendance');
   clearCache('milestones_firestore');
+  recalcAttExpiry(currentAssociateId); // update nextAttExpiry on associate doc (non-blocking)
   listenAttendance(currentAssociateId); // refresh the attendance list immediately
 };
 
@@ -3943,6 +3948,65 @@ async function loadPendingBadges() {
     </div>`).join('');
 }
 window.loadPendingBadges = loadPendingBadges;
+
+// ─── Expiry Date Migration ────────────────────────────────────────────
+window.runExpiryMigration = async () => {
+  const btn = document.getElementById('migrationBtn');
+  const status = document.getElementById('migrationStatus');
+  if (!allAssociates.length) { status.innerHTML = '<span class="text-danger">No associates loaded. Open the dashboard first.</span>'; return; }
+  if (!confirm(`This will read attendance and points data for all ${allAssociates.length} associates and write expiry dates to their profiles. Run now?`)) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Running…';
+  status.innerHTML = '';
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  let done = 0, errors = 0;
+
+  await Promise.all(allAssociates.map(async a => {
+    try {
+      const updates = {};
+
+      // nextPointExpiry
+      const plSnap = await getDocs(collection(db, 'pointslog', a.id, 'entries'));
+      const positive = plSnap.docs.map(d => d.data())
+        .filter(e => (e.pts || 0) > 0 && e.createdAt)
+        .sort((x, y) => new Date(x.createdAt) - new Date(y.createdAt));
+      if (positive.length) {
+        const d = new Date(positive[0].createdAt);
+        d.setFullYear(d.getFullYear() + 1);
+        updates.nextPointExpiry = d.toISOString().slice(0,10);
+      } else {
+        updates.nextPointExpiry = '';
+      }
+
+      // nextAttExpiry
+      const attSnap = await getDocs(collection(db, 'attendance', a.id, 'entries'));
+      const upcoming = attSnap.docs.map(d => d.data())
+        .filter(e => (e.points || 0) > 0 && e.date)
+        .map(e => { const d = new Date(e.date + 'T00:00:00'); d.setFullYear(d.getFullYear() + 1); return d; })
+        .filter(d => d >= today)
+        .sort((x, y) => x - y);
+      updates.nextAttExpiry = upcoming.length ? upcoming[0].toISOString().slice(0,10) : '';
+
+      await updateDoc(doc(db, 'associates', a.id), updates);
+      // Update local cache
+      a.nextPointExpiry = updates.nextPointExpiry;
+      a.nextAttExpiry   = updates.nextAttExpiry;
+      done++;
+    } catch(e) {
+      errors++;
+    }
+    // Live progress
+    status.innerHTML = `<span class="text-muted">Processing… ${done + errors} / ${allAssociates.length}</span>`;
+  }));
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-check me-1"></i>Done';
+  btn.style.background = '#16a34a';
+  status.innerHTML = `<span style="color:#16a34a"><i class="fas fa-check-circle me-1"></i>Complete — ${done} associates updated${errors ? `, ${errors} errors` : ''}. Upcoming Events will now show expiry alerts from memory.</span>`;
+  clearCache('milestones_firestore');
+};
 
 // ─── Data Management ──────────────────────────────────────────────────
 window.loadResetPanel = () => {
@@ -6044,6 +6108,20 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </button>
         </div>
         <p class="small text-muted mb-0">Removes all badge records (approved and pending) for every associate and zeros any badge points. Use this to clear test/filler badge data.</p>
+      </div>
+
+      <!-- Expiry Date Migration -->
+      <div class="admin-card" style="border-left:4px solid #6366f1">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div>
+            <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-bolt me-2" style="color:#6366f1"></i>Backfill Expiry Dates</h6>
+          </div>
+          <button class="btn btn-sm text-white fw-semibold" style="background:#6366f1;border:none" onclick="runExpiryMigration()" id="migrationBtn">
+            <i class="fas fa-play me-1"></i>Run Once
+          </button>
+        </div>
+        <p class="small text-muted mb-2">One-time setup. Reads existing attendance and points data for all associates and writes their upcoming expiry dates directly to their profile. This lets the Upcoming Events panel show expiry alerts without expensive Firestore reads. Run this once after deploying — never needed again.</p>
+        <div id="migrationStatus" class="small"></div>
       </div>
 
       <!-- Attendance Import -->
