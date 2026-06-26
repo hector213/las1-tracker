@@ -3441,11 +3441,13 @@ window.downloadHRRecord = async (idx) => {
       scrollX: 0,
       scrollY: 0,
       onclone: (clonedDoc) => {
-        // Remove browser-default spacing on <html> that creates a gap at the top
-        clonedDoc.documentElement.style.margin = '0';
-        clonedDoc.documentElement.style.padding = '0';
-        // Reduce body side padding so content fills the full PDF page width
-        clonedDoc.body.style.padding = '30px 20px';
+        // Inject a stylesheet that beats any existing body/html padding rules
+        const styleEl = clonedDoc.createElement('style');
+        styleEl.textContent = `
+          html { margin:0!important; padding:0!important; }
+          body { margin:0!important; padding:16px 12px!important; }
+        `;
+        clonedDoc.head.appendChild(styleEl);
         // Strip action bar and status elements
         const ab = clonedDoc.getElementById('action-bar');
         if (ab) ab.remove();
