@@ -2023,7 +2023,7 @@ function listenAttendance(associateId) {
   getDocs(collection(db, 'attendance', associateId, 'entries')).then(snap => {
     lastAttendance = [];
     snap.forEach(d => lastAttendance.push({ id: d.id, ...d.data() }));
-    lastAttendance.sort((a, b) => new Date(b.date) - new Date(a.date));
+    lastAttendance.sort((a, b) => b.date.localeCompare(a.date));
     renderAttendanceLog();
     updateAttScoreDisplay();
   });
@@ -4210,7 +4210,8 @@ function detachAll() {
 function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : ''; }
 function formatDate(str) {
   if (!str) return '—';
-  try { return new Date(str).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); }
+  // Append T00:00:00 so YYYY-MM-DD is parsed as local time, not UTC (which shifts the day back in US timezones)
+  try { return new Date(str.length === 10 ? str + 'T00:00:00' : str).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); }
   catch { return str; }
 }
 function formatDateTime(str) {
