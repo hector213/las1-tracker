@@ -98,6 +98,7 @@ async function logPoints(associateId, type, reason, pts) {
     addedBy: actor,
     createdAt: new Date().toISOString()
   });
+  clearCache('milestones_firestore'); // point expiration dates may have changed
 }
 window.logPoints = logPoints;
 
@@ -494,19 +495,18 @@ function renderLeaderboard() {
 async function renderMilestones() {
   const el = document.getElementById('milestonesList');
   if (!el) return;
-  // Only show loading spinner on first render
   if (!el.children.length || el.querySelector('.ms-loading')) {
     el.innerHTML = '<div class="ms-loading text-muted small py-2">Loading…</div>';
   }
   const today = new Date();
   today.setHours(0,0,0,0);
-  const events = [];
 
   const dayDiff = (d) => Math.round((d - today) / (1000*60*60*24));
-
   const inWindow = (diff) => diff >= 0 && diff <= 40;
 
-  // ── Work anniversaries ──────────────────────────────────────────────
+  // ── Free in-memory events (always fresh, no Firestore reads) ────────
+  const memEvents = [];
+
   allAssociates.filter(a => a.hireDate && a.status === 'active').forEach(a => {
     const hire = new Date(a.hireDate); hire.setHours(0,0,0,0);
     const yearsBase = today.getFullYear() - hire.getFullYear();
@@ -517,7 +517,7 @@ async function renderMilestones() {
       const diff = dayDiff(anniv);
       if (inWindow(diff)) {
         const yr = y === 1 ? '1 Year' : `${y} Years`;
-        events.push({ diff, id: a.id, name: a.name,
+        memEvents.push({ diff, id: a.id, name: a.name,
           icon: 'fa-briefcase', color: '#1a2744',
           detail: `${yr} Work Anniversary`,
           dateStr: anniv.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
@@ -525,15 +525,13 @@ async function renderMilestones() {
     }
   });
 
-  // ── Birthdays ───────────────────────────────────────────────────────
   allAssociates.filter(a => a.birthday && a.status === 'active').forEach(a => {
     const bday = new Date(a.birthday + 'T00:00:00');
-    const thisYear = new Date(bday); thisYear.setFullYear(today.getFullYear());
-    const nextYear = new Date(bday); nextYear.setFullYear(today.getFullYear() + 1);
-    [thisYear, nextYear].forEach(d => {
+    [today.getFullYear(), today.getFullYear() + 1].forEach(yr => {
+      const d = new Date(bday); d.setFullYear(yr);
       const diff = dayDiff(d);
       if (inWindow(diff)) {
-        events.push({ diff, id: a.id, name: a.name,
+        memEvents.push({ diff, id: a.id, name: a.name,
           icon: 'fa-birthday-cake', color: '#f97316',
           detail: 'Birthday 🎂',
           dateStr: d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
@@ -541,93 +539,12 @@ async function renderMilestones() {
     });
   });
 
-  // ── Point expirations (oldest +pts entry per associate, at 1-year mark) ──
-  try {
-    const plAssocSnap = await getDocs(collection(db, 'pointslog'));
-    if (!plAssocSnap.empty) {
-      await Promise.all(plAssocSnap.docs.map(async assocDoc => {
-        const assocId = assocDoc.id;
-        const assoc = allAssociates.find(a => a.id === assocId && a.status === 'active');
-        if (!assoc) return;
-        const entriesSnap = await getDocs(collection(db, 'pointslog', assocId, 'entries'));
-        const positive = entriesSnap.docs
-          .map(d => d.data())
-          .filter(e => (e.pts || 0) > 0 && e.createdAt)
-          .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-        if (!positive.length) return;
-        const oldest = positive[0];
-        const expiry = new Date(oldest.createdAt);
-        expiry.setFullYear(expiry.getFullYear() + 1);
-        expiry.setHours(0,0,0,0);
-        const diff = dayDiff(expiry);
-        if (inWindow(diff)) {
-          events.push({ diff, id: assocId, name: assoc.name,
-            icon: 'fa-star-half-alt', color: '#dc2626',
-            detail: `Losing ${oldest.pts > 0 ? '+' : ''}${oldest.pts} pts (${oldest.reason || 'oldest entry'})`,
-            dateStr: expiry.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
-        }
-      }));
-    }
-  } catch(e) { /* points log unavailable */ }
-
-  // ── Attendance point expirations (each entry drops off at 1-year mark) ──
-  try {
-    const attMilSnap = await getDocs(collection(db, 'attendance'));
-    if (!attMilSnap.empty) {
-      await Promise.all(attMilSnap.docs.map(async assocDoc => {
-        const assocId = assocDoc.id;
-        const assoc = allAssociates.find(a => a.id === assocId && a.status === 'active');
-        if (!assoc) return;
-        const entriesSnap = await getDocs(collection(db, 'attendance', assocId, 'entries'));
-        entriesSnap.docs.map(d => d.data())
-          .filter(e => (e.points || 0) > 0 && e.date)
-          .forEach(e => {
-            const expiry = new Date(e.date + 'T00:00:00');
-            expiry.setFullYear(expiry.getFullYear() + 1);
-            const diff = dayDiff(expiry);
-            if (inWindow(diff)) {
-              const info = ATTENDANCE_TYPES.find(t => t.key === e.type) || { label: e.type || 'Attendance event' };
-              events.push({ diff, id: assocId, name: assoc.name,
-                icon: 'fa-calendar-minus', color: '#dc2626',
-                detail: `Losing +${e.points} att. pt — ${info.label}`,
-                dateStr: expiry.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
-            }
-          });
-      }));
-    }
-  } catch(e) { /* attendance unavailable */ }
-
-  // ── Time Off entries ────────────────────────────────────────────────
-  try {
-    const toMilSnap = await getDocs(collection(db, 'timeOff'));
-    if (!toMilSnap.empty) {
-      await Promise.all(toMilSnap.docs.map(async assocDoc => {
-        const assocId = assocDoc.id;
-        const assoc = allAssociates.find(a => a.id === assocId);
-        if (!assoc) return;
-        const entriesSnap = await getDocs(collection(db, 'timeOff', assocId, 'entries'));
-        entriesSnap.docs.map(d => d.data()).forEach(e => {
-          if (!e.startDate) return;
-          const start = new Date(e.startDate + 'T00:00:00');
-          const diff  = dayDiff(start);
-          if (!inWindow(diff)) return;
-          const t = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['vacation'];
-          events.push({ diff, id: assocId, name: assoc.name,
-            icon: 'fa-calendar-minus', color: t.color,
-            detail: t.label,
-            dateStr: start.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
-        });
-      }));
-    }
-  } catch(e) { /* time off unavailable */ }
-
-  // ── Scheduled 1:1s ──────────────────────────────────────────────────
   allAssociates.filter(a => a.next1on1 && a.status === 'active').forEach(a => {
     const d = new Date(a.next1on1 + 'T00:00:00');
     const diff = dayDiff(d);
-    if (diff >= -3 && diff <= 40) { // show slightly overdue too
+    if (diff >= -3 && diff <= 40) {
       const conductor = a.next1on1By ? ` · ${a.next1on1By}` : '';
-      events.push({ diff, id: a.id, name: a.name,
+      memEvents.push({ diff, id: a.id, name: a.name,
         icon: 'fa-comments', color: '#6366f1',
         detail: `1:1 Meeting${conductor}`,
         dateStr: d.toLocaleDateString('en-US',{month:'short',day:'numeric'}),
@@ -635,7 +552,93 @@ async function renderMilestones() {
     }
   });
 
-  events.sort((a, b) => a.diff - b.diff);
+  // ── Firestore events — cached for 5 minutes ──────────────────────────
+  let fsEvents = getCached('milestones_firestore');
+  if (!fsEvents) {
+    fsEvents = [];
+
+    // Point expirations
+    try {
+      const plSnap = await getDocs(collection(db, 'pointslog'));
+      if (!plSnap.empty) {
+        await Promise.all(plSnap.docs.map(async assocDoc => {
+          const assocId = assocDoc.id;
+          const assoc = allAssociates.find(a => a.id === assocId && a.status === 'active');
+          if (!assoc) return;
+          const entriesSnap = await getDocs(collection(db, 'pointslog', assocId, 'entries'));
+          const positive = entriesSnap.docs.map(d => d.data())
+            .filter(e => (e.pts || 0) > 0 && e.createdAt)
+            .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+          if (!positive.length) return;
+          const oldest = positive[0];
+          const expiry = new Date(oldest.createdAt);
+          expiry.setFullYear(expiry.getFullYear() + 1); expiry.setHours(0,0,0,0);
+          const diff = dayDiff(expiry);
+          if (inWindow(diff)) {
+            fsEvents.push({ diff, id: assocId, name: assoc.name,
+              icon: 'fa-star-half-alt', color: '#dc2626',
+              detail: `Losing ${oldest.pts > 0 ? '+' : ''}${oldest.pts} pts (${oldest.reason || 'oldest entry'})`,
+              dateStr: expiry.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
+          }
+        }));
+      }
+    } catch(e) { /* unavailable */ }
+
+    // Attendance point expirations
+    try {
+      const attSnap = await getDocs(collection(db, 'attendance'));
+      if (!attSnap.empty) {
+        await Promise.all(attSnap.docs.map(async assocDoc => {
+          const assocId = assocDoc.id;
+          const assoc = allAssociates.find(a => a.id === assocId && a.status === 'active');
+          if (!assoc) return;
+          const entriesSnap = await getDocs(collection(db, 'attendance', assocId, 'entries'));
+          entriesSnap.docs.map(d => d.data())
+            .filter(e => (e.points || 0) > 0 && e.date)
+            .forEach(e => {
+              const expiry = new Date(e.date + 'T00:00:00');
+              expiry.setFullYear(expiry.getFullYear() + 1);
+              const diff = dayDiff(expiry);
+              if (inWindow(diff)) {
+                const info = ATTENDANCE_TYPES.find(t => t.key === e.type) || { label: e.type || 'Attendance event' };
+                fsEvents.push({ diff, id: assocId, name: assoc.name,
+                  icon: 'fa-calendar-minus', color: '#dc2626',
+                  detail: `Losing +${e.points} att. pt — ${info.label}`,
+                  dateStr: expiry.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
+              }
+            });
+        }));
+      }
+    } catch(e) { /* unavailable */ }
+
+    // Time Off
+    try {
+      const toSnap = await getDocs(collection(db, 'timeOff'));
+      if (!toSnap.empty) {
+        await Promise.all(toSnap.docs.map(async assocDoc => {
+          const assocId = assocDoc.id;
+          const assoc = allAssociates.find(a => a.id === assocId);
+          if (!assoc) return;
+          const entriesSnap = await getDocs(collection(db, 'timeOff', assocId, 'entries'));
+          entriesSnap.docs.map(d => d.data()).forEach(e => {
+            if (!e.startDate) return;
+            const start = new Date(e.startDate + 'T00:00:00');
+            const diff  = dayDiff(start);
+            if (!inWindow(diff)) return;
+            const t = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['vacation'];
+            fsEvents.push({ diff, id: assocId, name: assoc.name,
+              icon: 'fa-calendar-minus', color: t.color,
+              detail: t.label,
+              dateStr: start.toLocaleDateString('en-US',{month:'short',day:'numeric'}) });
+          });
+        }));
+      }
+    } catch(e) { /* unavailable */ }
+
+    setCache('milestones_firestore', fsEvents);
+  }
+
+  const events = [...memEvents, ...fsEvents].sort((a, b) => a.diff - b.diff);
 
   if (!events.length) {
     el.innerHTML = '<div class="text-muted small py-2">No upcoming events in the next 40 days.</div>';
@@ -2846,6 +2849,7 @@ window.saveTimeOff = async () => {
   const addedBy  = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
   await addDoc(collection(db, 'timeOff', assocId, 'entries'), { type, startDate: start, endDate: end, note, addedBy, addedByUid: currentUser.uid, createdAt: new Date().toISOString() });
   clearCache('timeoff');
+  clearCache('milestones_firestore');
   recordActivity(assocId);
   bootstrap.Modal.getInstance(document.getElementById('timeOffModal')).hide();
 };
@@ -2910,6 +2914,7 @@ window.saveAttendance = async () => {
   });
   await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(info.points) });
   clearCache('attendance');
+  clearCache('milestones_firestore');
   recordActivity(currentAssociateId);
   bootstrap.Modal.getInstance(document.getElementById('attModal')).hide();
   listenAttendance(currentAssociateId); // refresh the attendance list immediately
@@ -2920,6 +2925,7 @@ window.deleteAttendance = async (entryId, type, pts) => {
   await deleteDoc(doc(db, 'attendance', currentAssociateId, 'entries', entryId));
   await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(-pts) });
   clearCache('attendance');
+  clearCache('milestones_firestore');
   listenAttendance(currentAssociateId); // refresh the attendance list immediately
 };
 
