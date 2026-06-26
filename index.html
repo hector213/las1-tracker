@@ -3441,18 +3441,17 @@ window.downloadHRRecord = async (idx) => {
       scrollX: 0,
       scrollY: 0,
       onclone: (clonedDoc) => {
-        // Inject a stylesheet that beats any existing body/html padding rules
+        // The real culprit: #page-wrap has margin:48px 80px + padding:48px 72px
         const styleEl = clonedDoc.createElement('style');
         styleEl.textContent = `
-          html { margin:0!important; padding:0!important; }
-          body { margin:0!important; padding:16px 12px!important; }
+          html, body { margin:0!important; padding:0!important; }
+          #page-wrap { margin:10px auto!important; padding:12px 16px!important; max-width:100%!important; }
+          .sig-canvas-wrap { display:none!important; }
+          .sig-img-wrap { display:block!important; }
+          .clear-btn { display:none!important; }
+          #action-bar, #save-status { display:none!important; }
         `;
         clonedDoc.head.appendChild(styleEl);
-        // Strip action bar and status elements
-        const ab = clonedDoc.getElementById('action-bar');
-        if (ab) ab.remove();
-        const ss = clonedDoc.getElementById('save-status');
-        if (ss) ss.remove();
       },
     });
 
