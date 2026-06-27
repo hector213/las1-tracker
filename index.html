@@ -3763,7 +3763,7 @@ window.open1on1Modal = (mode) => {
     document.getElementById('1on1FollowUps').value = '';
   }
 
-  bootstrap.Modal.getOrCreate(modal).show();
+  bootstrap.Modal.getOrCreateInstance(modal).show();
 };
 
 window.save1on1 = async () => {
@@ -3909,12 +3909,13 @@ async function applyTabVisibility() {
 }
 
 async function loadPendingBadges() {
-  const allBadgesSnap = await getDocs(collection(db, 'badges'));
-  const container     = document.getElementById('pendingBadgesContainer');
-  const pending       = [];
-  if (!allBadgesSnap.empty) {
-    await Promise.all(allBadgesSnap.docs.map(async assocDoc => {
-      const assocId = assocDoc.id;
+  const container = document.getElementById('pendingBadgesContainer');
+  const pending   = [];
+  // Iterate allAssociates (in memory) rather than listing collection(db,'badges')
+  // — parent docs are phantom/empty in Firestore so getDocs on the collection returns nothing
+  if (allAssociates.length) {
+    await Promise.all(allAssociates.map(async assoc => {
+      const assocId = assoc.id;
       const entriesSnap = await getDocs(collection(db, 'badges', assocId, 'entries'));
       entriesSnap.docs.forEach(d => {
         const badge = d.data();
@@ -6582,6 +6583,58 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <div class="modal-footer border-0 pt-0">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn text-white fw-semibold" style="background:#6366f1;border:none" onclick="save1on1()">
+          <i class="fas fa-save me-1"></i>Save
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Time Off Modal -->
+<div class="modal fade" id="timeOffModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0" style="background:linear-gradient(135deg,#0ea5e9 0%,#0369a1 100%);border-radius:0.5rem 0.5rem 0 0">
+        <h5 class="modal-title fw-bold text-white"><i class="fas fa-calendar-alt me-2"></i>Add Time Off</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-4">
+        <input type="hidden" id="toEditId">
+        <input type="hidden" id="toEditAssocId">
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Associate <span class="text-danger">*</span></label>
+          <select class="form-select" id="toAssoc"></select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Type <span class="text-danger">*</span></label>
+          <select class="form-select" id="toType">
+            <option value="vacation">Vacation</option>
+            <option value="sick">Sick</option>
+            <option value="personal">Personal</option>
+            <option value="fmla">FMLA</option>
+            <option value="loa">Leave of Absence</option>
+            <option value="out">Out (Other)</option>
+            <option value="unpaid">Unpaid</option>
+          </select>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-semibold small">Start Date <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" id="toStart">
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-semibold small">End Date <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" id="toEnd">
+          </div>
+        </div>
+        <div class="mb-1">
+          <label class="form-label fw-semibold small">Note</label>
+          <input type="text" class="form-control" id="toNote" placeholder="Optional note…">
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn text-white fw-semibold" style="background:#0369a1;border:none" onclick="saveTimeOff()">
           <i class="fas fa-save me-1"></i>Save
         </button>
       </div>
