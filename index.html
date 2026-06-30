@@ -11,7 +11,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, collection, collectionGroup, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, increment, deleteField, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, collectionGroup, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, increment, deleteField, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMPDpzhZEWZjP9SptREKVSB4dmdhY5cpM",
@@ -58,6 +58,11 @@ const FLAGS  = {
   'low-uph':           { label: 'Low UPH',           cls: 'bg-flag-orange' }
 };
 const NOTE_TYPES = ['All','General','Coaching','Recognition','Warning','PIP','Leadership'];
+// Use local calendar date (not UTC) to avoid midnight timezone flip
+function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 const ATTENDANCE_TYPES = [
   { key: 'call-out',            label: 'Call Out',                                    points: 1.0, icon: 'fa-phone-slash',   color: '#dc2626' },
   { key: 'call-out-sick-half',  label: 'Call Out — Sick Time (covers ≥ half shift)',  points: 0.5, icon: 'fa-notes-medical', color: '#d97706' },
@@ -263,6 +268,18 @@ onAuthStateChanged(auth, async (user) => {
     if (currentUserRole !== 'viewer') document.getElementById('addAssocBtn').classList.remove('d-none');
     applyTabVisibility();
     restoreLastView();
+    // Record login event
+    (async () => {
+      try {
+        const _uSnap2 = await getDoc(doc(db, 'users', user.uid));
+        const _name = _uSnap2.exists() ? (_uSnap2.data().displayName || user.email) : user.email;
+        const _role = _uSnap2.exists() ? (_uSnap2.data().role || 'viewer') : currentUserRole;
+        await addDoc(collection(db, 'loginLog'), {
+          uid: user.uid, displayName: _name, email: user.email,
+          role: _role, loginAt: new Date().toISOString()
+        });
+      } catch(e) { /* non-critical */ }
+    })();
   } else {
     currentUser = null;
     showLogin();
@@ -475,8 +492,8 @@ function renderDashboard() {
   renderCards(); // Initial render
 
   // Fetch today's attendance for stats + banner update (no recursive renderDashboard)
-  const today = new Date().toISOString().split('T')[0];
-  const _todayKey = new Date().toISOString().split('T')[0];
+  const today = localToday();
+  const _todayKey = localToday();
   (async () => {
     try {
       const callOutTypes  = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('call-out')).map(t => t.key));
@@ -484,9 +501,10 @@ function renderDashboard() {
       const callOutIds  = new Set();
       const earlyOutIds = new Set();
       const lateIds     = new Set();
-      const assocSnap = await getDocs(collection(db,'attendance'));
-      await Promise.all(assocSnap.docs.map(async assocDoc => {
-        const assocId = assocDoc.id;
+      // Iterate allAssociates (in memory) — parent attendance docs are phantom so
+      // getDocs(collection(db,'attendance')) returns nothing unless explicitly created
+      await Promise.all(activeAll.map(async assoc => {
+        const assocId = assoc.id;
         const entriesSnap = await getDocs(collection(db, 'attendance', assocId, 'entries'));
         entriesSnap.docs.forEach(d => {
           const e = d.data();
@@ -2168,7 +2186,7 @@ window.toggleAttendanceLog = () => {
 window.openAttendanceModal = () => {
   document.getElementById('attTypeSelect').value = '';
   document.getElementById('attNote').value = '';
-  document.getElementById('attDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('attDate').value = localToday();
   bootstrap.Modal.getOrCreateInstance(document.getElementById('attModal')).show();
 };
 
@@ -2773,7 +2791,7 @@ function renderToCalendar() {
   if (!el) return;
   const year  = _toYear;
   const month = _toMonth;
-  const today = new Date().toISOString().split('T')[0];
+  const today = localToday();
   const firstDay    = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
@@ -2831,7 +2849,7 @@ function renderToCalendar() {
 }
 
 window.openTimeOffModal = (assocId, date) => {
-  const d = date || new Date().toISOString().split('T')[0];
+  const d = date || localToday();
   document.getElementById('toEditId').value = '';
   document.getElementById('toEditAssocId').value = assocId || '';
   document.getElementById('toNote').value = '';
@@ -2880,13 +2898,13 @@ async function loadTodayTimeOff() {
   const cached = getCached('todayTimeOff');
   if (cached) { _todayTimeOffMap = cached; return; }
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = localToday();
   _todayTimeOffMap = {};
   try {
-    const toTodaySnap = await getDocs(collection(db, 'timeOff'));
-    if (toTodaySnap.empty) { setCache('todayTimeOff', {}); return; }
-    await Promise.all(toTodaySnap.docs.map(async assocDoc => {
-      const assocId = assocDoc.id;
+    // Iterate allAssociates — timeOff parent docs are phantom in Firestore
+    if (!allAssociates.length) { setCache('todayTimeOff', {}); return; }
+    await Promise.all(allAssociates.filter(a => a.status === 'active').map(async assoc => {
+      const assocId = assoc.id;
       const entriesSnap = await getDocs(collection(db, 'timeOff', assocId, 'entries'));
       entriesSnap.docs.forEach(d => {
         const e = d.data();
@@ -3754,7 +3772,7 @@ window.open1on1Modal = (mode) => {
     scheduleFields.classList.add('d-none');
     logFields.classList.remove('d-none');
     // Pre-fill date with today, conductor with scheduled conductor if available
-    const today = new Date().toISOString().slice(0,10);
+    const today = localToday();
     const assoc = allAssociates.find(a => a.id === currentAssociateId);
     document.getElementById('1on1LogDate').value = assoc?.next1on1 || today;
     document.getElementById('1on1LogConductor').value = assoc?.next1on1By || '';
@@ -3861,6 +3879,7 @@ window.loadAdminPanel = () => {
     </tr>`).join('');
   });
   loadPendingBadges();
+  loadLoginLog();
   loadTabToggles();
   loadResetPanel();
   loadAttResetPanel();
@@ -3907,6 +3926,43 @@ async function applyTabVisibility() {
     }
   });
 }
+
+// ─── Login Tracker ────────────────────────────────────────────────────
+async function loadLoginLog() {
+  const container = document.getElementById('loginLogContainer');
+  if (!container) return;
+  container.innerHTML = '<p class="text-muted small mb-0">Loading…</p>';
+  try {
+    const snap = await getDocs(query(collection(db, 'loginLog'), orderBy('loginAt', 'desc'), limit(30)));
+    if (snap.empty) { container.innerHTML = '<p class="text-muted small mb-0">No logins recorded yet.</p>'; return; }
+    const roleColor = { admin: '#dc2626', supervisor: '#2563eb', lead: '#16a34a', viewer: '#6b7280' };
+    container.innerHTML = snap.docs.map(d => {
+      const e = d.data();
+      const dt = e.loginAt ? new Date(e.loginAt) : null;
+      const dateStr = dt ? dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+      const timeStr = dt ? dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : '';
+      const color = roleColor[e.role] || '#6b7280';
+      return `<div class="d-flex align-items-center justify-content-between py-2" style="border-bottom:1px solid #f1f5f9">
+        <div class="d-flex align-items-center gap-2">
+          <div style="width:30px;height:30px;border-radius:50%;background:${color}22;display:flex;align-items:center;justify-content:center">
+            <i class="fas fa-user" style="font-size:0.72rem;color:${color}"></i>
+          </div>
+          <div>
+            <div class="fw-semibold small">${escapeHtml(e.displayName || e.email || '—')}</div>
+            <div style="font-size:0.72rem;color:#6b7280">${escapeHtml(e.email || '')}</div>
+          </div>
+        </div>
+        <div class="text-end">
+          <span class="badge" style="background:${color}22;color:${color};font-size:0.68rem">${capitalize(e.role || 'viewer')}</span>
+          <div style="font-size:0.72rem;color:#6b7280;margin-top:2px">${dateStr} · ${timeStr}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    container.innerHTML = '<p class="text-muted small mb-0">Could not load login history.</p>';
+  }
+}
+window.loadLoginLog = loadLoginLog;
 
 async function loadPendingBadges() {
   const container = document.getElementById('pendingBadgesContainer');
@@ -4318,7 +4374,7 @@ window.openImport = () => {
   document.getElementById('importPreview').innerHTML = '';
   document.getElementById('pasteArea').value = '';
   document.getElementById('manualEmpId').value  = '';
-  document.getElementById('manualDate').value   = new Date().toISOString().split('T')[0];
+  document.getElementById('manualDate').value   = localToday();
   document.getElementById('manualUph').value    = '';
   document.getElementById('manualUnits').value  = '';
   document.getElementById('manualRole').value   = '';
@@ -4669,7 +4725,7 @@ window.kbAddTask = async () => {
 window.kbLog = async () => {
   const taskList = Object.values(_kbTasks);
   if (!taskList.length) { alert('No tasks on the board to log.'); return; }
-  const today = new Date().toISOString().split('T')[0];
+  const today = localToday();
   const logData = {
     loggedAt: new Date().toISOString(),
     loggedBy: currentUser.uid,
@@ -6057,6 +6113,15 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <button class="btn btn-sm btn-outline-secondary py-0" onclick="loadPendingBadges()"><i class="fas fa-sync-alt"></i></button>
         </div>
         <div id="pendingBadgesContainer"><p class="text-muted small mb-0">Loading…</p></div>
+      </div>
+
+      <!-- Login Tracker -->
+      <div class="admin-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-sign-in-alt me-2" style="color:#0369a1"></i>Recent Logins</h6>
+          <button class="btn btn-sm btn-outline-secondary py-0" onclick="loadLoginLog()"><i class="fas fa-sync-alt"></i></button>
+        </div>
+        <div id="loginLogContainer"><p class="text-muted small mb-0">Loading…</p></div>
       </div>
 
       <!-- Data Management -->
