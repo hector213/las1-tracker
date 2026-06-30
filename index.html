@@ -1496,12 +1496,14 @@ window.openCertModal = async (key, label) => {
   const snap = await getDoc(doc(db, 'certs', currentAssociateId));
   _certModalExisting = snap.exists() ? snap.data() : null;
 
-  const status = _certModalExisting ? (_certModalExisting.status || 'certified') : null;
+  // _certModalExisting is the whole cert doc — the specific cert is nested under its key
+  const thisCert = _certModalExisting?.[key] || null;
+  const status = thisCert ? (thisCert.status || 'certified') : null;
   document.getElementById('certModalTitle').textContent = label;
   // Highlight current status
   document.getElementById('certBtnCertified').classList.toggle('active', status === 'certified');
   document.getElementById('certBtnTraining').classList.toggle('active', status === 'training');
-  document.getElementById('certBtnRemove').classList.toggle('d-none', !_certModalExisting);
+  document.getElementById('certBtnRemove').classList.toggle('d-none', !thisCert);
   bootstrap.Modal.getOrCreateInstance(document.getElementById('certModal')).show();
 };
 
@@ -1510,7 +1512,8 @@ window.setCertStatus = async (newStatus) => {
   const certRef = doc(db, 'certs', currentAssociateId);
   const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
   const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
-  const oldStatus = _certModalExisting ? (_certModalExisting.status || 'certified') : null;
+  // oldStatus lives under the specific cert key, not at the document root
+  const oldStatus = _certModalExisting?.[_certModalKey]?.status || null;
 
   if (newStatus === 'remove') {
     await updateDoc(certRef, { [_certModalKey]: deleteField() });
@@ -1519,7 +1522,8 @@ window.setCertStatus = async (newStatus) => {
       await logPoints(currentAssociateId, 'Certification', `Cert removed: ${_certModalLabel}`, -10);
     }
   } else {
-    await updateDoc(certRef, { [_certModalKey]: { certifiedAt: new Date().toISOString(), certifiedBy: displayName, status: newStatus } });
+    // Use setDoc with merge so it creates the cert doc if it doesn't exist yet
+    await setDoc(certRef, { [_certModalKey]: { certifiedAt: new Date().toISOString(), certifiedBy: displayName, status: newStatus } }, { merge: true });
     if (newStatus === 'certified' && oldStatus !== 'certified') {
       await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(10) });
       await logPoints(currentAssociateId, 'Certification', `Cert earned: ${_certModalLabel}`, 10);
