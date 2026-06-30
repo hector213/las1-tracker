@@ -63,7 +63,20 @@ function localToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+// Shift-aware date: A2 overnight shift runs 5 PM – 4:30 AM.
+// Between midnight and 4:30 AM we're still in the previous calendar day's shift.
+function shiftDate() {
+  const now = new Date();
+  const h = now.getHours(), m = now.getMinutes();
+  if (h < 4 || (h === 4 && m < 30)) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  return localToday();
+}
 const ATTENDANCE_TYPES = [
+  { key: 'ncns',                label: 'NCNS (No Call No Show)',                       points: 2.0, icon: 'fa-ban',           color: '#7c0000' },
   { key: 'call-out',            label: 'Call Out',                                    points: 1.0, icon: 'fa-phone-slash',   color: '#dc2626' },
   { key: 'call-out-sick-half',  label: 'Call Out — Sick Time (covers ≥ half shift)',  points: 0.5, icon: 'fa-notes-medical', color: '#d97706' },
   { key: 'call-out-sick-no',    label: 'Call Out — Sick Time (not enough for half)',  points: 1.0, icon: 'fa-notes-medical', color: '#dc2626' },
@@ -456,7 +469,8 @@ function renderDashboard() {
       const todayTO  = _todayTimeOffMap[a.id];
       const todayAtt = _todayAttMap[a.id];
       let banner = null;
-      if (todayAtt === 'call-out')   banner = { label: 'OUT',       color: '#dc2626', bg: '#fee2e2' };
+      if (todayAtt === 'ncns')        banner = { label: 'NCNS',      color: '#7c0000', bg: '#fee2e2' };
+      else if (todayAtt === 'call-out')   banner = { label: 'OUT',       color: '#dc2626', bg: '#fee2e2' };
       else if (todayAtt === 'early') banner = { label: 'Early Out', color: '#ea580c', bg: '#ffedd5' };
       else if (todayAtt === 'late')  banner = { label: 'Tardy',     color: '#d97706', bg: '#fef3c7' };
       else if (todayTO)              banner = { label: todayTO.label, color: todayTO.color, bg: todayTO.bg };
@@ -2156,7 +2170,7 @@ window.toggleAttendanceLog = () => {
 window.openAttendanceModal = () => {
   document.getElementById('attTypeSelect').value = '';
   document.getElementById('attNote').value = '';
-  document.getElementById('attDate').value = localToday();
+  document.getElementById('attDate').value = shiftDate();
   bootstrap.Modal.getOrCreateInstance(document.getElementById('attModal')).show();
 };
 
@@ -2819,7 +2833,7 @@ function renderToCalendar() {
 }
 
 window.openTimeOffModal = (assocId, date) => {
-  const d = date || localToday();
+  const d = date || shiftDate();
   document.getElementById('toEditId').value = '';
   document.getElementById('toEditAssocId').value = assocId || '';
   document.getElementById('toNote').value = '';
@@ -2870,9 +2884,10 @@ async function loadTodayAttendanceStats() {
   const cached = getCached('todayAttStats');
   if (cached) return; // still fresh — applyAttendanceStats() uses _todayAttMap
 
-  const today = localToday();
-  const callOutTypes  = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('call-out')).map(t => t.key));
+  const today = shiftDate(); // overnight shift: before 4:30 AM, still counts as previous day
+  const callOutTypes  = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('call-out') || t.key === 'ncns').map(t => t.key));
   const earlyOutTypes = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('left-early')).map(t => t.key));
+  const ncnsIds    = new Set();
   const callOutIds = new Set();
   const earlyOutIds = new Set();
   const lateIds = new Set();
@@ -2885,7 +2900,8 @@ async function loadTodayAttendanceStats() {
       const snap = await getDocs(q);
       snap.docs.forEach(d => {
         const e = d.data();
-        if (callOutTypes.has(e.type))      callOutIds.add(assocId);
+        if (e.type === 'ncns')             ncnsIds.add(assocId);
+        else if (callOutTypes.has(e.type)) callOutIds.add(assocId);
         if (earlyOutTypes.has(e.type))     earlyOutIds.add(assocId);
         if (e.type?.startsWith('late'))    lateIds.add(assocId);
       });
@@ -2893,7 +2909,8 @@ async function loadTodayAttendanceStats() {
   } catch(err) { console.warn('Attendance stats load error:', err); }
 
   _todayAttMap = {};
-  [...callOutIds].forEach(id  => { _todayAttMap[id] = 'call-out'; });
+  [...ncnsIds].forEach(id    => { _todayAttMap[id] = 'ncns'; });
+  [...callOutIds].forEach(id  => { if (!_todayAttMap[id]) _todayAttMap[id] = 'call-out'; });
   [...earlyOutIds].forEach(id => { if (!_todayAttMap[id]) _todayAttMap[id] = 'early'; });
   [...lateIds].forEach(id    => { if (!_todayAttMap[id]) _todayAttMap[id] = 'late'; });
   setCache('todayAttStats', { callOutIds: [...callOutIds], earlyOutIds: [...earlyOutIds] });
@@ -2923,7 +2940,7 @@ async function loadTodayTimeOff() {
   const cached = getCached('todayTimeOff');
   if (cached) { _todayTimeOffMap = cached; return; }
 
-  const today = localToday();
+  const today = shiftDate(); // overnight shift: before 4:30 AM, still counts as previous day
   _todayTimeOffMap = {};
   try {
     // Iterate allAssociates — timeOff parent docs are phantom in Firestore
@@ -4103,6 +4120,41 @@ window.runExpiryMigration = async () => {
   clearCache('milestones_firestore');
 };
 
+// ─── NCNS Fix Migration ───────────────────────────────────────────────
+window.fixNcnsEntries = async () => {
+  const btn    = document.getElementById('ncnsMigrationBtn');
+  const status = document.getElementById('ncnsMigrationStatus');
+  if (!allAssociates.length) { status.innerHTML = '<span class="text-danger">No associates loaded. Open the dashboard first.</span>'; return; }
+  if (!confirm(`Scan all ${allAssociates.length} associates for attendance entries where type = "call-out" and points = 2 (misclassified NCNS) and fix them?`)) return;
+
+  btn.disabled = true;
+  let fixed = 0; let scanned = 0;
+  await Promise.all(allAssociates.map(async a => {
+    try {
+      const snap = await getDocs(collection(db, 'attendance', a.id, 'entries'));
+      const writes = [];
+      snap.docs.forEach(d => {
+        const e = d.data();
+        if (e.type === 'call-out' && (e.points === 2 || e.points === '2')) {
+          writes.push(updateDoc(doc(db, 'attendance', a.id, 'entries', d.id), { type: 'ncns' }));
+          fixed++;
+        }
+      });
+      await Promise.all(writes);
+      scanned++;
+    } catch(e) {}
+    status.innerHTML = `<span class="text-muted">Scanning… ${scanned} / ${allAssociates.length}</span>`;
+  }));
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-check me-1"></i>Done';
+  btn.style.background = '#16a34a';
+  clearCache('todayAttStats');
+  status.innerHTML = fixed
+    ? `<span style="color:#16a34a"><i class="fas fa-check-circle me-1"></i>Fixed ${fixed} NCNS entries across ${scanned} associates.</span>`
+    : `<span class="text-muted"><i class="fas fa-info-circle me-1"></i>No misclassified entries found (${scanned} associates scanned).</span>`;
+};
+
 // ─── Data Management ──────────────────────────────────────────────────
 window.loadResetPanel = () => {
   const container = document.getElementById('resetAssocList');
@@ -4254,7 +4306,9 @@ window.parseAttImport = () => {
     // Infer attendance type from notes + points
     const nl = note.toLowerCase();
     let type = 'call-out';
-    if (pts === 0) {
+    if (nl.includes('ncns') || nl.includes('no call no show') || nl.includes('no call/no show') || pts >= 2) {
+      type = 'ncns';
+    } else if (pts === 0) {
       type = nl.includes('early') ? 'left-early-sick' : 'call-out-sick-full';
     } else if (nl.includes('late') || nl.includes('tardy') || nl.includes('clock in')) {
       type = pts >= 1 ? 'late-arrival-half' : 'late-arrival';
@@ -4412,7 +4466,7 @@ window.openImport = () => {
   document.getElementById('importPreview').innerHTML = '';
   document.getElementById('pasteArea').value = '';
   document.getElementById('manualEmpId').value  = '';
-  document.getElementById('manualDate').value   = localToday();
+  document.getElementById('manualDate').value   = shiftDate();
   document.getElementById('manualUph').value    = '';
   document.getElementById('manualUnits').value  = '';
   document.getElementById('manualRole').value   = '';
@@ -5666,6 +5720,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <label class="form-label small fw-semibold mb-1">Type</label>
             <select class="form-select form-select-sm" id="attFilterType" onchange="loadAttendance()" style="min-width:200px">
               <option value="">All Types</option>
+              <option value="ncns">NCNS (No Call No Show)</option>
               <option value="call-out">Call Out</option>
               <option value="call-out-sick-half">Call Out — Sick Time (covers &ge; half shift)</option>
               <option value="call-out-sick-no">Call Out — Sick Time (not enough for half)</option>
@@ -6235,6 +6290,20 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div id="migrationStatus" class="small"></div>
       </div>
 
+      <!-- Fix NCNS Migration -->
+      <div class="admin-card" style="border-left:4px solid #7c0000">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div>
+            <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-ban me-2" style="color:#7c0000"></i>Fix NCNS Entries</h6>
+          </div>
+          <button class="btn btn-sm text-white fw-semibold" style="background:#7c0000;border:none" onclick="fixNcnsEntries()" id="ncnsMigrationBtn">
+            <i class="fas fa-wrench me-1"></i>Run Once
+          </button>
+        </div>
+        <p class="small text-muted mb-2">One-time fix for imported records where type was saved as "Call Out" but points = 2 (should be NCNS). Scans all attendance entries and corrects the type field to "ncns". Run once after deploying the NCNS update.</p>
+        <div id="ncnsMigrationStatus" class="small"></div>
+      </div>
+
       <!-- Attendance Import -->
       <div class="admin-card" style="border-left:4px solid #f97316">
         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -6470,6 +6539,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <label class="form-label fw-semibold">Event Type <span class="text-danger">*</span></label>
         <select class="form-select" id="attTypeSelect">
           <option value="">Select event…</option>
+          <option value="ncns">NCNS — No Call No Show (+2.0 pts)</option>
           <option value="call-out">Call Out (+1.0 pt)</option>
           <option value="call-out-sick-half">Call Out — Sick Time (covers ≥ half shift) (+0.5 pt)</option>
           <option value="call-out-sick-no">Call Out — Sick Time (not enough for half) (+1.0 pt)</option>
