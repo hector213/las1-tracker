@@ -4735,6 +4735,7 @@ function escapeHtml(s) {
 let _kbAssocId   = null;
 let _kbAssocName = null;
 let _kbTasks     = {};      // live board tasks
+let _kbPresets   = {};      // daily template presets (never cleared by Log Day)
 let _kbViewMode  = 'board'; // 'board' | 'logs'
 
 const FREQ_META = {
@@ -4795,15 +4796,53 @@ window.openKanban = async (assocId, assocName) => {
 };
 
 async function _kbRefreshBoard() {
-  const snap = await getDocs(collection(db, 'supervisorTasks', _kbAssocId, 'board'));
-  _kbTasks = {}; snap.docs.forEach(d => { _kbTasks[d.id] = d.data(); });
+  const [boardSnap, presetSnap] = await Promise.all([
+    getDocs(collection(db, 'supervisorTasks', _kbAssocId, 'board')),
+    getDocs(collection(db, 'supervisorTasks', _kbAssocId, 'presets'))
+  ]);
+  _kbTasks   = {}; boardSnap.docs.forEach(d  => { _kbTasks[d.id]   = d.data(); });
+  _kbPresets = {}; presetSnap.docs.forEach(d => { _kbPresets[d.id] = d.data(); });
   _kbRenderBoard();
 }
 
 function _kbRenderBoard() {
   const canEdit = currentUserRole === 'admin' || currentUserRole === 'supervisor' || currentUserRole === 'lead';
   const board = document.getElementById('kbBoard');
-  board.innerHTML = KB_COLS.map(col => {
+
+  // ── Presets panel (leftmost, only in live board view) ──────────────────
+  const presetEntries = Object.entries(_kbPresets);
+  const presetsPanel = (canEdit && _kbViewMode === 'board') ? `
+    <div class="kanban-col" style="min-width:190px;max-width:210px;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;padding:10px">
+      <div class="kanban-col-header" style="color:#475569;font-size:0.78rem;margin-bottom:8px">
+        <i class="fas fa-clipboard-list me-1" style="color:#94a3b8"></i>Daily Templates
+      </div>
+      ${presetEntries.length === 0 ? '<div style="font-size:0.75rem;color:#94a3b8;margin-bottom:8px">No templates yet.</div>' :
+        presetEntries.map(([pid, p]) => {
+          const freq = FREQ_META[p.frequency] || FREQ_META.daily;
+          return `<div class="kanban-task" style="border-left-color:#94a3b8;margin-bottom:6px">
+            <div class="kt-title" style="font-size:0.78rem">${escapeHtml(p.title)}</div>
+            <span class="kt-freq" style="background:${freq.bg};color:${freq.color};font-size:0.65rem">${freq.label}</span>
+            <div class="kt-actions" style="margin-top:4px">
+              <button onclick="kbAddFromPreset('${pid}')" style="color:#16a34a;font-weight:600">＋ Add to Board</button>
+              <button class="kt-del" onclick="kbDeletePreset('${pid}')">✕</button>
+            </div>
+          </div>`;
+        }).join('')}
+      <div style="border-top:1px solid #e2e8f0;padding-top:8px;margin-top:4px;display:flex;flex-direction:column;gap:5px">
+        <input type="text" class="form-control form-control-sm" id="kbPresetTitle" placeholder="New template…" style="font-size:0.75rem" onkeydown="if(event.key==='Enter')kbAddPreset()">
+        <select class="form-select form-select-sm" id="kbPresetFreq" style="font-size:0.75rem;width:100%">
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="biweekly">Bi-Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+        <button class="btn btn-sm" style="background:#e2e8f0;color:#475569;font-size:0.75rem;padding:3px 8px" onclick="kbAddPreset()">
+          <i class="fas fa-plus me-1"></i>Save Template
+        </button>
+      </div>
+    </div>` : '';
+
+  board.innerHTML = presetsPanel + KB_COLS.map(col => {
     const tasks = Object.entries(_kbTasks)
       .filter(([,t]) => t.status === col.key)
       .sort(([,a],[,b]) => (a.createdAt||'').localeCompare(b.createdAt||''));
@@ -4844,6 +4883,36 @@ window.kbDelete = async (taskId) => {
   if (!confirm('Remove this task?')) return;
   await deleteDoc(doc(db, 'supervisorTasks', _kbAssocId, 'board', taskId));
   delete _kbTasks[taskId];
+  _kbRenderBoard();
+};
+
+// ── Preset template functions ──────────────────────────────────────────────
+window.kbAddFromPreset = async (presetId) => {
+  const p = _kbPresets[presetId];
+  if (!p) return;
+  const task = { title: p.title, frequency: p.frequency, status: 'todo', createdAt: new Date().toISOString(), createdBy: currentUser.uid, fromPreset: true };
+  const newRef = await addDoc(collection(db, 'supervisorTasks', _kbAssocId, 'board'), task);
+  _kbTasks[newRef.id] = task;
+  _kbRenderBoard();
+};
+
+window.kbAddPreset = async () => {
+  const titleEl = document.getElementById('kbPresetTitle');
+  const title   = titleEl?.value.trim();
+  const freq    = document.getElementById('kbPresetFreq')?.value || 'daily';
+  if (!title) { titleEl?.focus(); return; }
+  const preset = { title, frequency: freq };
+  const ref = await addDoc(collection(db, 'supervisorTasks', _kbAssocId, 'presets'), preset);
+  _kbPresets[ref.id] = preset;
+  _kbRenderBoard();
+  // Re-focus the input after render
+  document.getElementById('kbPresetTitle')?.focus();
+};
+
+window.kbDeletePreset = async (presetId) => {
+  if (!confirm('Remove this template?')) return;
+  await deleteDoc(doc(db, 'supervisorTasks', _kbAssocId, 'presets', presetId));
+  delete _kbPresets[presetId];
   _kbRenderBoard();
 };
 
