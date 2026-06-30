@@ -357,6 +357,7 @@ function loadDashboard() {
       if (_dashFirstLoad) {
         _dashFirstLoad = false;
         renderMilestones(); // only on initial load — expensive subcollection reads
+        loadKanbanCounts(); // load once per dashboard visit; applyKanbanCounts() restores after redraws
       }
     });
     autoExpirePoints();
@@ -2914,8 +2915,7 @@ function applyAttendanceStats(activeAll, activeAssoc) {
   document.getElementById('statTimeOff').textContent     = timeOffCount;
   document.getElementById('statInBuilding').textContent  = Math.max(0, activeAll.length - outOfBuilding);
   renderCards();
-  applyKanbanCounts(); // restore cached counts immediately (no Firestore reads)
-  loadKanbanCounts();  // then refresh from Firestore in background (updates cache + DOM)
+  applyKanbanCounts(); // restore cached counts from memory — no Firestore reads
 }
 
 async function loadTodayTimeOff() {
