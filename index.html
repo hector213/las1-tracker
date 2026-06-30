@@ -490,6 +490,7 @@ function renderDashboard() {
   };
 
   renderCards(); // Initial render
+  applyKanbanCounts(); // restore cached counts immediately (zero reads)
 
   // Load today's attendance stats (cached — only hits Firestore when stale or after att change)
   loadTodayAttendanceStats().then(() => applyAttendanceStats(activeAll, activeAssoc));
@@ -2913,7 +2914,8 @@ function applyAttendanceStats(activeAll, activeAssoc) {
   document.getElementById('statTimeOff').textContent     = timeOffCount;
   document.getElementById('statInBuilding').textContent  = Math.max(0, activeAll.length - outOfBuilding);
   renderCards();
-  loadKanbanCounts();
+  applyKanbanCounts(); // restore cached counts immediately (no Firestore reads)
+  loadKanbanCounts();  // then refresh from Firestore in background (updates cache + DOM)
 }
 
 async function loadTodayTimeOff() {
@@ -4656,7 +4658,20 @@ const KB_COLS = [
   { key: 'done',       label: 'Done',        color: '#16a34a' },
 ];
 
-// Load task counts for all leadership cards after render
+// In-memory cache of active task counts per associate — survives renderCards() redraws
+const _kbCountCache = {}; // { assocId: activeCount }
+
+// Apply cached counts to DOM — zero Firestore reads, safe to call after every renderCards()
+function applyKanbanCounts() {
+  for (const [id, count] of Object.entries(_kbCountCache)) {
+    const el = document.getElementById(`kb-count-${id}`);
+    if (!el) continue;
+    el.textContent = count;
+    el.style.background = count > 0 ? '#f97316' : '#6b7280';
+  }
+}
+
+// Read Firestore once, populate cache, then apply — only called on dashboard load and board changes
 async function loadKanbanCounts() {
   const leaders = allAssociates.filter(a =>
     (a.position === 'supervisor' || a.position === 'lead' || a.position === 'ops-manager') && a.status === 'active'
@@ -4664,15 +4679,11 @@ async function loadKanbanCounts() {
   for (const a of leaders) {
     try {
       const snap = await getDocs(collection(db, 'supervisorTasks', a.id, 'board'));
-      const el   = document.getElementById(`kb-count-${a.id}`);
-      if (!el) continue;
-      if (snap.empty) { el.textContent = '0'; continue; }
-      const tasks = snap.docs.map(d => d.data());
-      const active = tasks.filter(t => t.status !== 'done').length;
-      el.textContent = active;
-      el.style.background = active > 0 ? '#f97316' : '#6b7280';
+      const active = snap.empty ? 0 : snap.docs.map(d => d.data()).filter(t => t.status !== 'done').length;
+      _kbCountCache[a.id] = active;
     } catch(e) {}
   }
+  applyKanbanCounts();
 }
 
 window.openKanban = async (assocId, assocName) => {
@@ -4725,13 +4736,11 @@ function _kbRenderBoard() {
     </div>`;
   }).join('');
 
-  // Update count badge on card
+  // Update count badge on card + keep cache in sync
+  const active = Object.values(_kbTasks).filter(t => t.status !== 'done').length;
+  _kbCountCache[_kbAssocId] = active;
   const el = document.getElementById(`kb-count-${_kbAssocId}`);
-  if (el) {
-    const active = Object.values(_kbTasks).filter(t => t.status !== 'done').length;
-    el.textContent = active;
-    el.style.background = active > 0 ? '#f97316' : '#6b7280';
-  }
+  if (el) { el.textContent = active; el.style.background = active > 0 ? '#f97316' : '#6b7280'; }
 }
 
 window.kbMove = async (taskId, newStatus) => {
