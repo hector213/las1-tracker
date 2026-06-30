@@ -1548,8 +1548,11 @@ window.setCertStatus = async (newStatus) => {
       await logPoints(currentAssociateId, 'Certification', `Cert moved to training: ${_certModalLabel}`, -10);
     }
   }
-  // Check cert milestone badges after any change
-  if (newStatus !== 'remove') await checkCertMilestones(currentAssociateId, displayName);
+  // Check cert milestone badges after any change, then refresh the badge section
+  if (newStatus !== 'remove') {
+    await checkCertMilestones(currentAssociateId, displayName);
+    listenBadges(currentAssociateId); // re-read so any newly awarded milestone badge appears immediately
+  }
   // Re-render the cert chips immediately — no refresh needed
   const updatedSnap = await getDoc(doc(db, 'certs', currentAssociateId));
   renderCerts(updatedSnap.exists() ? updatedSnap.data() : {});
