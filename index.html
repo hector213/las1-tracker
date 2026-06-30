@@ -1534,6 +1534,9 @@ window.setCertStatus = async (newStatus) => {
   }
   // Check cert milestone badges after any change
   if (newStatus !== 'remove') await checkCertMilestones(currentAssociateId, displayName);
+  // Re-render the cert chips immediately — no refresh needed
+  const updatedSnap = await getDoc(doc(db, 'certs', currentAssociateId));
+  renderCerts(updatedSnap.exists() ? updatedSnap.data() : {});
 };
 
 const CERT_MILESTONES = [
