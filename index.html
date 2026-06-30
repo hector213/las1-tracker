@@ -39,10 +39,10 @@ const BADGES = [
   { key: 'leadership-list',     label: 'Leadership List',           emoji: '⭐', tier: 'elite'    },
   { key: 'employee-of-month',   label: 'Employee of the Month',     emoji: '🏅', tier: 'elite-plus' },
   // Cert milestone badges — auto-awarded, not available for manual nomination
-  { key: 'cert-25',  label: 'Foundations Badge',    emoji: '📗', tier: 'milestone', autoOnly: true },
-  { key: 'cert-50',  label: 'Core Practitioner',   emoji: '📘', tier: 'milestone', autoOnly: true },
-  { key: 'cert-75',  label: 'Advanced Operator',   emoji: '📙', tier: 'milestone', autoOnly: true },
-  { key: 'cert-100', label: 'Master Certified',    emoji: '🏆', tier: 'milestone', autoOnly: true },
+  { key: 'cert-25',  label: '25% Foundations Badge',  aliases: ['Training Starter','Foundations Badge'],  emoji: '📗', tier: 'milestone', autoOnly: true },
+  { key: 'cert-50',  label: '50% Core Practitioner', aliases: ['Half Trained','Core Practitioner'],      emoji: '📘', tier: 'milestone', autoOnly: true },
+  { key: 'cert-75',  label: '75% Advanced Operator', aliases: ['Well Trained','Advanced Operator'],      emoji: '📙', tier: 'milestone', autoOnly: true },
+  { key: 'cert-100', label: '100% Master Certified', aliases: ['Super Trained','Master Certified'],      emoji: '🏆', tier: 'milestone', autoOnly: true },
 ];
 const CERTS = [
   'OP Pick','Walkie Rider','Counter Balance','Reach Truck','Yard Truck',
@@ -1339,14 +1339,20 @@ function renderBadges(badges) {
   Object.values(approvedByType).forEach(arr => arr.sort((a, b) => new Date(b.approvedAt) - new Date(a.approvedAt)));
 
   // Build ordered list of groups (BADGES order), only groups with something to show
-  // Match by def.label (regular badges) OR def.key (auto-awarded milestone badges stored by key)
+  // Match by def.label, def.key, or any alias (handles old stored values after renames)
   const groups = BADGES
-    .filter(def => (approvedByType[def.label] || approvedByType[def.key])?.length || (canNominate && (pendingByType[def.label] || pendingByType[def.key])))
-    .map(def => ({
-      def,
-      approved: [...(approvedByType[def.label] || []), ...(approvedByType[def.key] || [])],
-      pending: pendingByType[def.label] || pendingByType[def.key] || null
-    }));
+    .filter(def => {
+      const keys = [def.label, def.key, ...(def.aliases || [])];
+      return keys.some(k => approvedByType[k]?.length) || (canNominate && keys.some(k => pendingByType[k]));
+    })
+    .map(def => {
+      const keys = [def.label, def.key, ...(def.aliases || [])];
+      return {
+        def,
+        approved: keys.flatMap(k => approvedByType[k] || []),
+        pending: keys.map(k => pendingByType[k]).find(Boolean) || null
+      };
+    });
 
   // Flatten all approved instances for the 25-limit count
   const totalApproved = groups.reduce((n, g) => n + g.approved.length, 0);
@@ -1585,10 +1591,10 @@ window.setCertStatus = async (newStatus) => {
 };
 
 const CERT_MILESTONES = [
-  { pct: 25,  key: 'cert-25',  label: 'Foundations Badge',  emoji: '📗', pts: 0,   desc: '25% of certifications earned' },
-  { pct: 50,  key: 'cert-50',  label: 'Core Practitioner', emoji: '📘', pts: 0,   desc: '50% of certifications earned' },
-  { pct: 75,  key: 'cert-75',  label: 'Advanced Operator', emoji: '📙', pts: 0,   desc: '75% of certifications earned' },
-  { pct: 100, key: 'cert-100', label: 'Master Certified',  emoji: '🏆', pts: 500, desc: '100% of certifications earned — Master Certified!' },
+  { pct: 25,  key: 'cert-25',  label: '25% Foundations Badge',  emoji: '📗', pts: 0,   desc: '25% of certifications earned' },
+  { pct: 50,  key: 'cert-50',  label: '50% Core Practitioner', emoji: '📘', pts: 0,   desc: '50% of certifications earned' },
+  { pct: 75,  key: 'cert-75',  label: '75% Advanced Operator', emoji: '📙', pts: 0,   desc: '75% of certifications earned' },
+  { pct: 100, key: 'cert-100', label: '100% Master Certified', emoji: '🏆', pts: 500, desc: '100% of certifications earned — Master Certified!' },
 ];
 
 async function checkCertMilestones(assocId, awardedBy) {
