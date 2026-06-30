@@ -4820,12 +4820,22 @@ function _kbRenderBoard() {
         const freq = FREQ_META[t.frequency] || FREQ_META.daily;
         const prevCol = KB_COLS[colIdx - 1];
         const nextCol = KB_COLS[colIdx + 1];
-        return `<div class="kanban-task" style="border-left-color:${col.color}">
+        const notePreview = t.note ? `<div style="font-size:0.72rem;color:#64748b;margin-top:4px;white-space:pre-wrap;word-break:break-word;border-left:2px solid #e2e8f0;padding-left:6px">${escapeHtml(t.note)}</div>` : '';
+        return `<div class="kanban-task" style="border-left-color:${col.color}" id="kt-${tid}">
           <div class="kt-title">${escapeHtml(t.title)}</div>
           <span class="kt-freq" style="background:${freq.bg};color:${freq.color}">${freq.label}</span>
+          ${notePreview}
+          <div class="kt-note-area" id="kt-note-${tid}" style="display:none;margin-top:6px">
+            <textarea class="form-control form-control-sm" rows="2" style="font-size:0.75rem;resize:vertical" placeholder="Add a note…" id="kt-note-input-${tid}">${escapeHtml(t.note||'')}</textarea>
+            <div style="display:flex;gap:4px;margin-top:4px">
+              <button onclick="kbSaveNote('${tid}')" style="flex:1;background:#1a2744;color:#fff;border:none;border-radius:5px;font-size:0.72rem;padding:3px 0;cursor:pointer">Save</button>
+              <button onclick="kbToggleNote('${tid}')" style="background:#e2e8f0;color:#475569;border:none;border-radius:5px;font-size:0.72rem;padding:3px 8px;cursor:pointer">Cancel</button>
+            </div>
+          </div>
           ${canEdit ? `<div class="kt-actions">
             ${prevCol ? `<button onclick="kbMove('${tid}','${prevCol.key}')">← ${prevCol.label}</button>` : ''}
             ${nextCol ? `<button onclick="kbMove('${tid}','${nextCol.key}')">${nextCol.label} →</button>` : ''}
+            <button onclick="kbToggleNote('${tid}')" title="${t.note ? 'Edit note' : 'Add note'}" style="color:${t.note ? '#f97316' : '#94a3b8'}"><i class="fas fa-sticky-note"></i></button>
             <button class="kt-del" onclick="kbDelete('${tid}')">✕</button>
           </div>` : ''}
         </div>`;
@@ -4925,6 +4935,22 @@ window.kbDeletePreset = async (presetId) => {
   if (!confirm('Remove this template?')) return;
   await deleteDoc(doc(db, 'supervisorTasks', _kbAssocId, 'presets', presetId));
   delete _kbPresets[presetId];
+  _kbRenderBoard();
+};
+
+// ── Task note functions ────────────────────────────────────────────────────
+window.kbToggleNote = (taskId) => {
+  const area = document.getElementById(`kt-note-${taskId}`);
+  if (!area) return;
+  const isOpen = area.style.display !== 'none';
+  area.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) document.getElementById(`kt-note-input-${taskId}`)?.focus();
+};
+
+window.kbSaveNote = async (taskId) => {
+  const note = document.getElementById(`kt-note-input-${taskId}`)?.value.trim() ?? '';
+  await updateDoc(doc(db, 'supervisorTasks', _kbAssocId, 'board', taskId), { note });
+  _kbTasks[taskId].note = note;
   _kbRenderBoard();
 };
 
