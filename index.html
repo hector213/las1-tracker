@@ -1811,13 +1811,13 @@ window.exportProfilePDF = async () => {
     <div class="expiry-total">Total expiring: −${expiringTotal} pts</div>
   </div>` : ''}
   ${certs.length ? `<h2>Certifications (${certs.length})</h2><div class="chips">${certs.map(c => `<span class="chip">${c}</span>`).join('')}</div>` : ''}
-  ${badges.length ? `<h2>Achievement Badges</h2>${badges.map(b => {
-    // Resolve display label: look up by key or label in BADGES/CERT_MILESTONES; fall back to raw b.badge
-    const def = [...BADGES, ...CERT_MILESTONES.map(m => ({key:m.key,label:m.label,emoji:m.emoji}))].find(d => d.key === b.badge || d.label === b.badge);
-    const label = def ? \`\${def.emoji} \${def.label}\` : b.badge;
-    const dateStr = b._displayDate ? new Date(b._displayDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
-    return \`<span class="badge-item">\${label} — \${dateStr}</span>\`;
-  }).join('<br>')}` : ''}
+  ${badges.length ? '<h2>Achievement Badges</h2>' + badges.map(b => {
+    const allDefs = [...BADGES, ...CERT_MILESTONES.map(m => ({ key: m.key, label: m.label, emoji: m.emoji }))];
+    const def = allDefs.find(d => d.key === b.badge || d.label === b.badge);
+    const label = def ? (def.emoji + ' ' + def.label) : (b.badge || '—');
+    const dateStr = b._displayDate ? new Date(b._displayDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+    return '<span class="badge-item">' + label + ' — ' + dateStr + '</span>';
+  }).join('<br>') : ''}
   ${notes.length ? `<h2>Manager Notes (${notes.length})</h2>${notes.map(n => `<div class="note"><div class="note-type">${n.type || 'General'}</div><div>${n.text}</div><div class="note-meta">${n.author} · ${new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div></div>`).join('')}` : ''}
   <h2>Attendance Log (${attEntries.length} event${attEntries.length !== 1 ? 's' : ''})</h2>
   <div class="att-summary">
