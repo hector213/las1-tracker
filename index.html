@@ -1726,10 +1726,16 @@ window.exportProfilePDF = async () => {
   notesSnap.forEach(d => notes.push(d.data()));
   notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-  // Gather badges
+  // Gather badges — support both status:'approved' (new) and approved:true (old milestone format)
   const badgesSnap = await getDocs(collection(db, 'badges', currentAssociateId, 'entries'));
   const badges = [];
-  badgesSnap.forEach(d => { const b = d.data(); if (b.status === 'approved') badges.push(b); });
+  badgesSnap.forEach(d => {
+    const b = d.data();
+    if (b.status === 'approved' || b.approved === true) {
+      // Normalize date field: new entries use approvedAt, old milestone entries use awardedAt
+      badges.push({ ...b, _displayDate: b.approvedAt || b.awardedAt || null });
+    }
+  });
 
   // Gather certs
   const certsSnap = await getDoc(doc(db, 'certs', currentAssociateId));
@@ -1741,6 +1747,24 @@ window.exportProfilePDF = async () => {
   attSnap.forEach(d => attEntries.push(d.data()));
   attEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
   const attTotal = attEntries.reduce((s, e) => s + (e.points || 0), 0);
+
+  // Gather points expiring in next 30 days (engagement points expire 1 year after earned)
+  const plSnap = await getDocs(collection(db, 'pointslog', currentAssociateId, 'entries'));
+  const now = new Date();
+  const in30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const expiringEntries = [];
+  plSnap.forEach(d => {
+    const e = d.data();
+    if (!e.expired && (e.pts || 0) > 0 && e.createdAt) {
+      const expiry = new Date(e.createdAt);
+      expiry.setFullYear(expiry.getFullYear() + 1);
+      if (expiry >= now && expiry <= in30) {
+        expiringEntries.push({ ...e, expiryDate: expiry });
+      }
+    }
+  });
+  expiringEntries.sort((a, b) => a.expiryDate - b.expiryDate);
+  const expiringTotal = expiringEntries.reduce((s, e) => s + (e.pts || 0), 0);
 
   const pts = assoc.points || 0;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${assoc.name} — Profile</title>
@@ -1763,6 +1787,10 @@ window.exportProfilePDF = async () => {
     .att-stat { text-align:center; }
     .att-stat-val { font-size:1.3rem; font-weight:800; color:#1a2744; }
     .att-stat-lbl { font-size:0.72rem; color:#6b7280; }
+    .expiry-box { background:#fff7ed; border:1.5px solid #f97316; border-radius:6px; padding:10px 14px; margin:10px 0; }
+    .expiry-box h3 { margin:0 0 6px; font-size:0.85rem; color:#c2410c; }
+    .expiry-row { display:flex; justify-content:space-between; font-size:0.82rem; padding:3px 0; border-bottom:1px solid #fed7aa; }
+    .expiry-total { font-weight:700; color:#c2410c; margin-top:6px; font-size:0.88rem; }
     @media print { body { padding: 16px; } }
   </style></head><body>
   <h1>${assoc.name}</h1>
@@ -1770,8 +1798,26 @@ window.exportProfilePDF = async () => {
   ${assoc.hireDate ? `<div class="meta">Hired: ${new Date(assoc.hireDate).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>` : ''}
   ${assoc.opsManager ? `<div class="meta">Ops Manager: ${assoc.opsManager}</div>` : ''}
   <div class="pts">⭐ ${pts > 0 ? '+' : ''}${pts} Engagement Points</div>
+  ${expiringEntries.length > 0 ? `
+  <div class="expiry-box">
+    <h3>⚠ Points Expiring in the Next 30 Days</h3>
+    ${expiringEntries.map(e => `<div class="expiry-row">
+      <span>${e.reason || e.type || '—'}</span>
+      <span style="display:flex;gap:16px">
+        <span style="color:#6b7280">Expires ${e.expiryDate.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>
+        <span style="color:#c2410c;font-weight:600">−${e.pts} pts</span>
+      </span>
+    </div>`).join('')}
+    <div class="expiry-total">Total expiring: −${expiringTotal} pts</div>
+  </div>` : ''}
   ${certs.length ? `<h2>Certifications (${certs.length})</h2><div class="chips">${certs.map(c => `<span class="chip">${c}</span>`).join('')}</div>` : ''}
-  ${badges.length ? `<h2>Achievement Badges</h2>${badges.map(b => `<span class="badge-item">${b.badge} — ${new Date(b.approvedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>`).join('<br>')}` : ''}
+  ${badges.length ? `<h2>Achievement Badges</h2>${badges.map(b => {
+    // Resolve display label: look up by key or label in BADGES/CERT_MILESTONES; fall back to raw b.badge
+    const def = [...BADGES, ...CERT_MILESTONES.map(m => ({key:m.key,label:m.label,emoji:m.emoji}))].find(d => d.key === b.badge || d.label === b.badge);
+    const label = def ? \`\${def.emoji} \${def.label}\` : b.badge;
+    const dateStr = b._displayDate ? new Date(b._displayDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+    return \`<span class="badge-item">\${label} — \${dateStr}</span>\`;
+  }).join('<br>')}` : ''}
   ${notes.length ? `<h2>Manager Notes (${notes.length})</h2>${notes.map(n => `<div class="note"><div class="note-type">${n.type || 'General'}</div><div>${n.text}</div><div class="note-meta">${n.author} · ${new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div></div>`).join('')}` : ''}
   <h2>Attendance Log (${attEntries.length} event${attEntries.length !== 1 ? 's' : ''})</h2>
   <div class="att-summary">
@@ -3422,13 +3468,19 @@ window.loadPointsLog = () => {
     [...allAssociates].sort((a,b) => a.name.localeCompare(b.name))
       .map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
 
-  // One-time read of all pointslog entries across all associates
-  getDocs(collection(db, 'pointslog')).then(snap => {
-    allPointsLog = [];
-    // pointslog/{assocId} docs each contain the entries as a flat object, but in Firestore
-    // we store each entry as a doc in pointslog/{assocId}/entries subcollection.
-    // The top-level collection read here is used to populate the filter; individual entry docs are
-    // fetched separately via getDocs on demand.
+  // Read entries from each associate's subcollection directly —
+  // pointslog parent docs are phantom so getDocs(collection(db,'pointslog')) returns nothing useful
+  const container = document.getElementById('plTbody');
+  if (container) container.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin me-2"></i>Loading…</td></tr>';
+  allPointsLog = [];
+  Promise.all(
+    allAssociates.map(a =>
+      getDocs(collection(db, 'pointslog', a.id, 'entries'))
+        .then(snap => snap.docs.forEach(d => allPointsLog.push({ id: d.id, ...d.data() })))
+        .catch(() => {})
+    )
+  ).then(() => {
+    allPointsLog.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     renderPointsLog();
   });
 };
@@ -3464,7 +3516,7 @@ window.renderPointsLog = () => {
     return `<tr>
       <td class="text-muted">${formatDateTime(e.createdAt)}</td>
       <td class="fw-semibold" style="cursor:pointer;color:var(--navy)" onclick="openProfile('${e.associateId}')">${escapeHtml(e.associateName || '—')}</td>
-      <td><span class="badge ${e.type==='Badge'?'bg-warning text-dark':e.type==='Note'?'bg-primary':'bg-success'}">${escapeHtml(e.type||'—')}</span></td>
+      <td><span class="badge ${e.type==='Badge'?'bg-warning text-dark':e.type==='Note'?'bg-primary':e.type==='Certification'?'bg-info text-dark':e.type==='Milestone'?'bg-purple text-white':'bg-success'}">${escapeHtml(e.type||'—')}</span></td>
       <td>${escapeHtml(e.reason || '—')}</td>
       <td class="text-muted small">${escapeHtml(e.addedBy || '—')}</td>
       <td class="text-end fw-bold" style="color:${pos?'#16a34a':neg?'#dc2626':'#6b7280'}">${pos?'+':''}${e.pts}</td>
@@ -6230,6 +6282,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <option value="Badge">Badge</option>
               <option value="Note">Note</option>
               <option value="Certification">Certification</option>
+              <option value="Milestone">Milestone</option>
+              <option value="Expiration">Expiration</option>
             </select>
           </div>
           <div>
