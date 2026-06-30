@@ -38,6 +38,11 @@ const BADGES = [
   { key: 'always-helpful',      label: 'Always Helpful',            emoji: '🙌', tier: 'standard' },
   { key: 'leadership-list',     label: 'Leadership List',           emoji: '⭐', tier: 'elite'    },
   { key: 'employee-of-month',   label: 'Employee of the Month',     emoji: '🏅', tier: 'elite-plus' },
+  // Cert milestone badges — auto-awarded, not available for manual nomination
+  { key: 'cert-25',  label: 'Training Starter', emoji: '📗', tier: 'milestone', autoOnly: true },
+  { key: 'cert-50',  label: 'Half Trained',      emoji: '📘', tier: 'milestone', autoOnly: true },
+  { key: 'cert-75',  label: 'Well Trained',      emoji: '📙', tier: 'milestone', autoOnly: true },
+  { key: 'cert-100', label: 'Super Trained',     emoji: '🏆', tier: 'milestone', autoOnly: true },
 ];
 const CERTS = [
   'OP Pick','Walkie Rider','Counter Balance','Reach Truck','Yard Truck',
@@ -1317,12 +1322,15 @@ function renderBadges(badges) {
   const canNominate = currentUserRole === 'admin' || currentUserRole === 'supervisor' || currentUserRole === 'lead';
 
   // Group approved by type (array), collect pending by type
-  const approvedByType = {}; // label → [badge, ...]
-  const pendingByType  = {}; // label → badge (first pending per type)
+  // Support both old format (approved:true, badge:key) and new format (status:'approved', badge:label)
+  const approvedByType = {}; // badge field value → [badge, ...]
+  const pendingByType  = {}; // badge field value → badge (first pending per type)
   badges.forEach(b => {
-    if (b.status === 'approved') {
+    const isApproved = b.status === 'approved' || b.approved === true;
+    if (isApproved) {
       if (!approvedByType[b.badge]) approvedByType[b.badge] = [];
-      approvedByType[b.badge].push(b);
+      // Normalize: ensure approvedAt is set (old entries use awardedAt)
+      approvedByType[b.badge].push({ ...b, approvedAt: b.approvedAt || b.awardedAt });
     }
     if (b.status === 'pending' && !pendingByType[b.badge]) pendingByType[b.badge] = b;
   });
@@ -1331,9 +1339,14 @@ function renderBadges(badges) {
   Object.values(approvedByType).forEach(arr => arr.sort((a, b) => new Date(b.approvedAt) - new Date(a.approvedAt)));
 
   // Build ordered list of groups (BADGES order), only groups with something to show
+  // Match by def.label (regular badges) OR def.key (auto-awarded milestone badges stored by key)
   const groups = BADGES
-    .filter(def => approvedByType[def.label]?.length || (canNominate && pendingByType[def.label]))
-    .map(def => ({ def, approved: approvedByType[def.label] || [], pending: pendingByType[def.label] }));
+    .filter(def => (approvedByType[def.label] || approvedByType[def.key])?.length || (canNominate && (pendingByType[def.label] || pendingByType[def.key])))
+    .map(def => ({
+      def,
+      approved: [...(approvedByType[def.label] || []), ...(approvedByType[def.key] || [])],
+      pending: pendingByType[def.label] || pendingByType[def.key] || null
+    }));
 
   // Flatten all approved instances for the 25-limit count
   const totalApproved = groups.reduce((n, g) => n + g.approved.length, 0);
@@ -1419,7 +1432,7 @@ window.collapseBadges = () => { badgesExpanded = false; renderBadges(lastBadges)
 
 window.openNominateBadge = () => {
   const sel = document.getElementById('badgeSelect');
-  sel.innerHTML = BADGES.map(b => `<option value="${b.label}">${b.emoji} ${b.label}${b.tier==='elite' ? ' ⭐' : ''}</option>`).join('');
+  sel.innerHTML = BADGES.filter(b => !b.autoOnly).map(b => `<option value="${b.label}">${b.emoji} ${b.label}${b.tier==='elite' ? ' ⭐' : ''}</option>`).join('');
   document.getElementById('badgeReason').value = '';
   bootstrap.Modal.getOrCreateInstance(document.getElementById('badgeModal')).show();
 };
@@ -1600,9 +1613,11 @@ async function checkCertMilestones(assocId, awardedBy) {
     if (pct >= m.pct && !existingMilestones.has(m.key)) {
       // Auto-award this milestone badge
       const badgeRef = await addDoc(collection(db, 'badges', assocId, 'entries'), {
-        badge: m.key, label: m.label, emoji: m.emoji,
-        awardedAt: new Date().toISOString(), awardedBy,
-        autoAwarded: true, note: m.desc, approved: true
+        badge: m.label,                        // match renderBadges def.label lookup
+        status: 'approved',                    // match renderBadges status filter
+        approvedAt: new Date().toISOString(),  // match renderBadges date display
+        approvedBy: awardedBy,
+        autoAwarded: true, note: m.desc,
       });
       if (m.pts > 0) {
         await updateDoc(doc(db, 'associates', assocId), { points: increment(m.pts) });
