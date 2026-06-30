@@ -4809,40 +4809,7 @@ function _kbRenderBoard() {
   const canEdit = currentUserRole === 'admin' || currentUserRole === 'supervisor' || currentUserRole === 'lead';
   const board = document.getElementById('kbBoard');
 
-  // ── Presets panel (leftmost, only in live board view) ──────────────────
-  const presetEntries = Object.entries(_kbPresets);
-  const presetsPanel = (canEdit && _kbViewMode === 'board') ? `
-    <div class="kanban-col" style="min-width:190px;max-width:210px;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;padding:10px">
-      <div class="kanban-col-header" style="color:#475569;font-size:0.78rem;margin-bottom:8px">
-        <i class="fas fa-clipboard-list me-1" style="color:#94a3b8"></i>Daily Templates
-      </div>
-      ${presetEntries.length === 0 ? '<div style="font-size:0.75rem;color:#94a3b8;margin-bottom:8px">No templates yet.</div>' :
-        presetEntries.map(([pid, p]) => {
-          const freq = FREQ_META[p.frequency] || FREQ_META.daily;
-          return `<div class="kanban-task" style="border-left-color:#94a3b8;margin-bottom:6px">
-            <div class="kt-title" style="font-size:0.78rem">${escapeHtml(p.title)}</div>
-            <span class="kt-freq" style="background:${freq.bg};color:${freq.color};font-size:0.65rem">${freq.label}</span>
-            <div class="kt-actions" style="margin-top:4px">
-              <button onclick="kbAddFromPreset('${pid}')" style="color:#16a34a;font-weight:600">＋ Add to Board</button>
-              <button class="kt-del" onclick="kbDeletePreset('${pid}')">✕</button>
-            </div>
-          </div>`;
-        }).join('')}
-      <div style="border-top:1px solid #e2e8f0;padding-top:8px;margin-top:4px;display:flex;flex-direction:column;gap:5px">
-        <input type="text" class="form-control form-control-sm" id="kbPresetTitle" placeholder="New template…" style="font-size:0.75rem" onkeydown="if(event.key==='Enter')kbAddPreset()">
-        <select class="form-select form-select-sm" id="kbPresetFreq" style="font-size:0.75rem;width:100%">
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly</option>
-          <option value="biweekly">Bi-Weekly</option>
-          <option value="monthly">Monthly</option>
-        </select>
-        <button class="btn btn-sm" style="background:#e2e8f0;color:#475569;font-size:0.75rem;padding:3px 8px" onclick="kbAddPreset()">
-          <i class="fas fa-plus me-1"></i>Save Template
-        </button>
-      </div>
-    </div>` : '';
-
-  board.innerHTML = presetsPanel + KB_COLS.map(col => {
+  board.innerHTML = KB_COLS.map(col => {
     const tasks = Object.entries(_kbTasks)
       .filter(([,t]) => t.status === col.key)
       .sort(([,a],[,b]) => (a.createdAt||'').localeCompare(b.createdAt||''));
@@ -4871,6 +4838,51 @@ function _kbRenderBoard() {
   _kbCountCache[_kbAssocId] = active;
   const el = document.getElementById(`kb-count-${_kbAssocId}`);
   if (el) { el.textContent = active; el.style.background = active > 0 ? '#f97316' : '#6b7280'; }
+
+  // Render presets section below the add form (live board only)
+  _kbRenderPresets(canEdit);
+}
+
+function _kbRenderPresets(canEdit) {
+  const container = document.getElementById('kbPresetsSection');
+  if (!container) return;
+  if (!canEdit || _kbViewMode !== 'board') { container.classList.add('d-none'); return; }
+  container.classList.remove('d-none');
+
+  const entries = Object.entries(_kbPresets);
+  container.innerHTML = `
+    <div style="font-size:0.8rem;font-weight:700;color:#475569;margin-bottom:8px">
+      <i class="fas fa-clipboard-list me-1" style="color:#94a3b8"></i>Daily Templates
+      <span style="font-weight:400;color:#94a3b8;margin-left:4px">— click to add to board</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
+      ${entries.length === 0 ? '<span style="font-size:0.78rem;color:#94a3b8">No templates yet — save one below.</span>' :
+        entries.map(([pid, p]) => {
+          const freq = FREQ_META[p.frequency] || FREQ_META.daily;
+          return `<div style="display:inline-flex;align-items:center;gap:6px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:20px;padding:5px 12px;font-size:0.8rem">
+            <span style="font-weight:600;color:#1e293b">${escapeHtml(p.title)}</span>
+            <span style="background:${freq.bg};color:${freq.color};font-size:0.65rem;padding:1px 6px;border-radius:10px">${freq.label}</span>
+            <button onclick="kbAddFromPreset('${pid}')" title="Add to board" style="background:#16a34a;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:0.75rem;line-height:1;cursor:pointer;padding:0">＋</button>
+            <button onclick="kbDeletePreset('${pid}')" title="Delete template" style="background:none;border:none;color:#94a3b8;font-size:0.8rem;cursor:pointer;padding:0;line-height:1">✕</button>
+          </div>`;
+        }).join('')}
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div style="flex:1;min-width:180px">
+        <input type="text" class="form-control form-control-sm" id="kbPresetTitle" placeholder="New template title…" onkeydown="if(event.key==='Enter')kbAddPreset()">
+      </div>
+      <div>
+        <select class="form-select form-select-sm" id="kbPresetFreq" style="width:130px">
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="biweekly">Bi-Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+      <button class="btn btn-sm" style="background:#e2e8f0;color:#374151;border:1px solid #cbd5e1" onclick="kbAddPreset()">
+        <i class="fas fa-plus me-1"></i>Save Template
+      </button>
+    </div>`;
 }
 
 window.kbMove = async (taskId, newStatus) => {
@@ -4978,8 +4990,9 @@ window.kbViewLog = async (date) => {
   document.getElementById('kbModalTitle').textContent = `${_kbAssocName} — Log: ${date}`;
   document.getElementById('kbLogsSection').classList.add('d-none');
   document.getElementById('kbBoardSection').classList.remove('d-none');
-  // Hide add form, show read-only banner
+  // Hide add form + presets, show read-only banner
   document.getElementById('kbAddForm').classList.add('d-none');
+  document.getElementById('kbPresetsSection').classList.add('d-none');
   document.getElementById('kbReadOnlyBanner').classList.remove('d-none');
   // Render read-only snapshot into columns
   const logTasks = log.tasks || {};
@@ -6805,6 +6818,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </div>
           <button class="btn btn-sm btn-orange" onclick="kbAddTask()"><i class="fas fa-plus me-1"></i>Add Task</button>
         </div>
+        <!-- Presets / Daily Templates -->
+        <div id="kbPresetsSection" class="mt-3 pt-3 border-top d-none"></div>
       </div>
 
       <!-- Logs Section -->
