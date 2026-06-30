@@ -3971,7 +3971,7 @@ async function loadLoginLog() {
   if (!container) return;
   container.innerHTML = '<p class="text-muted small mb-0">Loading…</p>';
   try {
-    const snap = await getDocs(query(collection(db, 'loginLog'), orderBy('loginAt', 'desc'), limit(30)));
+    const snap = await getDocs(query(collection(db, 'loginLog'), orderBy('loginAt', 'desc'), limit(15)));
     if (snap.empty) { container.innerHTML = '<p class="text-muted small mb-0">No logins recorded yet.</p>'; return; }
     const roleColor = { admin: '#dc2626', supervisor: '#2563eb', lead: '#16a34a', viewer: '#6b7280' };
     container.innerHTML = snap.docs.map(d => {
