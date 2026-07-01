@@ -218,20 +218,32 @@ async function autoExpirePoints() {
     await Promise.all(allAssociates.map(async a => {
       const assocId = a.id;
       const entriesSnap = await getDocs(collection(db, 'attendance', assocId, 'entries'));
+      const allAttEntries = entriesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       let expired = 0;
-      entriesSnap.docs.forEach(d => {
-        const entryId = d.id; const e = d.data();
+      allAttEntries.forEach(e => {
         const dateIso = e.date ? e.date + 'T00:00:00.000Z' : null;
         if ((e.points || 0) > 0 && !e.expired && dateIso && dateIso < cutoffIso) {
           expired += e.points;
-          writes.push(updateDoc(doc(db, 'attendance', assocId, 'entries', entryId), {
+          writes.push(updateDoc(doc(db, 'attendance', assocId, 'entries', e.id), {
             points: 0, expired: true, expiredAt: nowIso, originalPoints: e.points
           }));
         }
       });
       if (expired > 0) {
         anyChanges = true;
-        writes.push(updateDoc(doc(db, 'associates', assocId), { attendancePoints: increment(-expired) }));
+        // Recalculate nextAttExpiry from remaining non-expired entries
+        const nextAtt = allAttEntries
+          .filter(e => (e.points || 0) > 0 && !e.expired && e.date)
+          .map(e => { const d = new Date(e.date + 'T00:00:00'); d.setFullYear(d.getFullYear() + 1); return d; })
+          .filter(d => d > now)
+          .sort((x, y) => x - y)[0];
+        const nextAttStr = nextAtt ? nextAtt.toISOString().slice(0,10) : '';
+        writes.push(updateDoc(doc(db, 'associates', assocId), {
+          attendancePoints: increment(-expired),
+          nextAttExpiry: nextAttStr
+        }));
+        const mem = allAssociates.find(x => x.id === assocId);
+        if (mem) { mem.nextAttExpiry = nextAttStr; }
       }
     }));
     if (writes.length) await Promise.all(writes);
@@ -2233,17 +2245,23 @@ function renderAttendanceLog() {
     return;
   }
   container.innerHTML = lastAttendance.map(e => {
-    const info = attTypeInfo(e.type);
-    const iconBg = info.color + '20';
-    return `<div class="att-entry-card">
-      <div class="att-entry-icon" style="background:${iconBg};color:${info.color}"><i class="fas ${info.icon}"></i></div>
+    const info   = attTypeInfo(e.type);
+    const isExp  = e.expired === true;
+    const iconBg = (isExp ? '#9ca3af' : info.color) + '20';
+    const iconColor = isExp ? '#9ca3af' : info.color;
+    const storedPts = e.points ?? info.points; // use stored value; fall back to type default
+    const ptsDisplay = isExp
+      ? `<span style="color:#9ca3af;text-decoration:line-through">+${storedPts % 1 === 0 ? storedPts : Number(storedPts).toFixed(1)}</span><span style="color:#9ca3af;font-size:0.75rem;margin-left:4px">(expired)</span>`
+      : `<span style="color:${info.color}">+${storedPts % 1 === 0 ? storedPts : Number(storedPts).toFixed(1)}</span>`;
+    return `<div class="att-entry-card" style="${isExp ? 'opacity:0.55' : ''}">
+      <div class="att-entry-icon" style="background:${iconBg};color:${iconColor}"><i class="fas ${info.icon}"></i></div>
       <div class="att-entry-body">
-        <div class="att-entry-type">${info.label}</div>
+        <div class="att-entry-type" style="${isExp ? 'text-decoration:line-through;color:#9ca3af' : ''}">${info.label}</div>
         <div class="att-entry-meta">${formatDate(e.date)} · Logged by ${escapeHtml(e.addedBy || '?')}</div>
         ${e.note ? `<div class="att-entry-note">"${escapeHtml(e.note)}"</div>` : ''}
       </div>
-      <div class="att-entry-pts" style="color:${info.color}">+${info.points % 1 === 0 ? info.points : info.points.toFixed(1)}</div>
-      ${canEdit ? `<button class="btn btn-sm btn-link text-danger p-0 ms-1" onclick="deleteAttendance('${e.id}','${e.type}',${e.points})"><i class="fas fa-times"></i></button>` : ''}
+      <div class="att-entry-pts">${ptsDisplay}</div>
+      ${canEdit && !isExp ? `<button class="btn btn-sm btn-link text-danger p-0 ms-1" onclick="deleteAttendance('${e.id}','${e.type}',${storedPts})"><i class="fas fa-times"></i></button>` : ''}
     </div>`;
   }).join('');
 }
@@ -4212,6 +4230,7 @@ window.runExpiryMigration = async () => {
   btn.style.background = '#16a34a';
   status.innerHTML = `<span style="color:#16a34a"><i class="fas fa-check-circle me-1"></i>Complete — ${done} associates updated${errors ? `, ${errors} errors` : ''}. Upcoming Events will now show expiry alerts from memory.</span>`;
   clearCache('milestones_firestore');
+  if (typeof renderMilestones === 'function') renderMilestones();
 };
 
 // ─── Backfill nextPointExpiry for all associates ──────────────────────
@@ -4243,7 +4262,9 @@ window.recalcAllPointExpiries = async () => {
         updated++;
       } catch(e) { skipped++; }
     }));
-    status.innerHTML = `<span class="text-success">✓ Updated ${updated} associates${skipped ? ` (${skipped} skipped)` : ''}. Upcoming Events will refresh on next dashboard load.</span>`;
+    status.innerHTML = `<span class="text-success">✓ Updated ${updated} associates${skipped ? ` (${skipped} skipped)` : ''}.</span>`;
+    clearCache('milestones_firestore');
+    if (typeof renderMilestones === 'function') renderMilestones();
   } catch(e) {
     status.innerHTML = `<span class="text-danger">Error: ${e.message}</span>`;
   }
