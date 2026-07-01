@@ -234,6 +234,8 @@ async function autoExpirePoints() {
   } catch(e) { console.warn('Engagement point expiration failed:', e); }
 
   // ── Attendance points ──────────────────────────────────────────────
+  // Use local date string (YYYY-MM-DD) comparison to avoid UTC midnight timezone shifts
+  const attCutoffDate = `${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}-${String(cutoff.getDate()).padStart(2,'0')}`;
   try {
     const writes = [];
     await Promise.all(allAssociates.map(async a => {
@@ -242,8 +244,7 @@ async function autoExpirePoints() {
       const allAttEntries = entriesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       let expired = 0;
       allAttEntries.forEach(e => {
-        const dateIso = e.date ? e.date + 'T00:00:00.000Z' : null;
-        if ((e.points || 0) > 0 && !e.expired && dateIso && dateIso < cutoffIso) {
+        if ((e.points || 0) > 0 && !e.expired && e.date && e.date <= attCutoffDate) {
           expired += e.points;
           writes.push(updateDoc(doc(db, 'attendance', assocId, 'entries', e.id), {
             points: 0, expired: true, expiredAt: nowIso, originalPoints: e.points
@@ -4375,26 +4376,26 @@ window.runManualExpiryCheck = async () => {
         if (mem) { mem.nextPointExpiry = ptUniqueDates[0]||''; mem.ptExpiryDates = ptUniqueDates; }
       }
 
-      // ── Attendance points ────────────────────────────────────────
+      // ── Attendance points (date-string comparison avoids UTC midnight timezone shift) ──
+      const attCutoff = `${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}-${String(cutoff.getDate()).padStart(2,'0')}`;
       const attSnap = await getDocs(collection(db, 'attendance', a.id, 'entries'));
       attSnap.docs.forEach(d => {
         const e = { id: d.id, ...d.data() };
-        const dateMs = e.date ? new Date(e.date + 'T00:00:00').getTime() : null;
-        if ((e.points || 0) > 0 && !e.expired && dateMs !== null && dateMs < cutoffMs) {
+        if ((e.points || 0) > 0 && !e.expired && e.date && e.date <= attCutoff) {
           lines.push(`<span style="color:#d97706">✕ Attendance pts</span> — ${escapeHtml(a.name)}: ${e.type||'entry'} on ${e.date} (+${e.points} pts → expired)`);
           totalAttExpired += e.points;
           writes.push(updateDoc(doc(db, 'attendance', a.id, 'entries', e.id), { points: 0, expired: true, expiredAt: nowIso, originalPoints: e.points }));
         }
       });
-      if (attSnap.docs.some(d => { const e = d.data(); const ms = e.date ? new Date(e.date+'T00:00:00').getTime() : null; return (e.points||0)>0 && !e.expired && ms!==null && ms<cutoffMs; })) {
+      if (attSnap.docs.some(d => { const e = d.data(); return (e.points||0)>0 && !e.expired && e.date && e.date <= attCutoff; })) {
         const attUniqueDates = [...new Set(
           attSnap.docs.map(d => d.data())
-            .filter(e => { const ms = e.date ? new Date(e.date+'T00:00:00').getTime() : null; return (e.points||0)>0 && !e.expired && ms!==null && ms >= cutoffMs; })
+            .filter(e => (e.points||0)>0 && !e.expired && e.date && e.date > attCutoff)
             .map(e => { const d = new Date(e.date+'T00:00:00'); d.setFullYear(d.getFullYear()+1); return d; })
             .filter(d => d > now).sort((x,y) => x-y)
             .map(d => d.toISOString().slice(0,10))
         )];
-        writes.push(updateDoc(doc(db, 'associates', a.id), { attendancePoints: increment(-attSnap.docs.reduce((s,d) => { const e=d.data(); const ms=e.date?new Date(e.date+'T00:00:00').getTime():null; return ((e.points||0)>0&&!e.expired&&ms!==null&&ms<cutoffMs)?s+e.points:s; },0)), nextAttExpiry: attUniqueDates[0]||'', attExpiryDates: attUniqueDates }));
+        writes.push(updateDoc(doc(db, 'associates', a.id), { attendancePoints: increment(-attSnap.docs.reduce((s,d) => { const e=d.data(); return ((e.points||0)>0&&!e.expired&&e.date&&e.date<=attCutoff)?s+e.points:s; },0)), nextAttExpiry: attUniqueDates[0]||'', attExpiryDates: attUniqueDates }));
         const mem = allAssociates.find(x => x.id === a.id);
         if (mem) { mem.nextAttExpiry = attUniqueDates[0]||''; mem.attExpiryDates = attUniqueDates; }
       }
@@ -4419,6 +4420,46 @@ window.runManualExpiryCheck = async () => {
     status.innerHTML = `<span class="text-danger">Error: ${escapeHtml(err.message)}</span>`;
   }
 
+  btn.disabled = false;
+};
+
+// ─── Recalculate Attendance Points from Entries ───────────────────────
+window.recalcAllAttPoints = async () => {
+  const btn    = document.getElementById('recalcAttBtn');
+  const status = document.getElementById('recalcAttStatus');
+  if (!allAssociates.length) { status.innerHTML = '<span class="text-danger">No associates loaded. Open the dashboard first.</span>'; return; }
+
+  btn.disabled = true;
+  status.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i>Reading entries and recalculating…</span>';
+
+  const results = [];
+  const writes  = [];
+
+  try {
+    for (const a of allAssociates) {
+      const snap = await getDocs(collection(db, 'attendance', a.id, 'entries'));
+      // Sum only non-expired active points
+      const computed = snap.docs.reduce((sum, d) => {
+        const e = d.data();
+        return e.expired ? sum : sum + (e.points || 0);
+      }, 0);
+      const stored   = a.attendancePoints || 0;
+      const rounded  = Math.round(computed * 10) / 10; // avoid float drift
+      if (Math.abs(rounded - stored) > 0.001) {
+        results.push(`${escapeHtml(a.name)}: was ${stored} → corrected to ${rounded}`);
+        writes.push(updateDoc(doc(db, 'associates', a.id), { attendancePoints: rounded }));
+        const mem = allAssociates.find(x => x.id === a.id);
+        if (mem) mem.attendancePoints = rounded;
+      }
+    }
+    if (writes.length) await Promise.all(writes);
+    status.innerHTML = results.length
+      ? `<div style="color:#16a34a;font-weight:600;margin-bottom:4px">✓ Corrected ${results.length} associate${results.length===1?'':'s'}:</div>
+         <div style="font-size:0.8rem;max-height:160px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:8px">${results.map(r=>`<div>${r}</div>`).join('')}</div>`
+      : '<span style="color:#16a34a">✓ All attendance totals are already correct — no changes needed.</span>';
+  } catch(err) {
+    status.innerHTML = `<span class="text-danger">Error: ${escapeHtml(err.message)}</span>`;
+  }
   btn.disabled = false;
 };
 
@@ -4623,9 +4664,11 @@ window.parseAttImport = () => {
     } else {
       type = pts >= 1 ? 'call-out' : 'late-arrival';
     }
-    // Flag as expired if pts = 0 and date is over 1 year old
-    const oneYearAgo = new Date(); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-    const expired = pts === 0 && dateStr && new Date(dateStr) < oneYearAgo;
+    // Flag as expired if pts = 0 and date is over 1 year old.
+    // Use LOCAL date string comparison ("YYYY-MM-DD") to avoid UTC midnight parsing shifting the boundary.
+    const _today = new Date();
+    const _cutoffDate = `${_today.getFullYear()-1}-${String(_today.getMonth()+1).padStart(2,'0')}-${String(_today.getDate()).padStart(2,'0')}`;
+    const expired = pts === 0 && dateStr && dateStr <= _cutoffDate;
     window._attImportRows.push({ rawName, assoc: assoc || null, dateStr, rawDate, pts, type, note, expired });
   });
   const tbody  = document.getElementById('attImportTbody');
@@ -6742,6 +6785,20 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
         <p class="small text-muted mb-2">One-time fix for imported records where type was saved as "Call Out" but points = 2 (should be NCNS). Scans all attendance entries and corrects the type field to "ncns". Run once after deploying the NCNS update.</p>
         <div id="ncnsMigrationStatus" class="small"></div>
+      </div>
+
+      <!-- Recalculate Attendance Points -->
+      <div class="admin-card" style="border-left:4px solid #059669">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div>
+            <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-calculator me-2" style="color:#059669"></i>Recalculate Attendance Points</h6>
+          </div>
+          <button class="btn btn-sm text-white fw-semibold" style="background:#059669;border:none" onclick="recalcAllAttPoints()" id="recalcAttBtn">
+            <i class="fas fa-sync-alt me-1"></i>Recalculate
+          </button>
+        </div>
+        <p class="small text-muted mb-2">Re-totals each associate's attendance points directly from their entry records and corrects the stored counter if it has drifted. Run this after any bulk delete + re-import or if a profile's Attendance Pts display looks wrong.</p>
+        <div id="recalcAttStatus"></div>
       </div>
 
       <!-- Attendance Import -->
