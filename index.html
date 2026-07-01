@@ -173,14 +173,24 @@ let _expirationChecked = false;
 
 async function autoExpirePoints() {
   if (_expirationChecked) return;
+  if (!allAssociates.length) return;   // don't lock the flag if data isn't ready yet
   _expirationChecked = true;
-  if (!allAssociates.length) return;
 
   const now       = new Date();
   const cutoff    = new Date(now); cutoff.setFullYear(cutoff.getFullYear() - 1);
+  const cutoffMs  = cutoff.getTime();
   const cutoffIso = cutoff.toISOString();
   const nowIso    = now.toISOString();
   let anyChanges  = false;
+
+  // Normalize both ISO strings and Firestore Timestamp objects to milliseconds
+  const toMs = v => {
+    if (!v) return null;
+    if (typeof v === 'string') return new Date(v).getTime();
+    if (v?.toDate) return v.toDate().getTime();           // Firestore Timestamp
+    if (typeof v === 'number') return v;
+    return null;
+  };
 
   // ── Engagement points ──────────────────────────────────────────────
   try {
@@ -191,7 +201,8 @@ async function autoExpirePoints() {
       const allEntries = entriesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       let expired = 0;
       allEntries.forEach(e => {
-        if ((e.pts || 0) > 0 && !e.expired && e.createdAt && e.createdAt < cutoffIso) {
+        const createdMs = toMs(e.createdAt);
+        if ((e.pts || 0) > 0 && !e.expired && createdMs !== null && createdMs < cutoffMs) {
           expired += e.pts;
           writes.push(updateDoc(doc(db, 'pointslog', assocId, 'entries', e.id), {
             pts: 0, expired: true, expiredAt: nowIso, originalPts: e.pts
@@ -203,8 +214,8 @@ async function autoExpirePoints() {
         // Recompute all future expiry dates from remaining non-expired entries
         const ptUniqueDates = [...new Set(
           allEntries
-            .filter(e => (e.pts || 0) > 0 && !e.expired && e.createdAt && e.createdAt >= cutoffIso)
-            .map(e => { const d = new Date(e.createdAt); d.setFullYear(d.getFullYear() + 1); return d; })
+            .filter(e => { const ms = toMs(e.createdAt); return (e.pts || 0) > 0 && !e.expired && ms !== null && ms >= cutoffMs; })
+            .map(e => { const d = new Date(toMs(e.createdAt)); d.setFullYear(d.getFullYear() + 1); return d; })
             .filter(d => d > now)
             .sort((x, y) => x - y)
             .map(d => d.toISOString().slice(0,10))
@@ -3558,15 +3569,20 @@ window.renderPointsLog = () => {
 
   const totalPts = rows.reduce((s, e) => s + (e.pts || 0), 0);
   tbody.innerHTML = rows.map(e => {
-    const pos = e.pts > 0;
-    const neg = e.pts < 0;
-    return `<tr>
+    const isExp = e.expired === true;
+    const pos   = (isExp ? (e.originalPts || 0) : e.pts) > 0;
+    const neg   = e.pts < 0;
+    const ptsDisplay = isExp
+      ? `<span style="text-decoration:line-through;color:#9ca3af">+${e.originalPts ?? 0}</span><span style="color:#9ca3af;font-size:0.75rem;margin-left:4px">(expired)</span>`
+      : `${pos?'+':''}${e.pts}`;
+    const ptsColor = isExp ? '#9ca3af' : (pos ? '#16a34a' : neg ? '#dc2626' : '#6b7280');
+    return `<tr style="${isExp ? 'opacity:0.55' : ''}">
       <td class="text-muted">${formatDateTime(e.createdAt)}</td>
       <td class="fw-semibold" style="cursor:pointer;color:var(--navy)" onclick="openProfile('${e.associateId}')">${escapeHtml(e.associateName || '—')}</td>
       <td><span class="badge ${e.type==='Badge'?'bg-warning text-dark':e.type==='Note'?'bg-primary':e.type==='Certification'?'bg-info text-dark':e.type==='Milestone'?'bg-purple text-white':'bg-success'}">${escapeHtml(e.type||'—')}</span></td>
       <td>${escapeHtml(e.reason || '—')}</td>
       <td class="text-muted small">${escapeHtml(e.addedBy || '—')}</td>
-      <td class="text-end fw-bold" style="color:${pos?'#16a34a':neg?'#dc2626':'#6b7280'}">${pos?'+':''}${e.pts}</td>
+      <td class="text-end fw-bold" style="color:${ptsColor}">${ptsDisplay}</td>
     </tr>`;
   }).join('');
 
@@ -4316,6 +4332,107 @@ window.showExpiryDiagnostics = async () => {
       </div>
       ${mismatch.length ? '<div style="color:#dc2626;margin-top:6px">⚠ Highlighted rows have mismatches — run <strong>Backfill Expiry Dates</strong> to fix them.</div>' : '<div style="color:#16a34a;margin-top:6px">✓ All stored values match computed values.</div>'}
     </div>`;
+};
+
+// ─── Manual Expiry Check ──────────────────────────────────────────────
+window.runManualExpiryCheck = async () => {
+  const btn    = document.getElementById('manualExpiryBtn');
+  const status = document.getElementById('manualExpiryStatus');
+  if (!allAssociates.length) { status.innerHTML = '<span class="text-danger">No associates loaded. Open the dashboard first.</span>'; return; }
+
+  btn.disabled = true;
+  status.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i>Running expiry check…</span>';
+
+  const now      = new Date();
+  const cutoff   = new Date(now); cutoff.setFullYear(cutoff.getFullYear() - 1);
+  const cutoffMs = cutoff.getTime();
+  const nowIso   = now.toISOString();
+  const toMs = v => {
+    if (!v) return null;
+    if (typeof v === 'string') return new Date(v).getTime();
+    if (v?.toDate) return v.toDate().getTime();
+    if (typeof v === 'number') return v;
+    return null;
+  };
+
+  const lines = [];
+  let totalPtExpired = 0, totalAttExpired = 0;
+  const writes = [];
+
+  try {
+    for (const a of allAssociates) {
+      // ── Engagement points ────────────────────────────────────────
+      const plSnap = await getDocs(collection(db, 'pointslog', a.id, 'entries'));
+      plSnap.docs.forEach(d => {
+        const e = { id: d.id, ...d.data() };
+        const ms = toMs(e.createdAt);
+        if ((e.pts || 0) > 0 && !e.expired && ms !== null && ms < cutoffMs) {
+          lines.push(`<span style="color:#dc2626">✕ Engagement pts</span> — ${escapeHtml(a.name)}: ${e.type||'entry'} from ${new Date(ms).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} (+${e.pts} pts → expired)`);
+          totalPtExpired += e.pts;
+          writes.push(updateDoc(doc(db, 'pointslog', a.id, 'entries', e.id), { pts: 0, expired: true, expiredAt: nowIso, originalPts: e.pts }));
+        }
+      });
+
+      // Recompute nextPointExpiry for this associate if anything changed
+      const ptWrites = writes.length; // track before att writes
+      if (plSnap.docs.some(d => { const e = d.data(); const ms = toMs(e.createdAt); return (e.pts||0)>0 && !e.expired && ms !== null && ms < cutoffMs; })) {
+        const ptUniqueDates = [...new Set(
+          plSnap.docs.map(d => d.data())
+            .filter(e => { const ms = toMs(e.createdAt); return (e.pts||0)>0 && !e.expired && ms !== null && ms >= cutoffMs; })
+            .map(e => { const d = new Date(toMs(e.createdAt)); d.setFullYear(d.getFullYear()+1); return d; })
+            .filter(d => d > now).sort((x,y) => x-y)
+            .map(d => d.toISOString().slice(0,10))
+        )];
+        writes.push(updateDoc(doc(db, 'associates', a.id), { points: increment(-plSnap.docs.reduce((s,d) => { const e=d.data(); const ms=toMs(e.createdAt); return ((e.pts||0)>0 && !e.expired && ms!==null && ms<cutoffMs) ? s+e.pts : s; }, 0)), nextPointExpiry: ptUniqueDates[0]||'', ptExpiryDates: ptUniqueDates }));
+        const mem = allAssociates.find(x => x.id === a.id);
+        if (mem) { mem.nextPointExpiry = ptUniqueDates[0]||''; mem.ptExpiryDates = ptUniqueDates; }
+      }
+
+      // ── Attendance points ────────────────────────────────────────
+      const attSnap = await getDocs(collection(db, 'attendance', a.id, 'entries'));
+      attSnap.docs.forEach(d => {
+        const e = { id: d.id, ...d.data() };
+        const dateMs = e.date ? new Date(e.date + 'T00:00:00').getTime() : null;
+        if ((e.points || 0) > 0 && !e.expired && dateMs !== null && dateMs < cutoffMs) {
+          lines.push(`<span style="color:#d97706">✕ Attendance pts</span> — ${escapeHtml(a.name)}: ${e.type||'entry'} on ${e.date} (+${e.points} pts → expired)`);
+          totalAttExpired += e.points;
+          writes.push(updateDoc(doc(db, 'attendance', a.id, 'entries', e.id), { points: 0, expired: true, expiredAt: nowIso, originalPoints: e.points }));
+        }
+      });
+      if (attSnap.docs.some(d => { const e = d.data(); const ms = e.date ? new Date(e.date+'T00:00:00').getTime() : null; return (e.points||0)>0 && !e.expired && ms!==null && ms<cutoffMs; })) {
+        const attUniqueDates = [...new Set(
+          attSnap.docs.map(d => d.data())
+            .filter(e => { const ms = e.date ? new Date(e.date+'T00:00:00').getTime() : null; return (e.points||0)>0 && !e.expired && ms!==null && ms >= cutoffMs; })
+            .map(e => { const d = new Date(e.date+'T00:00:00'); d.setFullYear(d.getFullYear()+1); return d; })
+            .filter(d => d > now).sort((x,y) => x-y)
+            .map(d => d.toISOString().slice(0,10))
+        )];
+        writes.push(updateDoc(doc(db, 'associates', a.id), { attendancePoints: increment(-attSnap.docs.reduce((s,d) => { const e=d.data(); const ms=e.date?new Date(e.date+'T00:00:00').getTime():null; return ((e.points||0)>0&&!e.expired&&ms!==null&&ms<cutoffMs)?s+e.points:s; },0)), nextAttExpiry: attUniqueDates[0]||'', attExpiryDates: attUniqueDates }));
+        const mem = allAssociates.find(x => x.id === a.id);
+        if (mem) { mem.nextAttExpiry = attUniqueDates[0]||''; mem.attExpiryDates = attUniqueDates; }
+      }
+    }
+
+    if (writes.length) {
+      await Promise.all(writes);
+      _expirationChecked = true; // mark done so dashboard auto-expiry doesn't double-run
+      clearCache('milestones_firestore');
+      if (typeof renderMilestones === 'function') renderMilestones();
+    }
+
+    if (lines.length) {
+      status.innerHTML = `<div style="color:#16a34a;font-weight:600;margin-bottom:6px">✓ Expired ${lines.length} entr${lines.length===1?'y':'ies'} (${totalPtExpired} engagement pts, ${totalAttExpired} attendance pts)</div>
+        <div style="font-size:0.8rem;max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:8px">${lines.map(l=>`<div style="padding:2px 0;border-bottom:1px solid #f1f5f9">${l}</div>`).join('')}</div>
+        <div style="color:#6b7280;font-size:0.75rem;margin-top:4px">Reload the Points Log tab to see updated entries.</div>`;
+    } else {
+      status.innerHTML = '<span style="color:#16a34a">✓ Nothing to expire — all entries are within the 1-year window.</span>';
+      _expirationChecked = true;
+    }
+  } catch(err) {
+    status.innerHTML = `<span class="text-danger">Error: ${escapeHtml(err.message)}</span>`;
+  }
+
+  btn.disabled = false;
 };
 
 // ─── NCNS Fix Migration ───────────────────────────────────────────────
@@ -6582,6 +6699,20 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </button>
         </div>
         <p class="small text-muted mb-0">Removes all badge records (approved and pending) for every associate and zeros any badge points. Use this to clear test/filler badge data.</p>
+      </div>
+
+      <!-- Run Expiry Check -->
+      <div class="admin-card" style="border-left:4px solid #16a34a">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div>
+            <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-clock me-2" style="color:#16a34a"></i>Run Expiry Check Now</h6>
+          </div>
+          <button class="btn btn-sm text-white fw-semibold" style="background:#16a34a;border:none" onclick="runManualExpiryCheck()" id="manualExpiryBtn">
+            <i class="fas fa-play me-1"></i>Run Now
+          </button>
+        </div>
+        <p class="small text-muted mb-2">Scans all associates for engagement and attendance points older than 1 year and expires them immediately. Shows a detailed list of every entry zeroed out. Use this if the automatic expiry on dashboard load doesn't seem to be running.</p>
+        <div id="manualExpiryStatus"></div>
       </div>
 
       <!-- Expiry Diagnostics -->
