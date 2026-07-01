@@ -4233,6 +4233,61 @@ window.runExpiryMigration = async () => {
   if (typeof renderMilestones === 'function') renderMilestones();
 };
 
+// ─── Expiry Diagnostics ───────────────────────────────────────────────
+window.showExpiryDiagnostics = async () => {
+  const status = document.getElementById('expiryDiagStatus');
+  status.innerHTML = '<span class="text-muted">Reading data…</span>';
+  const now = new Date(); now.setHours(0,0,0,0);
+  const rows = [];
+  await Promise.all(allAssociates.filter(a => a.status === 'active').map(async a => {
+    // Read raw attendance entries
+    const attSnap = await getDocs(collection(db, 'attendance', a.id, 'entries')).catch(() => null);
+    const attEntries = attSnap ? attSnap.docs.map(d => d.data()) : [];
+    const futureAtt = attEntries
+      .filter(e => (e.points || 0) > 0 && !e.expired && e.date)
+      .map(e => { const d = new Date(e.date + 'T00:00:00'); d.setFullYear(d.getFullYear() + 1); return d; })
+      .filter(d => d > now).sort((x,y) => x-y);
+    const computedAtt = futureAtt.length ? futureAtt[0].toISOString().slice(0,10) : '';
+    // Read raw pointslog entries
+    const plSnap = await getDocs(collection(db, 'pointslog', a.id, 'entries')).catch(() => null);
+    const plEntries = plSnap ? plSnap.docs.map(d => d.data()) : [];
+    const futurePts = plEntries
+      .filter(e => (e.pts || 0) > 0 && e.createdAt)
+      .map(e => { const d = new Date(e.createdAt); d.setFullYear(d.getFullYear() + 1); return { d, str: d.toISOString().slice(0,10) }; })
+      .filter(e => e.d > now).sort((x,y) => x.d-y.d);
+    const computedPts = futurePts.length ? futurePts[0].str : '';
+    rows.push({ name: a.name, storedAtt: a.nextAttExpiry || '', computedAtt, storedPts: a.nextPointExpiry || '', computedPts, attCount: attEntries.length, plCount: plEntries.length });
+  }));
+  rows.sort((a,b) => a.name.localeCompare(b.name));
+  const mismatch = rows.filter(r => r.storedAtt !== r.computedAtt || r.storedPts !== r.computedPts);
+  status.innerHTML = `
+    <div style="font-size:0.78rem;margin-top:8px">
+      <strong>${rows.length} active associates scanned · ${mismatch.length} mismatches</strong>
+      <div style="max-height:260px;overflow-y:auto;margin-top:6px;border:1px solid #e5e7eb;border-radius:6px">
+        <table style="width:100%;border-collapse:collapse;font-size:0.75rem">
+          <thead style="background:#f1f5f9;position:sticky;top:0">
+            <tr><th style="padding:4px 8px;text-align:left">Name</th><th style="padding:4px 8px">Att entries</th><th style="padding:4px 8px">Stored nextAttExpiry</th><th style="padding:4px 8px">Computed</th><th style="padding:4px 8px">Stored nextPointExpiry</th><th style="padding:4px 8px">Computed</th></tr>
+          </thead>
+          <tbody>
+            ${rows.map(r => {
+              const attOk = r.storedAtt === r.computedAtt;
+              const ptsOk = r.storedPts === r.computedPts;
+              return '<tr style="border-top:1px solid #f1f5f9;background:' + (!attOk||!ptsOk ? '#fff7ed' : '') + '">'
+                + '<td style="padding:3px 8px;font-weight:600">' + escapeHtml(r.name) + '</td>'
+                + '<td style="padding:3px 8px;text-align:center">' + r.attCount + '</td>'
+                + '<td style="padding:3px 8px;color:' + (attOk?'#16a34a':'#dc2626') + '">' + (r.storedAtt||'—') + '</td>'
+                + '<td style="padding:3px 8px">' + (r.computedAtt||'—') + '</td>'
+                + '<td style="padding:3px 8px;color:' + (ptsOk?'#16a34a':'#dc2626') + '">' + (r.storedPts||'—') + '</td>'
+                + '<td style="padding:3px 8px">' + (r.computedPts||'—') + '</td>'
+                + '</tr>';
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${mismatch.length ? '<div style="color:#dc2626;margin-top:6px">⚠ Highlighted rows have mismatches — run <strong>Backfill Expiry Dates</strong> to fix them.</div>' : '<div style="color:#16a34a;margin-top:6px">✓ All stored values match computed values.</div>'}
+    </div>`;
+};
+
 // ─── NCNS Fix Migration ───────────────────────────────────────────────
 window.fixNcnsEntries = async () => {
   const btn    = document.getElementById('ncnsMigrationBtn');
@@ -6497,6 +6552,20 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </button>
         </div>
         <p class="small text-muted mb-0">Removes all badge records (approved and pending) for every associate and zeros any badge points. Use this to clear test/filler badge data.</p>
+      </div>
+
+      <!-- Expiry Diagnostics -->
+      <div class="admin-card" style="border-left:4px solid #0891b2">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div>
+            <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-stethoscope me-2" style="color:#0891b2"></i>Expiry Diagnostics</h6>
+          </div>
+          <button class="btn btn-sm text-white fw-semibold" style="background:#0891b2;border:none" onclick="showExpiryDiagnostics()">
+            <i class="fas fa-search me-1"></i>Check
+          </button>
+        </div>
+        <p class="small text-muted mb-1">Shows stored vs. computed expiry dates for all associates. Highlights mismatches so you know exactly who needs the backfill.</p>
+        <div id="expiryDiagStatus" class="small"></div>
       </div>
 
       <!-- Expiry Date Migration -->
