@@ -4233,44 +4233,6 @@ window.runExpiryMigration = async () => {
   if (typeof renderMilestones === 'function') renderMilestones();
 };
 
-// ─── Backfill nextPointExpiry for all associates ──────────────────────
-// Reads each associate's pointslog and writes nextPointExpiry to their doc.
-// Run once from admin panel — safe to re-run anytime.
-window.recalcAllPointExpiries = async () => {
-  const btn    = document.getElementById('recalcExpiryBtn');
-  const status = document.getElementById('recalcExpiryStatus');
-  if (!allAssociates.length) { status.innerHTML = '<span class="text-danger">No associates loaded. Open the dashboard first.</span>'; return; }
-  btn.disabled = true; btn.textContent = 'Running…';
-  status.innerHTML = '';
-  let updated = 0, skipped = 0;
-  const now = new Date().toISOString();
-  try {
-    const now = new Date();
-    await Promise.all(allAssociates.map(async a => {
-      try {
-        const snap = await getDocs(collection(db, 'pointslog', a.id, 'entries'));
-        // Find the next FUTURE expiry — oldest positive entry whose 1-year anniversary hasn't passed yet
-        const withExpiry = snap.docs.map(d => d.data())
-          .filter(e => (e.pts || 0) > 0 && e.createdAt)
-          .map(e => { const d = new Date(e.createdAt); d.setFullYear(d.getFullYear() + 1); return { expiry: d, str: d.toISOString().slice(0,10) }; })
-          .filter(e => e.expiry > now)
-          .sort((x, y) => x.expiry - y.expiry);
-        const expiryStr = withExpiry.length ? withExpiry[0].str : '';
-        await updateDoc(doc(db, 'associates', a.id), { nextPointExpiry: expiryStr });
-        const mem = allAssociates.find(x => x.id === a.id);
-        if (mem) mem.nextPointExpiry = expiryStr;
-        updated++;
-      } catch(e) { skipped++; }
-    }));
-    status.innerHTML = `<span class="text-success">✓ Updated ${updated} associates${skipped ? ` (${skipped} skipped)` : ''}.</span>`;
-    clearCache('milestones_firestore');
-    if (typeof renderMilestones === 'function') renderMilestones();
-  } catch(e) {
-    status.innerHTML = `<span class="text-danger">Error: ${e.message}</span>`;
-  }
-  btn.disabled = false; btn.textContent = 'Run Once';
-};
-
 // ─── NCNS Fix Migration ───────────────────────────────────────────────
 window.fixNcnsEntries = async () => {
   const btn    = document.getElementById('ncnsMigrationBtn');
@@ -6549,20 +6511,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
         <p class="small text-muted mb-2">One-time setup. Reads existing attendance and points data for all associates and writes their upcoming expiry dates directly to their profile. This lets the Upcoming Events panel show expiry alerts without expensive Firestore reads. Run this once after deploying — never needed again.</p>
         <div id="migrationStatus" class="small"></div>
-      </div>
-
-      <!-- Backfill nextPointExpiry -->
-      <div class="admin-card" style="border-left:4px solid #0369a1">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <div>
-            <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-clock me-2" style="color:#0369a1"></i>Backfill Point Expiry Dates</h6>
-          </div>
-          <button class="btn btn-sm text-white fw-semibold" style="background:#0369a1;border:none" onclick="recalcAllPointExpiries()" id="recalcExpiryBtn">
-            <i class="fas fa-sync me-1"></i>Run Once
-          </button>
-        </div>
-        <p class="small text-muted mb-2">One-time fix so Upcoming Events shows points about to expire for all associates. Reads each associate's points log and writes the next expiry date to their profile. Run once — safe to re-run anytime.</p>
-        <div id="recalcExpiryStatus" class="small"></div>
       </div>
 
       <!-- Fix NCNS Migration -->
