@@ -168,75 +168,80 @@ let _expirationChecked = false;
 async function autoExpirePoints() {
   if (_expirationChecked) return;
   _expirationChecked = true;
+  if (!allAssociates.length) return;
 
-  const now      = new Date();
-  const cutoff   = new Date(now); cutoff.setFullYear(cutoff.getFullYear() - 1);
+  const now       = new Date();
+  const cutoff    = new Date(now); cutoff.setFullYear(cutoff.getFullYear() - 1);
   const cutoffIso = cutoff.toISOString();
   const nowIso    = now.toISOString();
+  let anyChanges  = false;
 
   // ── Engagement points ──────────────────────────────────────────────
   try {
-    if (allAssociates.length) {
-      const writes = [];
-      await Promise.all(allAssociates.map(async a => {
-        const assocId = a.id;
-        const entriesSnap = await getDocs(collection(db, 'pointslog', assocId, 'entries'));
-        let expired = 0;
-        entriesSnap.docs.forEach(d => {
-          const entryId = d.id; const e = d.data();
-          if ((e.pts || 0) > 0 && !e.expired && e.createdAt && e.createdAt < cutoffIso) {
-            expired += e.pts;
-            // Zero out the original entry so it shows as "+0" in the log — no separate Expiration entry needed
-            writes.push(updateDoc(doc(db, 'pointslog', assocId, 'entries', entryId), {
-              pts: 0, expired: true, expiredAt: nowIso, originalPts: e.pts
-            }));
-          }
-        });
-        if (expired > 0) {
-          writes.push(updateDoc(doc(db, 'associates', assocId), { points: increment(-expired) }));
-          // Also refresh nextPointExpiry so Upcoming Events stays accurate
-          const nextExpiry = entriesSnap.docs.map(d => d.data())
-            .filter(e => (e.pts || 0) > 0 && !e.expired && e.createdAt && e.createdAt >= cutoffIso)
-            .map(e => { const d = new Date(e.createdAt); d.setFullYear(d.getFullYear() + 1); return d; })
-            .filter(d => d > now)
-            .sort((x, y) => x - y)[0];
-          writes.push(updateDoc(doc(db, 'associates', assocId), {
-            nextPointExpiry: nextExpiry ? nextExpiry.toISOString().slice(0,10) : ''
+    const writes = [];
+    await Promise.all(allAssociates.map(async a => {
+      const assocId = a.id;
+      const entriesSnap = await getDocs(collection(db, 'pointslog', assocId, 'entries'));
+      const allEntries = entriesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      let expired = 0;
+      allEntries.forEach(e => {
+        if ((e.pts || 0) > 0 && !e.expired && e.createdAt && e.createdAt < cutoffIso) {
+          expired += e.pts;
+          writes.push(updateDoc(doc(db, 'pointslog', assocId, 'entries', e.id), {
+            pts: 0, expired: true, expiredAt: nowIso, originalPts: e.pts
           }));
-          const mem = allAssociates.find(x => x.id === assocId);
-          if (mem) mem.nextPointExpiry = nextExpiry ? nextExpiry.toISOString().slice(0,10) : '';
         }
-      }));
-      if (writes.length) await Promise.all(writes);
-    }
+      });
+      if (expired > 0) {
+        anyChanges = true;
+        // Compute next future expiry from remaining non-expired entries
+        const nextExpiry = allEntries
+          .filter(e => (e.pts || 0) > 0 && !e.expired && e.createdAt && e.createdAt >= cutoffIso)
+          .map(e => { const d = new Date(e.createdAt); d.setFullYear(d.getFullYear() + 1); return d; })
+          .filter(d => d > now)
+          .sort((x, y) => x - y)[0];
+        const expiryStr = nextExpiry ? nextExpiry.toISOString().slice(0,10) : '';
+        writes.push(updateDoc(doc(db, 'associates', assocId), {
+          points: increment(-expired),
+          nextPointExpiry: expiryStr
+        }));
+        const mem = allAssociates.find(x => x.id === assocId);
+        if (mem) { mem.nextPointExpiry = expiryStr; }
+      }
+    }));
+    if (writes.length) await Promise.all(writes);
   } catch(e) { console.warn('Engagement point expiration failed:', e); }
 
   // ── Attendance points ──────────────────────────────────────────────
   try {
-    const attAssocSnap = await getDocs(collection(db, 'attendance'));
-    if (!attAssocSnap.empty) {
-      const writes = [];
-      await Promise.all(attAssocSnap.docs.map(async assocDoc => {
-        const assocId = assocDoc.id;
-        const entriesSnap = await getDocs(collection(db, 'attendance', assocId, 'entries'));
-        let expired = 0;
-        entriesSnap.docs.forEach(d => {
-          const entryId = d.id; const e = d.data();
-          const dateIso = e.date ? e.date + 'T00:00:00.000Z' : null;
-          if ((e.points || 0) > 0 && !e.expired && dateIso && dateIso < cutoffIso) {
-            expired += e.points;
-            writes.push(updateDoc(doc(db, 'attendance', assocId, 'entries', entryId), {
-              points: 0, expired: true, expiredAt: nowIso, originalPoints: e.points
-            }));
-          }
-        });
-        if (expired > 0) {
-          writes.push(updateDoc(doc(db, 'associates', assocId), { attendancePoints: increment(-expired) }));
+    const writes = [];
+    await Promise.all(allAssociates.map(async a => {
+      const assocId = a.id;
+      const entriesSnap = await getDocs(collection(db, 'attendance', assocId, 'entries'));
+      let expired = 0;
+      entriesSnap.docs.forEach(d => {
+        const entryId = d.id; const e = d.data();
+        const dateIso = e.date ? e.date + 'T00:00:00.000Z' : null;
+        if ((e.points || 0) > 0 && !e.expired && dateIso && dateIso < cutoffIso) {
+          expired += e.points;
+          writes.push(updateDoc(doc(db, 'attendance', assocId, 'entries', entryId), {
+            points: 0, expired: true, expiredAt: nowIso, originalPoints: e.points
+          }));
         }
-      }));
-      if (writes.length) await Promise.all(writes);
-    }
+      });
+      if (expired > 0) {
+        anyChanges = true;
+        writes.push(updateDoc(doc(db, 'associates', assocId), { attendancePoints: increment(-expired) }));
+      }
+    }));
+    if (writes.length) await Promise.all(writes);
   } catch(e) { console.warn('Attendance point expiration failed:', e); }
+
+  // Re-render Upcoming Events if anything changed so panel shows fresh expiry dates
+  if (anyChanges && typeof renderMilestones === 'function') {
+    clearCache('milestones_firestore');
+    renderMilestones();
+  }
 }
 
 // ─── State ────────────────────────────────────────────────────────────
