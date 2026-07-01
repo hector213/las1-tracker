@@ -440,23 +440,42 @@ function loadDashboard() {
 window.loadDashboard = loadDashboard;
 
 function renderDashboard() {
-  const search     = (document.getElementById('searchInput')?.value || '').toLowerCase();
-  const shift      = document.getElementById('filterShift')?.value  || '';
-  const status     = document.getElementById('filterStatus')?.value || '';
-  const flagFilter = document.getElementById('filterFlag')?.value   || '';
-  const certFilter = document.getElementById('filterCert')?.value || '';
+  const search          = (document.getElementById('searchInput')?.value || '').toLowerCase();
+  const shift           = document.getElementById('filterShift')?.value  || '';
+  const status          = document.getElementById('filterStatus')?.value || '';
+  const flagFilter      = document.getElementById('filterFlag')?.value   || '';
+  const certFilter      = document.getElementById('filterCert')?.value   || '';
+  const reportsToFilter = document.getElementById('filterReportsTo')?.value || '';
   // Populate cert options if empty
   const certSel = document.getElementById('filterCert');
   if (certSel && certSel.options.length <= 1) {
     CERTS.forEach(c => { const o = document.createElement('option'); o.value = c.replace(/\s+/g,'_'); o.textContent = c; certSel.appendChild(o); });
   }
+  // Populate Reports To options dynamically from current leaders
+  const rtSel = document.getElementById('filterReportsTo');
+  if (rtSel) {
+    const currentRtVal = rtSel.value;
+    rtSel.innerHTML = '<option value="">All Supervisors</option>';
+    const posOrder = { 'ops-manager': 0, 'supervisor': 1, 'lead': 2 };
+    allAssociates
+      .filter(a => a.position === 'supervisor' || a.position === 'lead' || a.position === 'ops-manager')
+      .sort((a, b) => (posOrder[a.position] ?? 9) - (posOrder[b.position] ?? 9) || a.name.localeCompare(b.name))
+      .forEach(l => {
+        const o = document.createElement('option');
+        o.value = l.id;
+        o.textContent = `${l.name} (${l.position === 'ops-manager' ? 'OM' : l.position === 'supervisor' ? 'Sup' : 'Lead'})`;
+        if (l.id === currentRtVal) o.selected = true;
+        rtSel.appendChild(o);
+      });
+  }
 
   const filtered = allAssociates.filter(a =>
-    (!search     || a.name.toLowerCase().includes(search) || (a.employeeId || '').toLowerCase().includes(search)) &&
-    (!shift      || a.shift === shift) &&
-    (!status     || a.status === status) &&
-    (!flagFilter || a.flag === flagFilter) &&
-    (!certFilter || (allCertsMap[a.id] && allCertsMap[a.id].has(certFilter)))
+    (!search          || a.name.toLowerCase().includes(search) || (a.employeeId || '').toLowerCase().includes(search)) &&
+    (!shift           || a.shift === shift) &&
+    (!status          || a.status === status) &&
+    (!flagFilter      || a.flag === flagFilter) &&
+    (!certFilter      || (allCertsMap[a.id] && allCertsMap[a.id].has(certFilter))) &&
+    (!reportsToFilter || a.reportsTo === reportsToFilter)
   );
 
   const leaderPos   = new Set(['ops-manager','supervisor','lead']);
@@ -1747,6 +1766,11 @@ window.saveAssociate = async () => {
     await addDoc(collection(db, 'associates'), data);
   }
   bootstrap.Modal.getInstance(document.getElementById('assocModal')).hide();
+  // When marking someone inactive, auto-switch the dashboard to show only active associates
+  if (data.status === 'inactive') {
+    const fs = document.getElementById('filterStatus');
+    if (fs && fs.value !== 'active') { fs.value = 'active'; renderDashboard(); }
+  }
 };
 
 // ─── Export Profile PDF ───────────────────────────────────────────────
@@ -5891,6 +5915,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </select>
         <select class="form-select" style="width:auto;max-width:200px" id="filterCert" onchange="renderDashboard()">
           <option value="">All Certs</option>
+          <!-- JS will populate this -->
+        </select>
+        <select class="form-select" style="width:auto;max-width:200px" id="filterReportsTo" onchange="renderDashboard()">
+          <option value="">All Supervisors</option>
           <!-- JS will populate this -->
         </select>
       </div>
