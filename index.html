@@ -131,12 +131,13 @@ window.logPoints = logPoints;
 async function recalcPointExpiry(associateId) {
   try {
     const snap = await getDocs(collection(db, 'pointslog', associateId, 'entries'));
-    const positive = snap.docs.map(d => d.data())
+    const now = new Date();
+    const withExpiry = snap.docs.map(d => d.data())
       .filter(e => (e.pts || 0) > 0 && e.createdAt)
-      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-    const expiryStr = positive.length
-      ? (() => { const d = new Date(positive[0].createdAt); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(0,10); })()
-      : '';
+      .map(e => { const d = new Date(e.createdAt); d.setFullYear(d.getFullYear() + 1); return { expiry: d, str: d.toISOString().slice(0,10) }; })
+      .filter(e => e.expiry > now)
+      .sort((a, b) => a.expiry - b.expiry);
+    const expiryStr = withExpiry.length ? withExpiry[0].str : '';
     await updateDoc(doc(db, 'associates', associateId), { nextPointExpiry: expiryStr });
     const assoc = allAssociates.find(a => a.id === associateId);
     if (assoc) assoc.nextPointExpiry = expiryStr;
@@ -175,17 +176,17 @@ async function autoExpirePoints() {
 
   // ── Engagement points ──────────────────────────────────────────────
   try {
-    const assocSnap = await getDocs(collection(db, 'pointslog'));
-    if (!assocSnap.empty) {
+    if (allAssociates.length) {
       const writes = [];
-      await Promise.all(assocSnap.docs.map(async assocDoc => {
-        const assocId = assocDoc.id;
+      await Promise.all(allAssociates.map(async a => {
+        const assocId = a.id;
         const entriesSnap = await getDocs(collection(db, 'pointslog', assocId, 'entries'));
         let expired = 0;
         entriesSnap.docs.forEach(d => {
           const entryId = d.id; const e = d.data();
           if ((e.pts || 0) > 0 && !e.expired && e.createdAt && e.createdAt < cutoffIso) {
             expired += e.pts;
+            // Zero out the original entry so it shows as "+0" in the log — no separate Expiration entry needed
             writes.push(updateDoc(doc(db, 'pointslog', assocId, 'entries', entryId), {
               pts: 0, expired: true, expiredAt: nowIso, originalPts: e.pts
             }));
@@ -193,14 +194,17 @@ async function autoExpirePoints() {
         });
         if (expired > 0) {
           writes.push(updateDoc(doc(db, 'associates', assocId), { points: increment(-expired) }));
-          writes.push(addDoc(collection(db, 'pointslog', assocId, 'entries'), {
-            associateId: assocId,
-            type: 'Expiration',
-            reason: `${expired} engagement point${expired !== 1 ? 's' : ''} expired (1-year rollover)`,
-            pts: -expired,
-            addedBy: 'System',
-            createdAt: nowIso
+          // Also refresh nextPointExpiry so Upcoming Events stays accurate
+          const nextExpiry = entriesSnap.docs.map(d => d.data())
+            .filter(e => (e.pts || 0) > 0 && !e.expired && e.createdAt && e.createdAt >= cutoffIso)
+            .map(e => { const d = new Date(e.createdAt); d.setFullYear(d.getFullYear() + 1); return d; })
+            .filter(d => d > now)
+            .sort((x, y) => x - y)[0];
+          writes.push(updateDoc(doc(db, 'associates', assocId), {
+            nextPointExpiry: nextExpiry ? nextExpiry.toISOString().slice(0,10) : ''
           }));
+          const mem = allAssociates.find(x => x.id === assocId);
+          if (mem) mem.nextPointExpiry = nextExpiry ? nextExpiry.toISOString().slice(0,10) : '';
         }
       }));
       if (writes.length) await Promise.all(writes);
@@ -4168,18 +4172,14 @@ window.runExpiryMigration = async () => {
     try {
       const updates = {};
 
-      // nextPointExpiry
+      // nextPointExpiry — find soonest FUTURE expiry only
       const plSnap = await getDocs(collection(db, 'pointslog', a.id, 'entries'));
-      const positive = plSnap.docs.map(d => d.data())
+      const withExpiry = plSnap.docs.map(d => d.data())
         .filter(e => (e.pts || 0) > 0 && e.createdAt)
-        .sort((x, y) => new Date(x.createdAt) - new Date(y.createdAt));
-      if (positive.length) {
-        const d = new Date(positive[0].createdAt);
-        d.setFullYear(d.getFullYear() + 1);
-        updates.nextPointExpiry = d.toISOString().slice(0,10);
-      } else {
-        updates.nextPointExpiry = '';
-      }
+        .map(e => { const d = new Date(e.createdAt); d.setFullYear(d.getFullYear() + 1); return { expiry: d, str: d.toISOString().slice(0,10) }; })
+        .filter(e => e.expiry > today)
+        .sort((x, y) => x.expiry - y.expiry);
+      updates.nextPointExpiry = withExpiry.length ? withExpiry[0].str : '';
 
       // nextAttExpiry
       const attSnap = await getDocs(collection(db, 'attendance', a.id, 'entries'));
@@ -4221,15 +4221,17 @@ window.recalcAllPointExpiries = async () => {
   let updated = 0, skipped = 0;
   const now = new Date().toISOString();
   try {
-    await Promise.all(allAssociates.filter(a => a.status === 'active').map(async a => {
+    const now = new Date();
+    await Promise.all(allAssociates.map(async a => {
       try {
         const snap = await getDocs(collection(db, 'pointslog', a.id, 'entries'));
-        const positive = snap.docs.map(d => d.data())
-          .filter(e => (e.pts || 0) > 0 && !e.expired && e.createdAt)
-          .sort((x, y) => x.createdAt.localeCompare(y.createdAt));
-        const expiryStr = positive.length
-          ? (() => { const d = new Date(positive[0].createdAt); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(0,10); })()
-          : '';
+        // Find the next FUTURE expiry — oldest positive entry whose 1-year anniversary hasn't passed yet
+        const withExpiry = snap.docs.map(d => d.data())
+          .filter(e => (e.pts || 0) > 0 && e.createdAt)
+          .map(e => { const d = new Date(e.createdAt); d.setFullYear(d.getFullYear() + 1); return { expiry: d, str: d.toISOString().slice(0,10) }; })
+          .filter(e => e.expiry > now)
+          .sort((x, y) => x.expiry - y.expiry);
+        const expiryStr = withExpiry.length ? withExpiry[0].str : '';
         await updateDoc(doc(db, 'associates', a.id), { nextPointExpiry: expiryStr });
         const mem = allAssociates.find(x => x.id === a.id);
         if (mem) mem.nextPointExpiry = expiryStr;
