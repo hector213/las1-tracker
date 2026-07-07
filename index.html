@@ -2631,7 +2631,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   <tr>
     <td colspan="4" class="field-cell">
       <div class="field-label" style="margin-bottom:2px"><strong>Consequences of Further Infractions :</strong></div>
-      <div class="text-area-cell short" style="padding:0">Any further infractions may result in disciplinary action up to and including termination.</div>
+      <div class="text-area-cell short" style="padding:0">${tierKey === 'termination' ? 'Employment is being terminated.' : 'Any further infractions may result in disciplinary action up to and including termination.'}</div>
     </td>
   </tr>
 
