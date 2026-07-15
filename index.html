@@ -411,6 +411,9 @@ function loadDashboard() {
   showView('dashboard');
   detachAll();
   let _dashFirstLoad = true;
+  // Always default to Active-only view — inactive associates are hidden unless explicitly filtered
+  const _fs = document.getElementById('filterStatus');
+  if (_fs && !_fs.value) _fs.value = 'active';
 
   activeListeners['associates'] = onSnapshot(collection(db, 'associates'), (snap) => {
     allAssociates = [];
@@ -5947,7 +5950,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </select>
         <select class="form-select" style="width:auto" id="filterStatus" onchange="renderDashboard()">
           <option value="">All Status</option>
-          <option value="active">Active</option><option value="inactive">Inactive</option><option value="leave">On Leave</option>
+          <option value="active" selected>Active</option><option value="inactive">Inactive</option><option value="leave">On Leave</option>
         </select>
         <select class="form-select" style="width:auto" id="filterFlag" onchange="renderDashboard()">
           <option value="">All Flags</option>
