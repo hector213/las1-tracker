@@ -481,8 +481,12 @@ function renderDashboard() {
   const leaderPos   = new Set(['ops-manager','supervisor','lead']);
   const activeAll   = allAssociates.filter(a => a.status === 'active');
   const activeAssoc = activeAll.filter(a => !leaderPos.has(a.position));
+  const activeDirects = activeAssoc.filter(a => a.employmentType !== 'temp');
+  const activeTemps   = activeAssoc.filter(a => a.employmentType === 'temp');
   document.getElementById('statHeadcount').textContent  = activeAll.length;
   document.getElementById('statAssociates').textContent = activeAssoc.length;
+  document.getElementById('statDirects').textContent    = activeDirects.length;
+  document.getElementById('statTemps').textContent      = activeTemps.length;
   document.getElementById('statActive').textContent     = activeAll.length;
   document.getElementById('statFlagged').textContent    = allAssociates.filter(a => a.flag && a.flag !== '').length;
   // Leadership section
@@ -550,7 +554,7 @@ function renderDashboard() {
       else if (todayAtt === 'late')  banner = { label: 'Tardy',     color: '#d97706', bg: '#fef3c7' };
       else if (todayTO)              banner = { label: todayTO.label, color: todayTO.color, bg: todayTO.bg };
       return `<div class="col-xl-3 col-lg-4 col-md-6">
-        <div class="associate-card ${a.position === 'ops-manager' ? 'card-om' : a.position === 'supervisor' ? 'card-supervisor' : a.position === 'lead' ? 'card-lead' : ''}" onclick="openProfile('${a.id}')" style="position:relative;${banner ? 'border-top:3px solid '+banner.color+';' : ''}">
+        <div class="associate-card ${a.position === 'ops-manager' ? 'card-om' : a.position === 'supervisor' ? 'card-supervisor' : a.position === 'lead' ? 'card-lead' : ''}" onclick="openProfile('${a.id}')" style="position:relative;${isTemp ? 'background:#f3e8ff;' : ''}${banner ? 'border-top:3px solid '+banner.color+';' : ''}">
           ${newActivity ? `<span title="New activity on this profile" style="position:absolute;top:8px;right:10px;width:10px;height:10px;border-radius:50%;background:#f97316;box-shadow:0 0 0 2px #fff;animation:pulse-dot 1.5s infinite"></span>` : ''}
           <div class="card-body p-3">
             <div class="d-flex align-items-start gap-3 mb-2">
@@ -853,6 +857,11 @@ window.openProfile = async (id) => {
   const omEl = document.getElementById('profileOpsManager');
   if (a.opsManager) { omEl.textContent = ''; omEl.innerHTML = `<i class="fas fa-user-tie me-1" style="color:var(--orange)"></i>Ops Manager: <strong>${escapeHtml(a.opsManager)}</strong>`; omEl.classList.remove('d-none'); }
   else { omEl.classList.add('d-none'); }
+
+  const rtEl = document.getElementById('profileReportsTo');
+  const reportsToAssoc = a.reportsTo ? allAssociates.find(x => x.id === a.reportsTo) : null;
+  if (reportsToAssoc) { rtEl.innerHTML = `<i class="fas fa-sitemap me-1" style="color:var(--orange)"></i>Reports To: <strong>${escapeHtml(reportsToAssoc.name)}</strong>`; rtEl.classList.remove('d-none'); }
+  else { rtEl.classList.add('d-none'); }
 
   const statusEl = document.getElementById('profileStatus');
   statusEl.textContent = capitalize(a.status || 'active');
@@ -5867,7 +5876,22 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
       <div class="row g-3 mb-4">
         <div class="col-6 col-lg-3"><div class="stat-card h-100"><div class="val" id="statActive">—</div><div class="lbl">Active</div></div></div>
-        <div class="col-6 col-lg-3"><div class="stat-card h-100"><div class="val" id="statAssociates">—</div><div class="lbl">Associates</div></div></div>
+        <div class="col-6 col-lg-3">
+          <div class="stat-card h-100" style="display:flex;flex-direction:column;justify-content:center;gap:6px">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="lbl" style="margin-top:0">Associates</span>
+              <span class="val" id="statAssociates" style="font-size:1.4rem">—</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="lbl" style="margin-top:0">Directs</span>
+              <span class="val" id="statDirects" style="font-size:1.4rem">—</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="lbl" style="margin-top:0">Temps</span>
+              <span class="val" id="statTemps" style="font-size:1.4rem">—</span>
+            </div>
+          </div>
+        </div>
         <div class="col-6 col-lg-3"><div class="stat-card h-100"><div class="val" id="statInBuilding">—</div><div class="lbl">In Building</div></div></div>
         <div class="col-6 col-lg-3">
           <div class="stat-card h-100" style="display:flex;flex-direction:column;justify-content:center;gap:6px">
@@ -5982,6 +6006,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <div class="profile-name" id="profileName"></div>
             <div class="profile-meta" id="profileMeta"></div>
             <div class="profile-meta d-none mt-1" id="profileOpsManager" style="font-size:0.78rem;color:rgba(255,255,255,0.75)"></div>
+            <div class="profile-meta d-none mt-1" id="profileReportsTo" style="font-size:0.78rem;color:rgba(255,255,255,0.75)"></div>
             <div class="d-flex gap-2 align-items-center mt-1 flex-wrap">
               <span class="badge" id="profileStatus"></span>
               <span id="profilePosition"></span>
