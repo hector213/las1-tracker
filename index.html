@@ -533,6 +533,10 @@ function renderDashboard() {
       const flagInfo    = FLAGS[a.flag || ''];
       const flagBadge   = (a.flag && a.flag !== '')
         ? `<span class="badge ${flagInfo.cls} mt-1" style="font-size:0.65rem">${flagInfo.label}</span>` : '';
+      const isTemp      = a.employmentType === 'temp';
+      const tempBadge   = isTemp ? `<span class="badge mt-1" style="font-size:0.65rem;background:#7c3aed;color:#fff">TEMP</span>` : '';
+      const isNewHire   = (() => { if (!a.hireDate) return false; const h = new Date(a.hireDate + 'T00:00:00'); const diff = (new Date() - h) / (1000*60*60*24); return diff >= 0 && diff < 90; })();
+      const newHireBadge = isNewHire ? `<span class="badge mt-1" style="font-size:0.65rem;background:#0891b2;color:#fff">New · &lt;90 Days</span>` : '';
       const pts = a.points || 0;
       const ptsColor = pts > 0 ? '#f97316' : pts < 0 ? '#dc2626' : '#d1d5db';
       const ptsBg    = pts > 0 ? 'rgba(249,115,22,0.10)' : pts < 0 ? 'rgba(220,38,38,0.08)' : 'rgba(0,0,0,0.04)';
@@ -560,6 +564,8 @@ function renderDashboard() {
                 <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
                   <span class="badge ${statusColor}" style="font-size:0.65rem">${capitalize(a.status || 'active')}</span>
                   ${flagBadge}
+                  ${tempBadge}
+                  ${newHireBadge}
                 </div>
               </div>
               <div class="card-pts-star" style="background:${ptsBg};border-color:${ptsColor}">
@@ -1739,6 +1745,7 @@ window.openEditAssociate = (id, data) => {
   document.getElementById('assocHireDate').value   = data.hireDate   || '';
   document.getElementById('assocBirthday').value   = data.birthday   || '';
   document.getElementById('assocOpsManager').value = data.opsManager || '';
+  document.getElementById('assocEmploymentType').value = data.employmentType || 'direct-hire';
   populateReportsTo(data.reportsTo || '');
   bootstrap.Modal.getOrCreateInstance(document.getElementById('assocModal')).show();
 };
@@ -1754,8 +1761,9 @@ window.saveAssociate = async () => {
     position:    document.getElementById('assocPosition').value,
     hireDate:    document.getElementById('assocHireDate').value,
     birthday:    document.getElementById('assocBirthday').value,
-    opsManager:  document.getElementById('assocOpsManager').value.trim(),
-    reportsTo:   document.getElementById('assocReportsTo').value || '',
+    opsManager:      document.getElementById('assocOpsManager').value.trim(),
+    reportsTo:       document.getElementById('assocReportsTo').value || '',
+    employmentType:  document.getElementById('assocEmploymentType').value || 'direct-hire',
     updatedAt:  new Date().toISOString(), updatedBy: currentUser?.email
   };
   if (!data.name) { alert('Name is required'); return; }
@@ -6990,6 +6998,13 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <label class="form-label small fw-semibold">Reports To</label>
             <select class="form-select" id="assocReportsTo">
               <option value="">— Select Supervisor / Lead —</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">Employment Type</label>
+            <select class="form-select" id="assocEmploymentType">
+              <option value="direct-hire">Direct Hire</option>
+              <option value="temp">Temp</option>
             </select>
           </div>
         </div>
