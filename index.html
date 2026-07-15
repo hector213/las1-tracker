@@ -4689,10 +4689,19 @@ window.parseAttImport = () => {
       const yr = dm[3].length === 2 ? '20' + dm[3] : dm[3];
       dateStr = `${yr}-${dm[1].padStart(2,'0')}-${dm[2].padStart(2,'0')}`;
     }
-    // Match associate by name (case-insensitive, partial ok)
+    // Match associate by name (case-insensitive)
+    // 1st pass: exact match
+    // 2nd pass: one name fully contains the other (handles "Last, First" ↔ "First Last")
+    // 3rd pass: any whole word in common — uses exact word comparison, NOT substring,
+    //           so "Jose" won't match "Joseph" (fixes Jose Ayala / Joseph Quidachay mixup)
     const nameLower = rawName.toLowerCase();
     const assoc = allAssociates.find(a => a.name.toLowerCase() === nameLower)
-      || allAssociates.find(a => a.name.toLowerCase().includes(nameLower) || nameLower.includes(a.name.toLowerCase().split(' ')[0]));
+      || allAssociates.find(a => { const s = a.name.toLowerCase(); return s.includes(nameLower) || nameLower.includes(s); })
+      || allAssociates.find(a => {
+           const storedWords = a.name.toLowerCase().split(/[\s,]+/).filter(w => w.length > 1);
+           const rawWords    = nameLower.split(/[\s,]+/).filter(w => w.length > 1);
+           return storedWords.some(w => rawWords.includes(w));
+         });
     // Infer attendance type from notes + points
     const nl = note.toLowerCase();
     let type = 'call-out';
