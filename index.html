@@ -1517,6 +1517,17 @@ window.saveBadgeNomination = async () => {
   const badge  = document.getElementById('badgeSelect').value;
   const reason = document.getElementById('badgeReason').value.trim();
   if (!reason) { alert('Please add a reason for the nomination.'); return; }
+  // Block duplicate: check if this badge is already approved or pending for this associate
+  const existingSnap = await getDocs(collection(db, 'badges', currentAssociateId, 'entries'));
+  const existing = existingSnap.docs.map(d => d.data());
+  if (existing.some(b => b.badge === badge && b.status === 'approved')) {
+    alert(`${badge} has already been awarded to this associate.`);
+    return;
+  }
+  if (existing.some(b => b.badge === badge && b.status === 'pending')) {
+    alert(`A nomination for ${badge} is already pending approval.`);
+    return;
+  }
   const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
   const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
   const assoc    = allAssociates.find(a => a.id === currentAssociateId);
@@ -1530,17 +1541,24 @@ window.saveBadgeNomination = async () => {
   alert(`"${badge}" nomination submitted — an admin will review it.`);
 };
 window.approveBadge = async (associateId, badgeId) => {
+  const badgeSnap = await getDoc(doc(db, 'badges', associateId, 'entries', badgeId));
+  if (!badgeSnap.exists()) return;
+  const badgeLabel = badgeSnap.data().badge;
+  // Block duplicate: check if another entry with same badge is already approved
+  const allSnap = await getDocs(collection(db, 'badges', associateId, 'entries'));
+  const alreadyApproved = allSnap.docs.some(d => d.id !== badgeId && d.data().badge === badgeLabel && d.data().status === 'approved');
+  if (alreadyApproved) {
+    alert(`${badgeLabel} has already been awarded. Delete the duplicate nomination instead.`);
+    return;
+  }
   const userSnap  = await getDoc(doc(db, 'users', currentUser.uid));
   const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
-  const badgeSnap = await getDoc(doc(db, 'badges', associateId, 'entries', badgeId));
   await updateDoc(doc(db, 'badges', associateId, 'entries', badgeId), {
     status: 'approved', approvedBy: displayName, approvedAt: new Date().toISOString()
   });
-  if (badgeSnap.exists()) {
-    const pts = badgePoints(badgeSnap.data().badge);
-    await updateDoc(doc(db, 'associates', associateId), { points: increment(pts) });
-    await logPoints(associateId, 'Badge', `Badge approved: ${badgeSnap.data().badge}`, pts);
-  }
+  const pts = badgePoints(badgeLabel);
+  await updateDoc(doc(db, 'associates', associateId), { points: increment(pts) });
+  await logPoints(associateId, 'Badge', `Badge approved: ${badgeLabel}`, pts);
 };
 window.rejectBadge = async (associateId, badgeId) => {
   if (!confirm('Reject and remove this nomination?')) return;
