@@ -776,12 +776,22 @@ function renderLeaders() {
     const avatarCls = isOM ? 'avatar-om' : isSup ? 'avatar-supervisor' : 'avatar-lead';
     const icon      = isOM ? 'fa-user-tie' : isSup ? 'fa-shield-alt' : 'fa-star';
     const label     = isOM ? 'Operations Manager' : isSup ? 'Supervisor' : 'Lead';
-    return `<div class="leader-card" onclick="openProfile('${a.id}')">
+    // Build time-off / attendance banner (same logic as associate cards)
+    const todayAtt = _todayAttMap[a.id];
+    const todayTO  = _todayTimeOffMap[a.id];
+    let banner = null;
+    if (todayAtt === 'ncns')      banner = { label: 'NCNS',      color: '#7c0000', bg: '#fee2e2' };
+    else if (todayAtt === 'call-out') banner = { label: 'OUT',       color: '#dc2626', bg: '#fee2e2' };
+    else if (todayAtt === 'early')    banner = { label: 'Early Out', color: '#ea580c', bg: '#ffedd5' };
+    else if (todayAtt === 'late')     banner = { label: 'Tardy',     color: '#d97706', bg: '#fef3c7' };
+    else if (todayTO)                 banner = { label: todayTO.label, color: todayTO.color, bg: todayTO.bg };
+    return `<div class="leader-card" onclick="openProfile('${a.id}')" style="${banner ? 'border-top:3px solid '+banner.color+';' : ''}overflow:hidden">
       <div class="leader-avatar ${avatarCls}">${initials}</div>
       <div class="leader-name">${escapeHtml(a.name)}</div>
       <div class="leader-pos"><i class="fas ${icon} me-1"></i>${label}</div>
       <div class="leader-shift">${escapeHtml(a.shift || '—')} Shift</div>
       ${(currentUserRole === 'admin' || a.id === currentUserAssocId) ? `<button class="kanban-btn" onclick="event.stopPropagation();openKanban('${a.id}','${escapeHtml(a.name)}')"><i class="fas fa-columns" style="font-size:0.65rem"></i>Board<span class="kb-count" id="kb-count-${a.id}">—</span></button>` : ''}
+      ${banner ? `<div style="background:${banner.bg};color:${banner.color};font-size:0.68rem;font-weight:700;text-align:center;padding:3px 0;letter-spacing:0.5px;margin-top:6px;margin-left:-12px;margin-right:-12px;">${banner.label}</div>` : ''}
     </div>`;
   }).join('');
 }
