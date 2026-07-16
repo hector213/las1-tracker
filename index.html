@@ -1563,6 +1563,7 @@ window.approveBadge = async (associateId, badgeId) => {
 window.rejectBadge = async (associateId, badgeId) => {
   if (!confirm('Reject and remove this nomination?')) return;
   await deleteDoc(doc(db, 'badges', associateId, 'entries', badgeId));
+  listenBadges(associateId); // refresh badge display immediately
 };
 window.removeBadge = async (badgeId) => {
   if (!confirm('Remove this badge?')) return;
@@ -1573,6 +1574,7 @@ window.removeBadge = async (badgeId) => {
     await logPoints(currentAssociateId, 'Badge', `Badge removed: ${badgeSnap.data().badge}`, -pts);
   }
   await deleteDoc(doc(db, 'badges', currentAssociateId, 'entries', badgeId));
+  listenBadges(currentAssociateId); // refresh badge display immediately
 };
 
 // ─── Certifications ───────────────────────────────────────────────────
