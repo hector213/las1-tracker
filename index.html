@@ -4846,37 +4846,48 @@ window.deleteSelectedCerts = async () => {
   const selected = [...document.querySelectorAll('.reset-cert-check:checked')].map(cb => cb.value);
   if (!selected.length) { alert('Select at least one associate.'); return; }
   const names = selected.map(id => allAssociates.find(a => a.id === id)?.name || id).join(', ');
-  if (!confirm(`Clear all certifications for:\n${names}\n\nThis will also remove any cert milestone badges. Continue?`)) return;
+  if (!confirm(`Clear all certifications for:\n${names}\n\nThis will delete cert records, cert milestone badges, and all certification point log entries. Continue?`)) return;
   const btn = document.getElementById('deleteSelectedCertsBtn');
   btn.disabled = true; btn.textContent = 'Clearing…';
   try {
     const writes = [];
     for (const assocId of selected) {
+      // Delete cert doc
       writes.push(deleteDoc(doc(db, 'certs', assocId)));
+      // Delete cert milestone badges
       const badgeSnap = await getDocs(collection(db, 'badges', assocId, 'entries'));
       badgeSnap.docs.filter(d => d.data().autoAwarded).forEach(d => writes.push(deleteDoc(d.ref)));
+      // Delete Certification entries from the points log
+      const logSnap = await getDocs(query(collection(db, 'pointslog', assocId, 'entries'), where('type', '==', 'Certification')));
+      logSnap.docs.forEach(d => writes.push(deleteDoc(d.ref)));
     }
     await Promise.all(writes);
-    alert('Done! Certifications cleared for selected associates.');
+    alert('Done! Certifications and cert log entries cleared for selected associates.');
     loadCertResetPanel();
   } catch(e) { alert('Error: ' + e.message); }
   finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-times me-1"></i>Delete Selected'; }
 };
 
 window.resetAllCerts = async () => {
-  if (!confirm('⚠️ RESET ALL CERTIFICATIONS\n\nThis will:\n• Delete ALL cert records for every associate\n• Remove all cert milestone badges\n\nThis cannot be undone. Continue?')) return;
+  if (!confirm('⚠️ RESET ALL CERTIFICATIONS\n\nThis will:\n• Delete ALL cert records for every associate\n• Remove all cert milestone badges\n• Delete all Certification entries from every points log\n\nThis cannot be undone. Continue?')) return;
   const btn = document.getElementById('resetAllCertsBtn');
   btn.disabled = true; btn.textContent = 'Resetting…';
   try {
     const writes = [];
+    // Delete all cert documents
     const certSnap = await getDocs(collection(db, 'certs'));
     certSnap.docs.forEach(d => writes.push(deleteDoc(d.ref)));
+    // Per associate: delete milestone badges + cert log entries
     for (const a of allAssociates) {
-      const badgeSnap = await getDocs(collection(db, 'badges', a.id, 'entries'));
+      const [badgeSnap, logSnap] = await Promise.all([
+        getDocs(collection(db, 'badges', a.id, 'entries')),
+        getDocs(query(collection(db, 'pointslog', a.id, 'entries'), where('type', '==', 'Certification')))
+      ]);
       badgeSnap.docs.filter(d => d.data().autoAwarded).forEach(d => writes.push(deleteDoc(d.ref)));
+      logSnap.docs.forEach(d => writes.push(deleteDoc(d.ref)));
     }
     await Promise.all(writes);
-    alert('All certifications have been reset.');
+    alert('All certifications and cert log entries have been reset.');
     loadCertResetPanel();
   } catch(e) { alert('Error: ' + e.message); }
   finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Reset All Certs'; }
