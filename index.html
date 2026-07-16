@@ -1658,26 +1658,26 @@ window.setCertStatus = async (newStatus) => {
       await logPoints(currentAssociateId, 'Certification', `Cert moved to training: ${_certModalLabel}`, -10);
     }
   }
-  // Check cert milestone badges after any change, then refresh the badge section
-  if (newStatus !== 'remove') {
-    await checkCertMilestones(currentAssociateId, displayName);
-    listenBadges(currentAssociateId); // re-read so any newly awarded milestone badge appears immediately
-  }
-  // Re-render the cert chips immediately — no refresh needed
-  const updatedSnap = await getDoc(doc(db, 'certs', currentAssociateId));
+  // Re-render cert chips + update points stat immediately — must happen before milestone check
+  // so a milestone error never blocks the UI from reflecting the cert/points write above
+  const [updatedSnap, assocSnap] = await Promise.all([
+    getDoc(doc(db, 'certs', currentAssociateId)),
+    getDoc(doc(db, 'associates', currentAssociateId))
+  ]);
   renderCerts(updatedSnap.exists() ? updatedSnap.data() : {});
-  // Update the profile points stat immediately (onSnapshot only refreshes the dashboard, not the profile panel)
-  const assocSnap = await getDoc(doc(db, 'associates', currentAssociateId));
   if (assocSnap.exists()) {
     const newPts = assocSnap.data().points || 0;
     const ptsStat = document.getElementById('statPoints');
-    if (ptsStat) {
-      ptsStat.textContent = (newPts > 0 ? '+' : '') + newPts;
-      ptsStat.style.color = pointsColor(newPts);
-    }
-    // Keep allAssociates in sync so the dashboard card reflects the change too
+    if (ptsStat) { ptsStat.textContent = (newPts > 0 ? '+' : '') + newPts; ptsStat.style.color = pointsColor(newPts); }
     const idx = allAssociates.findIndex(a => a.id === currentAssociateId);
     if (idx !== -1) allAssociates[idx].points = newPts;
+  }
+  // Check cert milestone badges — wrapped in try-catch so any error here never breaks the UI
+  if (newStatus !== 'remove') {
+    try {
+      await checkCertMilestones(currentAssociateId, displayName);
+      listenBadges(currentAssociateId);
+    } catch(e) { console.warn('Cert milestone check failed (non-critical):', e); }
   }
 };
 
@@ -1765,8 +1765,10 @@ window.openAddAssociate = () => {
 window.openEditAssociate = (id, data) => {
   document.getElementById('assocModalTitle').textContent = 'Edit Associate';
   document.getElementById('assocId').value = id;
-  // Show Delete button for admins only
+  // Show Delete button for admins only — always reset its state first
   const delBtn = document.getElementById('deleteAssocBtn');
+  delBtn.disabled = false;
+  delBtn.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Delete';
   if (currentUserRole === 'admin') delBtn.classList.remove('d-none');
   else delBtn.classList.add('d-none');
   ['Name','EmployeeId','Role','Dept'].forEach(f => {
@@ -3168,6 +3170,63 @@ function applyAttendanceStats(activeAll, activeAssoc) {
   renderCards();
   applyKanbanCounts(); // restore cached counts from memory — no Firestore reads
 }
+
+window.openInBuildingList = () => {
+  const leaderPos = new Set(['ops-manager', 'supervisor', 'lead']);
+  const outIds = new Set([
+    ...Object.keys(_todayAttMap).filter(id => _todayAttMap[id] === 'ncns' || _todayAttMap[id] === 'call-out'),
+    ...Object.keys(_todayTimeOffMap)
+  ]);
+  const inBuilding = allAssociates
+    .filter(a => a.status === 'active' && !leaderPos.has(a.position) && !outIds.has(a.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const now = new Date().toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const rows = inBuilding.map((a, i) => `
+    <tr>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5pt">${i + 1}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5pt;font-weight:600">${escapeHtml(a.name)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10pt;color:#6b7280">${escapeHtml(a.role || '—')}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10pt;color:#6b7280">${escapeHtml(a.shift || '—')}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;width:80px">
+        <div style="width:70px;height:22px;border:1.5px solid #9ca3af;border-radius:4px"></div>
+      </td>
+    </tr>`).join('');
+
+  const win = window.open('', '_blank', 'width=750,height=900');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>LAS1 Fire Drill Roster</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 28px 32px; color: #111; }
+    h1 { font-size: 18pt; color: #1a2744; margin: 0 0 4px; }
+    .sub { font-size: 10pt; color: #6b7280; margin-bottom: 18px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #1a2744; color: #fff; padding: 8px 10px; font-size: 10pt; text-align: left; }
+    tr:nth-child(even) td { background: #f9fafb; }
+    .footer { margin-top: 24px; font-size: 9pt; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 10px; }
+    @media print { button { display: none !important; } body { padding: 16px; } }
+  </style></head><body>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <h1>🔥 LAS1 Fire Drill Roster</h1>
+      <div class="sub">Generated: ${now} &nbsp;·&nbsp; <strong>${inBuilding.length}</strong> associates in building</div>
+    </div>
+    <button onclick="window.print()" style="padding:8px 20px;background:#1a2744;color:#fff;border:none;border-radius:6px;font-size:10pt;cursor:pointer;margin-top:4px">🖨️ Print</button>
+  </div>
+  <table>
+    <thead><tr>
+      <th style="width:36px">#</th>
+      <th>Name</th>
+      <th>Role</th>
+      <th>Shift</th>
+      <th>✓ Accounted</th>
+    </tr></thead>
+    <tbody>${rows || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#9ca3af">No associates currently marked in building.</td></tr>'}</tbody>
+  </table>
+  <div class="footer">LAS1 Engagement Tracker &nbsp;·&nbsp; Fire Drill Roster &nbsp;·&nbsp; ${now}</div>
+  </body></html>`);
+  win.document.close();
+};
 
 async function loadTodayTimeOff() {
   // Cache for 10 minutes — called on every associates snapshot fire so must be cheap
@@ -5965,7 +6024,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             </div>
           </div>
         </div>
-        <div class="col-6 col-lg-3"><div class="stat-card h-100"><div class="val" id="statInBuilding">—</div><div class="lbl">In Building</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat-card h-100" onclick="openInBuildingList()" style="cursor:pointer" title="Click for fire drill roster"><div class="val" id="statInBuilding">—</div><div class="lbl">In Building <i class="fas fa-print ms-1" style="font-size:0.65rem;opacity:0.6"></i></div></div></div>
         <div class="col-6 col-lg-3">
           <div class="stat-card h-100" style="display:flex;flex-direction:column;justify-content:center;gap:6px">
             <div class="d-flex justify-content-between align-items-center">
