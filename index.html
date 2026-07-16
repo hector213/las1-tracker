@@ -826,6 +826,11 @@ window.openProfile = async (id) => {
   const snap = await getDoc(doc(db, 'associates', id));
   if (!snap.exists()) return;
   const a = snap.data();
+  // Sync fresh Firestore data back into allAssociates so _basePoints in setCertStatus
+  // (and any other in-memory point reads) always reflect the real current value.
+  const _syncIdx = allAssociates.findIndex(x => x.id === id);
+  if (_syncIdx !== -1) allAssociates[_syncIdx] = { id, ...a };
+  else allAssociates.push({ id, ...a });
 
   const initials = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
   document.getElementById('profileAvatar').textContent = initials;
@@ -1569,12 +1574,17 @@ window.removeBadge = async (badgeId) => {
   if (!confirm('Remove this badge?')) return;
   const badgeSnap = await getDoc(doc(db, 'badges', currentAssociateId, 'entries', badgeId));
   if (badgeSnap.exists()) {
-    const pts = badgePoints(badgeSnap.data().badge);
-    await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(-pts) });
-    await logPoints(currentAssociateId, 'Badge', `Badge removed: ${badgeSnap.data().badge}`, -pts);
+    const badgeData = badgeSnap.data();
+    // Cert milestone badges (autoAwarded) are never awarded points through the normal flow,
+    // so deleting them must NOT deduct points. Only deduct for regular badges.
+    if (!badgeData.autoAwarded) {
+      const pts = badgePoints(badgeData.badge);
+      await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(-pts) });
+      await logPoints(currentAssociateId, 'Badge', `Badge removed: ${badgeData.badge}`, -pts);
+    }
   }
   await deleteDoc(doc(db, 'badges', currentAssociateId, 'entries', badgeId));
-  listenBadges(currentAssociateId); // refresh badge display immediately
+  listenBadges(currentAssociateId);
 };
 
 // ─── Certifications ───────────────────────────────────────────────────
