@@ -1698,16 +1698,13 @@ async function checkCertMilestones(assocId, awardedBy) {
   const total = CERTS.length;
   const pct = total > 0 ? (certifiedCount / total) * 100 : 0;
 
-  // Get already-earned milestone badge keys
-  const existingMilestones = new Set();
-  if (!badgeSnap.empty) {
-    badgeSnap.docs.forEach(d => { const b = d.data();
-      if (b.badge && b.badge.startsWith('cert-')) existingMilestones.add(b.badge);
-    });
-  }
+  // Get already-earned milestone badge labels (badges are stored by label, not by key)
+  const existingMilestoneLabels = new Set(
+    badgeSnap.docs.map(d => d.data().badge).filter(Boolean)
+  );
 
   for (const m of CERT_MILESTONES) {
-    if (pct >= m.pct && !existingMilestones.has(m.key)) {
+    if (pct >= m.pct && !existingMilestoneLabels.has(m.label)) {
       // Auto-award this milestone badge
       const badgeRef = await addDoc(collection(db, 'badges', assocId, 'entries'), {
         badge: m.label,                        // match renderBadges def.label lookup
