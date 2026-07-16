@@ -1741,12 +1741,17 @@ window.openAddAssociate = () => {
   document.getElementById('assocModalTitle').textContent = 'Add Associate';
   document.getElementById('assocForm').reset();
   document.getElementById('assocId').value = '';
+  document.getElementById('deleteAssocBtn').classList.add('d-none');
   populateReportsTo('');
   bootstrap.Modal.getOrCreateInstance(document.getElementById('assocModal')).show();
 };
 window.openEditAssociate = (id, data) => {
   document.getElementById('assocModalTitle').textContent = 'Edit Associate';
   document.getElementById('assocId').value = id;
+  // Show Delete button for admins only
+  const delBtn = document.getElementById('deleteAssocBtn');
+  if (currentUserRole === 'admin') delBtn.classList.remove('d-none');
+  else delBtn.classList.add('d-none');
   ['Name','EmployeeId','Role','Dept'].forEach(f => {
     const key = f === 'EmployeeId' ? 'employeeId' : f === 'Dept' ? 'department' : f.toLowerCase();
     document.getElementById('assoc' + f).value = data[key] || '';
@@ -1790,6 +1795,44 @@ window.saveAssociate = async () => {
   if (data.status === 'resigned' || data.status === 'terminated') {
     const fs = document.getElementById('filterStatus');
     if (fs && fs.value !== 'active') { fs.value = 'active'; renderDashboard(); }
+  }
+};
+
+// ─── Delete Associate (admin only) ────────────────────────────────────
+window.deleteAssociate = async () => {
+  const id   = document.getElementById('assocId').value;
+  const name = document.getElementById('assocName').value.trim() || 'this associate';
+  if (!id) return;
+  if (!confirm(`⚠ Permanently delete ${name}?\n\nThis will remove ALL records including attendance, points, notes, badges, and warnings. This cannot be undone.`)) return;
+
+  const btn = document.getElementById('deleteAssocBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Deleting…';
+
+  try {
+    // Delete all subcollection entries
+    const subcols = ['attendance', 'pointslog', 'notes', 'badges', 'warnings', 'watchnotes', 'timeOff'];
+    await Promise.all(subcols.map(async col => {
+      const snap = await getDocs(collection(db, col, id, 'entries'));
+      await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+    }));
+
+    // Delete certs doc (single doc, not subcollection)
+    try { await deleteDoc(doc(db, 'certs', id)); } catch(e) { /* may not exist */ }
+
+    // Delete signed warnings that reference this associate
+    const swSnap = await getDocs(query(collection(db, 'signedWarnings'), where('associateId', '==', id)));
+    await Promise.all(swSnap.docs.map(d => deleteDoc(d.ref)));
+
+    // Finally delete the associate doc itself
+    await deleteDoc(doc(db, 'associates', id));
+
+    bootstrap.Modal.getInstance(document.getElementById('assocModal')).hide();
+  } catch(err) {
+    console.error('Delete failed:', err);
+    alert('Delete failed: ' + err.message);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Delete';
   }
 };
 
@@ -7049,9 +7092,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
       </form>
     </div>
-    <div class="modal-footer border-0 pt-0">
-      <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-      <button class="btn btn-orange" onclick="saveAssociate()">Save Associate</button>
+    <div class="modal-footer border-0 pt-0 justify-content-between">
+      <button class="btn btn-outline-danger d-none" id="deleteAssocBtn" onclick="deleteAssociate()">
+        <i class="fas fa-trash-alt me-1"></i>Delete
+      </button>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-orange" onclick="saveAssociate()">Save Associate</button>
+      </div>
     </div>
   </div></div>
 </div>
