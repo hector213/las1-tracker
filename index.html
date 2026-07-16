@@ -1638,41 +1638,45 @@ window.setCertStatus = async (newStatus) => {
   const certRef = doc(db, 'certs', currentAssociateId);
   const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
   const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
-  // oldStatus lives under the specific cert key, not at the document root
   const oldStatus = _certModalExisting?.[_certModalKey]?.status || null;
+
+  // Determine points delta up front so we can update UI locally without relying on read-back
+  let pointsDelta = 0;
 
   if (newStatus === 'remove') {
     await updateDoc(certRef, { [_certModalKey]: deleteField() });
     if (oldStatus === 'certified') {
+      pointsDelta = -10;
       await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(-10) });
       await logPoints(currentAssociateId, 'Certification', `Cert removed: ${_certModalLabel}`, -10);
     }
   } else {
-    // Use setDoc with merge so it creates the cert doc if it doesn't exist yet
     await setDoc(certRef, { [_certModalKey]: { certifiedAt: new Date().toISOString(), certifiedBy: displayName, status: newStatus } }, { merge: true });
     if (newStatus === 'certified' && oldStatus !== 'certified') {
+      pointsDelta = 10;
       await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(10) });
       await logPoints(currentAssociateId, 'Certification', `Cert earned: ${_certModalLabel}`, 10);
     } else if (newStatus === 'training' && oldStatus === 'certified') {
+      pointsDelta = -10;
       await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(-10) });
       await logPoints(currentAssociateId, 'Certification', `Cert moved to training: ${_certModalLabel}`, -10);
     }
   }
-  // Re-render cert chips + update points stat immediately — must happen before milestone check
-  // so a milestone error never blocks the UI from reflecting the cert/points write above
-  const [updatedSnap, assocSnap] = await Promise.all([
-    getDoc(doc(db, 'certs', currentAssociateId)),
-    getDoc(doc(db, 'associates', currentAssociateId))
-  ]);
-  renderCerts(updatedSnap.exists() ? updatedSnap.data() : {});
-  if (assocSnap.exists()) {
-    const newPts = assocSnap.data().points || 0;
+
+  // Update points UI using local delta — avoids stale-cache read-back issues
+  if (pointsDelta !== 0) {
+    const curAssoc = allAssociates.find(a => a.id === currentAssociateId);
+    const newPts = (curAssoc?.points || 0) + pointsDelta;
     const ptsStat = document.getElementById('statPoints');
     if (ptsStat) { ptsStat.textContent = (newPts > 0 ? '+' : '') + newPts; ptsStat.style.color = pointsColor(newPts); }
-    const idx = allAssociates.findIndex(a => a.id === currentAssociateId);
-    if (idx !== -1) allAssociates[idx].points = newPts;
+    if (curAssoc) curAssoc.points = newPts;
   }
-  // Check cert milestone badges — wrapped in try-catch so any error here never breaks the UI
+
+  // Re-render cert chips
+  const updatedSnap = await getDoc(doc(db, 'certs', currentAssociateId));
+  renderCerts(updatedSnap.exists() ? updatedSnap.data() : {});
+
+  // Check cert milestone badges — wrapped in try-catch so any error never blocks the UI
   if (newStatus !== 'remove') {
     try {
       await checkCertMilestones(currentAssociateId, displayName);
@@ -3178,20 +3182,32 @@ window.openInBuildingList = () => {
     ...Object.keys(_todayTimeOffMap)
   ]);
   const inBuilding = allAssociates
-    .filter(a => a.status === 'active' && !leaderPos.has(a.position) && !outIds.has(a.id))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .filter(a => a.status === 'active' && !outIds.has(a.id))
+    .sort((a, b) => {
+      // Leadership first, then alphabetical within each group
+      const aLead = leaderPos.has(a.position) ? 0 : 1;
+      const bLead = leaderPos.has(b.position) ? 0 : 1;
+      if (aLead !== bLead) return aLead - bLead;
+      return a.name.localeCompare(b.name);
+    });
 
   const now = new Date().toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-  const rows = inBuilding.map((a, i) => `
-    <tr>
+  const rows = inBuilding.map((a, i) => {
+    const isLeader = leaderPos.has(a.position);
+    const rowBg = isLeader ? 'background:#eef2ff;' : '';
+    const nameBold = isLeader ? 'font-weight:700;' : 'font-weight:600;';
+    const leaderTag = isLeader ? `<span style="font-size:8pt;background:#1a2744;color:#fff;border-radius:3px;padding:1px 5px;margin-left:6px;vertical-align:middle">${escapeHtml(a.position === 'ops-manager' ? 'OPS MGR' : a.position.toUpperCase())}</span>` : '';
+    return `
+    <tr style="${rowBg}">
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5pt">${i + 1}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5pt;font-weight:600">${escapeHtml(a.name)}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5pt;${nameBold}">${escapeHtml(a.name)}${leaderTag}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10pt;color:#6b7280">${escapeHtml(a.role || '—')}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10pt;color:#6b7280">${escapeHtml(a.shift || '—')}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;width:80px">
         <div style="width:70px;height:22px;border:1.5px solid #9ca3af;border-radius:4px"></div>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   const win = window.open('', '_blank', 'width=750,height=900');
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -3202,14 +3218,13 @@ window.openInBuildingList = () => {
     .sub { font-size: 10pt; color: #6b7280; margin-bottom: 18px; }
     table { width: 100%; border-collapse: collapse; }
     th { background: #1a2744; color: #fff; padding: 8px 10px; font-size: 10pt; text-align: left; }
-    tr:nth-child(even) td { background: #f9fafb; }
     .footer { margin-top: 24px; font-size: 9pt; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 10px; }
     @media print { button { display: none !important; } body { padding: 16px; } }
   </style></head><body>
   <div style="display:flex;justify-content:space-between;align-items:flex-start">
     <div>
       <h1>🔥 LAS1 Fire Drill Roster</h1>
-      <div class="sub">Generated: ${now} &nbsp;·&nbsp; <strong>${inBuilding.length}</strong> associates in building</div>
+      <div class="sub">Generated: ${now} &nbsp;·&nbsp; <strong>${inBuilding.length}</strong> personnel in building</div>
     </div>
     <button onclick="window.print()" style="padding:8px 20px;background:#1a2744;color:#fff;border:none;border-radius:6px;font-size:10pt;cursor:pointer;margin-top:4px">🖨️ Print</button>
   </div>
@@ -3221,7 +3236,7 @@ window.openInBuildingList = () => {
       <th>Shift</th>
       <th>✓ Accounted</th>
     </tr></thead>
-    <tbody>${rows || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#9ca3af">No associates currently marked in building.</td></tr>'}</tbody>
+    <tbody>${rows || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#9ca3af">No personnel currently in building.</td></tr>'}</tbody>
   </table>
   <div class="footer">LAS1 Engagement Tracker &nbsp;·&nbsp; Fire Drill Roster &nbsp;·&nbsp; ${now}</div>
   </body></html>`);
