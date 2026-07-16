@@ -3091,14 +3091,15 @@ async function loadTodayAttendanceStats() {
 
 // Apply the in-memory _todayAttMap to DOM stats + re-render cards (zero Firestore reads)
 function applyAttendanceStats(activeAll, activeAssoc) {
+  const ncnsIds     = new Set(Object.keys(_todayAttMap).filter(id => _todayAttMap[id] === 'ncns'));
   const callOutIds  = new Set(Object.keys(_todayAttMap).filter(id => _todayAttMap[id] === 'call-out'));
   const earlyOutIds = new Set(Object.keys(_todayAttMap).filter(id => _todayAttMap[id] === 'early'));
   const timeOffIds  = new Set(Object.keys(_todayTimeOffMap).filter(id => activeAll.find(a => a.id === id)));
 
-  const callOuts  = [...callOutIds].filter(id => activeAssoc.find(a => a.id === id)).length;
+  const callOuts  = [...callOutIds, ...ncnsIds].filter(id => activeAssoc.find(a => a.id === id)).length;
   const earlyOuts = [...earlyOutIds].filter(id => activeAssoc.find(a => a.id === id)).length;
   const timeOffCount = timeOffIds.size;
-  const outOfBuilding = new Set([...callOutIds, ...earlyOutIds, ...timeOffIds]).size;
+  const outOfBuilding = new Set([...ncnsIds, ...callOutIds, ...earlyOutIds, ...timeOffIds]).size;
 
   document.getElementById('statCallOuts').textContent    = callOuts;
   document.getElementById('statEarlyOuts').textContent   = earlyOuts;
