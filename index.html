@@ -1687,9 +1687,12 @@ window.setCertStatus = async (newStatus) => {
     if (curAssoc) curAssoc.points = newPts;
   }
 
-  // Re-render cert chips
+  // Re-render cert chips and update the cert count stat
   const updatedSnap = await getDoc(doc(db, 'certs', currentAssociateId));
-  renderCerts(updatedSnap.exists() ? updatedSnap.data() : {});
+  const updatedCertData = updatedSnap.exists() ? updatedSnap.data() : {};
+  renderCerts(updatedCertData);
+  const certCountEl = document.getElementById('statCertCount');
+  if (certCountEl) certCountEl.textContent = Object.keys(updatedCertData).length;
 
   // Check cert milestone badges — wrapped in try-catch so any error never blocks the UI
   if (newStatus !== 'remove') {
