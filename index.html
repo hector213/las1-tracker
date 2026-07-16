@@ -4278,6 +4278,7 @@ window.loadAdminPanel = () => {
   loadTabToggles();
   loadResetPanel();
   loadAttResetPanel();
+  loadCertResetPanel();
 };
 
 // ─── Tab Visibility ───────────────────────────────────────────────────
@@ -4817,6 +4818,68 @@ window.resetAllBadges = async () => {
     // For now: remove all badges node and warn user points may need manual adjustment
     alert('All badge records cleared.\n\nNote: Engagement point totals may be affected. If needed, use "Reset All Points" to also clear engagement points.');
   } catch(e) { alert('Error: ' + e.message); }
+};
+
+// ─── Certifications data management ───────────────────────────────────
+window.loadCertResetPanel = () => {
+  const container = document.getElementById('resetCertList');
+  if (!container) return;
+  const active = allAssociates.filter(a => a.status === 'active').sort((a,b) => a.name.localeCompare(b.name));
+  if (!active.length) { container.innerHTML = '<p class="text-muted small">No active associates.</p>'; return; }
+  container.innerHTML = active.map(a => {
+    const certCount = allCertsMap[a.id]?.size || 0;
+    return `<div class="form-check">
+      <input class="form-check-input reset-cert-check" type="checkbox" id="ccheck_${a.id}" value="${a.id}">
+      <label class="form-check-label small" for="ccheck_${a.id}">
+        ${escapeHtml(a.name)}
+        <span class="text-muted">(${certCount} cert${certCount !== 1 ? 's' : ''})</span>
+      </label>
+    </div>`;
+  }).join('');
+};
+
+window.selectAllCertReset = (checked) => {
+  document.querySelectorAll('.reset-cert-check').forEach(cb => cb.checked = checked);
+};
+
+window.deleteSelectedCerts = async () => {
+  const selected = [...document.querySelectorAll('.reset-cert-check:checked')].map(cb => cb.value);
+  if (!selected.length) { alert('Select at least one associate.'); return; }
+  const names = selected.map(id => allAssociates.find(a => a.id === id)?.name || id).join(', ');
+  if (!confirm(`Clear all certifications for:\n${names}\n\nThis will also remove any cert milestone badges. Continue?`)) return;
+  const btn = document.getElementById('deleteSelectedCertsBtn');
+  btn.disabled = true; btn.textContent = 'Clearing…';
+  try {
+    const writes = [];
+    for (const assocId of selected) {
+      writes.push(deleteDoc(doc(db, 'certs', assocId)));
+      const badgeSnap = await getDocs(collection(db, 'badges', assocId, 'entries'));
+      badgeSnap.docs.filter(d => d.data().autoAwarded).forEach(d => writes.push(deleteDoc(d.ref)));
+    }
+    await Promise.all(writes);
+    alert('Done! Certifications cleared for selected associates.');
+    loadCertResetPanel();
+  } catch(e) { alert('Error: ' + e.message); }
+  finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-times me-1"></i>Delete Selected'; }
+};
+
+window.resetAllCerts = async () => {
+  if (!confirm('⚠️ RESET ALL CERTIFICATIONS\n\nThis will:\n• Delete ALL cert records for every associate\n• Remove all cert milestone badges\n\nThis cannot be undone. Continue?')) return;
+  const btn = document.getElementById('resetAllCertsBtn');
+  btn.disabled = true; btn.textContent = 'Resetting…';
+  try {
+    const writes = [];
+    const certSnap = await getDocs(collection(db, 'certs'));
+    certSnap.docs.forEach(d => writes.push(deleteDoc(d.ref)));
+    for (const a of allAssociates) {
+      const badgeSnap = await getDocs(collection(db, 'badges', a.id, 'entries'));
+      badgeSnap.docs.filter(d => d.data().autoAwarded).forEach(d => writes.push(deleteDoc(d.ref)));
+    }
+    await Promise.all(writes);
+    alert('All certifications have been reset.');
+    loadCertResetPanel();
+  } catch(e) { alert('Error: ' + e.message); }
+  finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Reset All Certs'; }
 };
 
 // ─── Attendance Bulk Import ────────────────────────────────────────────
@@ -6958,6 +7021,26 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </button>
         </div>
         <p class="small text-muted mb-0">Removes all badge records (approved and pending) for every associate and zeros any badge points. Use this to clear test/filler badge data.</p>
+
+        <!-- Certifications -->
+        <hr class="my-3">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="small fw-semibold" style="color:var(--navy)"><i class="fas fa-certificate me-1" style="color:var(--orange)"></i>Certifications</span>
+          <button class="btn btn-sm btn-outline-danger" id="resetAllCertsBtn" onclick="resetAllCerts()">
+            <i class="fas fa-trash-alt me-1"></i>Reset All Certs
+          </button>
+        </div>
+        <p class="small text-muted mb-2">Select associates to delete their certification records and remove any cert milestone badges, or use Reset All to wipe everyone at once.</p>
+        <div class="d-flex gap-2 mb-2">
+          <button class="btn btn-sm btn-outline-secondary" onclick="selectAllCertReset(true)">Select All</button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="selectAllCertReset(false)">Clear</button>
+          <button class="btn btn-sm btn-danger ms-auto" id="deleteSelectedCertsBtn" onclick="deleteSelectedCerts()">
+            <i class="fas fa-times me-1"></i>Delete Selected
+          </button>
+        </div>
+        <div id="resetCertList" class="border rounded p-2" style="max-height:200px;overflow-y:auto;background:#fafafa">
+          <p class="text-muted small mb-0">Loading…</p>
+        </div>
       </div>
 
       <!-- Run Expiry Check -->
