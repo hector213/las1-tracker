@@ -3077,11 +3077,10 @@ function renderToCalendar() {
       onmouseover="this.style.background='rgba(26,39,68,0.06)'"
       onmouseout="this.style.background='${bgColor}'">
       <div style="font-size:0.78rem;font-weight:${isToday?'700':'500'};color:${isToday?'var(--orange)':'var(--navy)'};">${day}</div>
-      ${entries.slice(0,2).map(e => {
+      ${entries.map(e => {
         const t = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['unpaid'];
         return `<div style="font-size:0.62rem;font-weight:600;background:${t.color};color:#fff;border-radius:3px;padding:2px 4px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(e.assocName)}</div>`;
       }).join('')}
-      ${entries.length > 2 ? `<div style="font-size:0.62rem;font-weight:600;color:#6b7280;margin-top:1px">+${entries.length-2} more</div>` : ''}
     </div>`;
   }
 
