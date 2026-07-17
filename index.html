@@ -62,7 +62,7 @@ const FLAGS  = {
   'pip':               { label: 'PIP Track',         cls: 'bg-danger' },
   'low-uph':           { label: 'Low UPH',           cls: 'bg-flag-orange' }
 };
-const NOTE_TYPES = ['All','General','Coaching','Recognition','Leadership','Performance'];
+const NOTE_TYPES = ['All','General','Coaching','Recognition','Performance'];
 // Use local calendar date (not UTC) to avoid midnight timezone flip
 function localToday() {
   const d = new Date();
@@ -94,7 +94,7 @@ const ATTENDANCE_TYPES = [
 ];
 const POINT_VALUES = {
   badge:  { standard: 25, elite: 100, 'elite-plus': 200 },
-  note:   { Recognition: 10, Leadership: 15, Coaching: 0, Performance: 0, General: 0 }
+  note:   { Recognition: 10, Coaching: 0, Performance: 0, General: 0 }
 };
 function badgePoints(badgeLabel) {
   const def = BADGES.find(b => b.label === badgeLabel);
@@ -1143,7 +1143,7 @@ function renderNotes(notes) {
       ${notes.length ? 'No notes of this type.' : 'No notes yet. Add the first one to build this associate\'s profile.'}</div>`;
     return;
   }
-  const typeColors = { General:'bg-secondary', Coaching:'bg-warning text-dark', Recognition:'bg-success', Leadership:'bg-primary', Performance:'bg-purple' };
+  const typeColors = { General:'bg-secondary', Coaching:'bg-warning text-dark', Recognition:'bg-success', Performance:'bg-purple' };
   container.innerHTML = filtered.map(n => `
     <div class="note-card mb-3">
       <div class="d-flex justify-content-between align-items-start mb-2">
@@ -1323,6 +1323,7 @@ window.saveNote = async () => {
       await logPoints(currentAssociateId, 'Note', `${type} note added`, pts);
     }
     bootstrap.Modal.getInstance(document.getElementById('noteModal')).hide();
+    listenNotes(currentAssociateId);
   } finally {
     btn.disabled = false; btn.textContent = 'Save Note';
   }
@@ -1338,6 +1339,7 @@ window.deleteNote = async (noteId) => {
     }
   }
   await deleteDoc(doc(db, 'notes', currentAssociateId, 'entries', noteId));
+  listenNotes(currentAssociateId);
 };
 
 // ─── Login Credentials (admin only) ───────────────────────────────────
@@ -6441,7 +6443,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <button class="note-filter-btn filter-active" data-type="All" onclick="setNoteFilter('All')">All</button>
             <button class="note-filter-btn" data-type="Coaching" onclick="setNoteFilter('Coaching')">Coaching</button>
             <button class="note-filter-btn" data-type="Recognition" onclick="setNoteFilter('Recognition')">Recognition</button>
-            <button class="note-filter-btn" data-type="Leadership" onclick="setNoteFilter('Leadership')">Leadership</button>
             <button class="note-filter-btn" data-type="Performance" onclick="setNoteFilter('Performance')">Performance</button>
             <button class="note-filter-btn" data-type="General" onclick="setNoteFilter('General')">General</button>
           </div>
@@ -7571,7 +7572,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <option>General</option>
             <option>Coaching</option>
             <option>Recognition</option>
-            <option>Leadership</option>
             <option>Performance</option>
           </select>
         </div>
