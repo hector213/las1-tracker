@@ -1164,6 +1164,7 @@ function renderNotes(notes) {
 
 window.openAddNote = () => {
   document.getElementById('noteForm').reset();
+  window._pendingScreenshotData = null;
   document.getElementById('screenshotPreview').innerHTML = '';
   document.getElementById('screenshotSection').style.display = 'none';
   bootstrap.Modal.getOrCreateInstance(document.getElementById('noteModal')).show();
@@ -1175,16 +1176,49 @@ window.onNoteTypeChange = (sel) => {
     document.getElementById('screenshotPreview').innerHTML = '';
   }
 };
+function _showScreenshotPreview(dataUrl) {
+  document.getElementById('screenshotPreview').innerHTML =
+    `<div style="position:relative;display:inline-block;margin-top:8px;">
+      <img src="${dataUrl}" style="max-width:100%;max-height:200px;border-radius:6px;border:1px solid #c4b5fd;">
+      <button type="button" onclick="clearScreenshot()" title="Remove"
+        style="position:absolute;top:-8px;right:-8px;background:#ef4444;color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:13px;line-height:1;cursor:pointer;">&times;</button>
+    </div>`;
+}
+window._pendingScreenshotData = null;
+window.clearScreenshot = () => {
+  window._pendingScreenshotData = null;
+  document.getElementById('noteScreenshot').value = '';
+  document.getElementById('screenshotPreview').innerHTML = '';
+};
 window.previewScreenshot = (input) => {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
-    document.getElementById('screenshotPreview').innerHTML =
-      `<img src="${e.target.result}" style="max-width:100%;max-height:200px;border-radius:6px;border:1px solid #e2e8f0;margin-top:8px;">`;
-  };
+  reader.onload = e => { window._pendingScreenshotData = e.target.result; _showScreenshotPreview(e.target.result); };
   reader.readAsDataURL(file);
 };
+window.handleScreenshotDrop = (e) => {
+  const file = [...(e.dataTransfer.files || [])].find(f => f.type.startsWith('image/'));
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => { window._pendingScreenshotData = ev.target.result; _showScreenshotPreview(ev.target.result); };
+  reader.readAsDataURL(file);
+};
+// Wire paste listener to the note modal
+document.addEventListener('DOMContentLoaded', () => {
+  const noteModal = document.getElementById('noteModal');
+  if (noteModal) {
+    noteModal.addEventListener('paste', (e) => {
+      if (document.getElementById('screenshotSection')?.style.display === 'none') return;
+      const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+      if (!item) return;
+      const file = item.getAsFile();
+      const reader = new FileReader();
+      reader.onload = ev => { window._pendingScreenshotData = ev.target.result; _showScreenshotPreview(ev.target.result); };
+      reader.readAsDataURL(file);
+    });
+  }
+});
 // ─── Activity Tracking ────────────────────────────────────────────────
 function recordActivity(assocId) {
   updateDoc(doc(db, 'associates', assocId), { lastActivityAt: new Date().toISOString() });
@@ -1228,15 +1262,25 @@ window.saveNote = async () => {
   const btn = document.getElementById('saveNoteBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    // Compress screenshot if Performance type and file selected
+    // Use pasted/dropped/selected screenshot for Performance notes
     let screenshotData = null;
-    if (type === 'Performance') {
-      const fileInput = document.getElementById('noteScreenshot');
-      if (fileInput && fileInput.files[0]) {
-        btn.textContent = 'Compressing…';
-        screenshotData = await compressScreenshot(fileInput.files[0]);
-        btn.textContent = 'Saving…';
-      }
+    if (type === 'Performance' && window._pendingScreenshotData) {
+      btn.textContent = 'Compressing…';
+      // _pendingScreenshotData is already a data URL — compress via canvas
+      screenshotData = await new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX_W = 900;
+          let w = img.width, h = img.height;
+          if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W; }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.72));
+        };
+        img.src = window._pendingScreenshotData;
+      });
+      btn.textContent = 'Saving…';
     }
 
     const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
@@ -7514,8 +7558,17 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
         <div class="mb-3" id="screenshotSection" style="display:none">
           <label class="form-label small fw-semibold"><i class="fas fa-image me-1" style="color:#7c3aed"></i>Daily Screenshot <span class="text-muted fw-normal">(optional)</span></label>
-          <input type="file" class="form-control" id="noteScreenshot" accept="image/*" onchange="previewScreenshot(this)">
-          <div id="screenshotPreview"></div>
+          <div id="screenshotPasteZone" tabindex="0"
+            style="border:2px dashed #c4b5fd;border-radius:8px;padding:18px;text-align:center;cursor:pointer;background:#faf5ff;color:#7c3aed;font-size:0.85rem;outline:none;transition:border-color .2s"
+            onclick="document.getElementById('noteScreenshot').click()"
+            onkeydown="if(event.key==='Enter')document.getElementById('noteScreenshot').click()"
+            ondragover="event.preventDefault();this.style.borderColor='#7c3aed'"
+            ondragleave="this.style.borderColor='#c4b5fd'"
+            ondrop="event.preventDefault();this.style.borderColor='#c4b5fd';handleScreenshotDrop(event)">
+            <i class="fas fa-paste me-1"></i>Paste screenshot here &nbsp;·&nbsp; <i class="fas fa-folder-open me-1"></i>Click to browse &nbsp;·&nbsp; <i class="fas fa-arrow-down me-1"></i>or drag &amp; drop
+          </div>
+          <input type="file" class="d-none" id="noteScreenshot" accept="image/*" onchange="previewScreenshot(this)">
+          <div id="screenshotPreview" class="mt-2"></div>
         </div>
       </form>
     </div>
