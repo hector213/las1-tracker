@@ -1158,7 +1158,7 @@ function renderNotes(notes) {
         </div>
       </div>
       <div class="note-text">${escapeHtml(n.text)}</div>
-      ${n.screenshotData ? `<div class="mt-2"><img src="${n.screenshotData}" alt="Performance screenshot" style="max-width:100%;max-height:320px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;" onclick="window.open(this.src,'_blank')"></div>` : ''}
+      ${n.screenshotData ? `<div class="mt-2"><img src="${n.screenshotData}" alt="Performance screenshot" style="max-width:100%;max-height:320px;border-radius:6px;border:1px solid #e2e8f0;cursor:zoom-in;" onclick="openScreenshotLightbox(this.src)"></div>` : ''}
     </div>`).join('');
 }
 
@@ -1175,6 +1175,30 @@ window.onNoteTypeChange = (sel) => {
     document.getElementById('noteScreenshot').value = '';
     document.getElementById('screenshotPreview').innerHTML = '';
   }
+};
+window.openScreenshotLightbox = (src) => {
+  // Remove any existing lightbox
+  document.getElementById('_screenshotLightbox')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = '_screenshotLightbox';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;';
+  overlay.innerHTML = `
+    <div style="position:relative;max-width:95vw;max-height:90vh;display:flex;flex-direction:column;align-items:center;gap:12px;">
+      <div style="display:flex;gap:10px;width:100%;justify-content:flex-end;">
+        <button onclick="(function(){var w=window.open('','_blank');w.document.write('<img src=\\''+document.getElementById('_lbImg').src+'\\' style=\\'max-width:100%\\'>');w.document.close();w.print();w.close();})()"
+          style="background:#fff;color:#1e293b;border:none;border-radius:6px;padding:6px 16px;font-size:0.85rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">
+          <i class="fas fa-print"></i> Print
+        </button>
+        <button onclick="document.getElementById('_screenshotLightbox').remove()"
+          style="background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:0.85rem;font-weight:600;cursor:pointer;">
+          ✕ Close
+        </button>
+      </div>
+      <img id="_lbImg" src="${src}" style="max-width:90vw;max-height:80vh;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);object-fit:contain;">
+    </div>`;
+  // Click backdrop to close
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
 };
 function _showScreenshotPreview(dataUrl) {
   document.getElementById('screenshotPreview').innerHTML =
