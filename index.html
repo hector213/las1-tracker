@@ -62,7 +62,7 @@ const FLAGS  = {
   'pip':               { label: 'PIP Track',         cls: 'bg-danger' },
   'low-uph':           { label: 'Low UPH',           cls: 'bg-flag-orange' }
 };
-const NOTE_TYPES = ['All','General','Coaching','Recognition','Warning','PIP','Leadership'];
+const NOTE_TYPES = ['All','General','Coaching','Recognition','Leadership','Performance'];
 // Use local calendar date (not UTC) to avoid midnight timezone flip
 function localToday() {
   const d = new Date();
@@ -94,7 +94,7 @@ const ATTENDANCE_TYPES = [
 ];
 const POINT_VALUES = {
   badge:  { standard: 25, elite: 100, 'elite-plus': 200 },
-  note:   { Recognition: 10, Leadership: 15, Coaching: 0, Warning: -10, PIP: -150, General: 0 }
+  note:   { Recognition: 10, Leadership: 15, Coaching: 0, Performance: 0, General: 0 }
 };
 function badgePoints(badgeLabel) {
   const def = BADGES.find(b => b.label === badgeLabel);
@@ -1143,12 +1143,12 @@ function renderNotes(notes) {
       ${notes.length ? 'No notes of this type.' : 'No notes yet. Add the first one to build this associate\'s profile.'}</div>`;
     return;
   }
-  const typeColors = { General:'bg-secondary', Coaching:'bg-warning text-dark', Recognition:'bg-success', Warning:'bg-danger', PIP:'bg-dark', Leadership:'bg-primary' };
+  const typeColors = { General:'bg-secondary', Coaching:'bg-warning text-dark', Recognition:'bg-success', Leadership:'bg-primary', Performance:'bg-purple' };
   container.innerHTML = filtered.map(n => `
     <div class="note-card mb-3">
       <div class="d-flex justify-content-between align-items-start mb-2">
         <div class="d-flex gap-2 align-items-center flex-wrap">
-          <span class="badge ${typeColors[n.type] || 'bg-secondary'}">${escapeHtml(n.type)}</span>
+          <span class="badge ${typeColors[n.type] || 'bg-secondary'}" style="${n.type==='Performance'?'background:#7c3aed!important':''}">${escapeHtml(n.type)}</span>
           <span class="text-muted small fw-semibold">${escapeHtml(n.author || 'Unknown')}</span>
         </div>
         <div class="d-flex align-items-center gap-2">
@@ -1158,12 +1158,32 @@ function renderNotes(notes) {
         </div>
       </div>
       <div class="note-text">${escapeHtml(n.text)}</div>
+      ${n.screenshotData ? `<div class="mt-2"><img src="${n.screenshotData}" alt="Performance screenshot" style="max-width:100%;max-height:320px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;" onclick="window.open(this.src,'_blank')"></div>` : ''}
     </div>`).join('');
 }
 
 window.openAddNote = () => {
   document.getElementById('noteForm').reset();
+  document.getElementById('screenshotPreview').innerHTML = '';
+  document.getElementById('screenshotSection').style.display = 'none';
   bootstrap.Modal.getOrCreateInstance(document.getElementById('noteModal')).show();
+};
+window.onNoteTypeChange = (sel) => {
+  document.getElementById('screenshotSection').style.display = sel.value === 'Performance' ? '' : 'none';
+  if (sel.value !== 'Performance') {
+    document.getElementById('noteScreenshot').value = '';
+    document.getElementById('screenshotPreview').innerHTML = '';
+  }
+};
+window.previewScreenshot = (input) => {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('screenshotPreview').innerHTML =
+      `<img src="${e.target.result}" style="max-width:100%;max-height:200px;border-radius:6px;border:1px solid #e2e8f0;margin-top:8px;">`;
+  };
+  reader.readAsDataURL(file);
 };
 // ─── Activity Tracking ────────────────────────────────────────────────
 function recordActivity(assocId) {
@@ -1179,6 +1199,27 @@ function hasNewActivity(assoc) {
   return !viewed || assoc.lastActivityAt > viewed;
 }
 
+// Compress an image File to a base64 JPEG (max 900px wide, quality 0.72)
+function compressScreenshot(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      const MAX_W = 900;
+      let w = img.width, h = img.height;
+      if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.72));
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 window.saveNote = async () => {
   const text = document.getElementById('noteText').value.trim();
   const type = document.getElementById('noteType').value;
@@ -1187,13 +1228,26 @@ window.saveNote = async () => {
   const btn = document.getElementById('saveNoteBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
+    // Compress screenshot if Performance type and file selected
+    let screenshotData = null;
+    if (type === 'Performance') {
+      const fileInput = document.getElementById('noteScreenshot');
+      if (fileInput && fileInput.files[0]) {
+        btn.textContent = 'Compressing…';
+        screenshotData = await compressScreenshot(fileInput.files[0]);
+        btn.textContent = 'Saving…';
+      }
+    }
+
     const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
     const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
-    await addDoc(collection(db, 'notes', currentAssociateId, 'entries'), {
+    const noteData = {
       text, type,
       author: displayName, authorUid: currentUser.uid,
       createdAt: new Date().toISOString()
-    });
+    };
+    if (screenshotData) noteData.screenshotData = screenshotData;
+    await addDoc(collection(db, 'notes', currentAssociateId, 'entries'), noteData);
     recordActivity(currentAssociateId);
     const pts = notePoints(type);
     if (pts !== 0) {
@@ -6320,8 +6374,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <button class="note-filter-btn" data-type="Coaching" onclick="setNoteFilter('Coaching')">Coaching</button>
             <button class="note-filter-btn" data-type="Recognition" onclick="setNoteFilter('Recognition')">Recognition</button>
             <button class="note-filter-btn" data-type="Leadership" onclick="setNoteFilter('Leadership')">Leadership</button>
-            <button class="note-filter-btn" data-type="Warning" onclick="setNoteFilter('Warning')">Warning</button>
-            <button class="note-filter-btn" data-type="PIP" onclick="setNoteFilter('PIP')">PIP</button>
+            <button class="note-filter-btn" data-type="Performance" onclick="setNoteFilter('Performance')">Performance</button>
             <button class="note-filter-btn" data-type="General" onclick="setNoteFilter('General')">General</button>
           </div>
         </div>
@@ -7446,19 +7499,23 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <form id="noteForm">
         <div class="mb-3">
           <label class="form-label small fw-semibold">Note Type</label>
-          <select class="form-select" id="noteType">
+          <select class="form-select" id="noteType" onchange="onNoteTypeChange(this)">
             <option>General</option>
             <option>Coaching</option>
             <option>Recognition</option>
-            <option>Warning</option>
-            <option>PIP</option>
             <option>Leadership</option>
+            <option>Performance</option>
           </select>
         </div>
         <div class="mb-3">
           <label class="form-label small fw-semibold">Note <span class="text-danger">*</span></label>
           <textarea class="form-control" id="noteText" rows="5"
             placeholder="Add your observations, coaching points, recognition, or leadership potential notes…"></textarea>
+        </div>
+        <div class="mb-3" id="screenshotSection" style="display:none">
+          <label class="form-label small fw-semibold"><i class="fas fa-image me-1" style="color:#7c3aed"></i>Daily Screenshot <span class="text-muted fw-normal">(optional)</span></label>
+          <input type="file" class="form-control" id="noteScreenshot" accept="image/*" onchange="previewScreenshot(this)">
+          <div id="screenshotPreview"></div>
         </div>
       </form>
     </div>
