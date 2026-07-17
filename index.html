@@ -1443,6 +1443,7 @@ window.saveCred = async () => {
       createdAt: new Date().toISOString()
     });
     bootstrap.Modal.getInstance(document.getElementById('credModal')).hide();
+    listenCreds(currentAssociateId);
   } finally {
     btn.disabled = false; btn.textContent = 'Save';
   }
@@ -1451,6 +1452,7 @@ window.saveCred = async () => {
 window.deleteCred = async (credId) => {
   if (!confirm('Delete this credential entry?')) return;
   await deleteDoc(doc(db, 'credentials', currentAssociateId, 'entries', credId));
+  listenCreds(currentAssociateId);
 };
 
 // ─── Private Watch Notes ───────────────────────────────────────────────
