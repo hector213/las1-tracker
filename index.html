@@ -3291,6 +3291,7 @@ window.saveTimeOff = async () => {
   clearCache('milestones_firestore');
   recordActivity(assocId);
   bootstrap.Modal.getInstance(document.getElementById('timeOffModal')).hide();
+  loadTimeOff();
 };
 
 window.deleteTimeOff = async (assocId, entryId) => {
@@ -3298,7 +3299,7 @@ window.deleteTimeOff = async (assocId, entryId) => {
   await deleteDoc(doc(db, 'timeOff', assocId, 'entries', entryId));
   clearCache('todayTimeOff');
   clearCache('milestones_firestore');
-  // listener handles re-render automatically
+  loadTimeOff();
 };
 
 // ─── Today's Attendance Stats (cached) ───────────────────────────────
