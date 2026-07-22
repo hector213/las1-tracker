@@ -1282,6 +1282,8 @@ window.saveNote = async () => {
   const text = document.getElementById('noteText').value.trim();
   const type = document.getElementById('noteType').value;
   if (!text) { alert('Note text is required'); return; }
+  // Capture baseline points NOW — before any awaits
+  const _basePoints = Number(allAssociates.find(a => a.id === currentAssociateId)?.points) || 0;
 
   const btn = document.getElementById('saveNoteBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
@@ -1321,6 +1323,12 @@ window.saveNote = async () => {
     if (pts !== 0) {
       await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(pts) });
       await logPoints(currentAssociateId, 'Note', `${type} note added`, pts);
+      // Update points UI immediately — immune to onSnapshot race
+      const newPts = _basePoints + pts;
+      const ptsStat = document.getElementById('statPoints');
+      if (ptsStat) { ptsStat.textContent = (newPts > 0 ? '+' : '') + newPts; ptsStat.style.color = pointsColor(newPts); }
+      const curAssoc = allAssociates.find(a => a.id === currentAssociateId);
+      if (curAssoc) curAssoc.points = newPts;
     }
     bootstrap.Modal.getInstance(document.getElementById('noteModal')).hide();
     listenNotes(currentAssociateId);
@@ -1330,15 +1338,25 @@ window.saveNote = async () => {
 };
 window.deleteNote = async (noteId) => {
   if (!confirm('Delete this note?')) return;
+  const _basePoints = Number(allAssociates.find(a => a.id === currentAssociateId)?.points) || 0;
   const noteSnap = await getDoc(doc(db, 'notes', currentAssociateId, 'entries', noteId));
+  let ptsDelta = 0;
   if (noteSnap.exists()) {
     const pts = notePoints(noteSnap.data().type);
     if (pts !== 0) {
+      ptsDelta = -pts;
       await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(-pts) });
       await logPoints(currentAssociateId, 'Note', `${noteSnap.data().type} note removed`, -pts);
     }
   }
   await deleteDoc(doc(db, 'notes', currentAssociateId, 'entries', noteId));
+  if (ptsDelta !== 0) {
+    const newPts = _basePoints + ptsDelta;
+    const ptsStat = document.getElementById('statPoints');
+    if (ptsStat) { ptsStat.textContent = (newPts > 0 ? '+' : '') + newPts; ptsStat.style.color = pointsColor(newPts); }
+    const curAssoc = allAssociates.find(a => a.id === currentAssociateId);
+    if (curAssoc) curAssoc.points = newPts;
+  }
   listenNotes(currentAssociateId);
 };
 
@@ -1682,6 +1700,9 @@ window.saveBadgeNomination = async () => {
   alert(`"${badge}" nomination submitted — an admin will review it.`);
 };
 window.approveBadge = async (associateId, badgeId) => {
+  // Capture baseline points NOW — before any awaits, immune to onSnapshot rebuilds
+  const _basePoints = Number(allAssociates.find(a => a.id === associateId)?.points) || 0;
+
   const badgeSnap = await getDoc(doc(db, 'badges', associateId, 'entries', badgeId));
   if (!badgeSnap.exists()) return;
   const badgeLabel = badgeSnap.data().badge;
@@ -1700,6 +1721,18 @@ window.approveBadge = async (associateId, badgeId) => {
   const pts = badgePoints(badgeLabel);
   await updateDoc(doc(db, 'associates', associateId), { points: increment(pts) });
   await logPoints(associateId, 'Badge', `Badge approved: ${badgeLabel}`, pts);
+
+  // Update in-memory allAssociates
+  const newPts = _basePoints + pts;
+  const cachedAssoc = allAssociates.find(a => a.id === associateId);
+  if (cachedAssoc) cachedAssoc.points = newPts;
+
+  // If this associate's profile is open, update the points stat immediately
+  if (associateId === currentAssociateId) {
+    const ptsStat = document.getElementById('statPoints');
+    if (ptsStat) { ptsStat.textContent = (newPts > 0 ? '+' : '') + newPts; ptsStat.style.color = pointsColor(newPts); }
+    listenBadges(associateId);
+  }
 };
 window.rejectBadge = async (associateId, badgeId) => {
   if (!confirm('Reject and remove this nomination?')) return;
