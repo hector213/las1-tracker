@@ -1700,9 +1700,6 @@ window.saveBadgeNomination = async () => {
   alert(`"${badge}" nomination submitted — an admin will review it.`);
 };
 window.approveBadge = async (associateId, badgeId) => {
-  // Capture baseline points NOW — before any awaits, immune to onSnapshot rebuilds
-  const _basePoints = Number(allAssociates.find(a => a.id === associateId)?.points) || 0;
-
   const badgeSnap = await getDoc(doc(db, 'badges', associateId, 'entries', badgeId));
   if (!badgeSnap.exists()) return;
   const badgeLabel = badgeSnap.data().badge;
@@ -1722,15 +1719,16 @@ window.approveBadge = async (associateId, badgeId) => {
   await updateDoc(doc(db, 'associates', associateId), { points: increment(pts) });
   await logPoints(associateId, 'Badge', `Badge approved: ${badgeLabel}`, pts);
 
-  // Update in-memory allAssociates
-  const newPts = _basePoints + pts;
+  // Read the true post-write value directly from Firestore — avoids all stale cache / onSnapshot races
+  const freshSnap = await getDoc(doc(db, 'associates', associateId));
+  const truePts = freshSnap.exists() ? (Number(freshSnap.data().points) || 0) : 0;
   const cachedAssoc = allAssociates.find(a => a.id === associateId);
-  if (cachedAssoc) cachedAssoc.points = newPts;
+  if (cachedAssoc) cachedAssoc.points = truePts;
 
   // If this associate's profile is open, update the points stat immediately
   if (associateId === currentAssociateId) {
     const ptsStat = document.getElementById('statPoints');
-    if (ptsStat) { ptsStat.textContent = (newPts > 0 ? '+' : '') + newPts; ptsStat.style.color = pointsColor(newPts); }
+    if (ptsStat) { ptsStat.textContent = (truePts > 0 ? '+' : '') + truePts; ptsStat.style.color = pointsColor(truePts); }
     listenBadges(associateId);
   }
 };
