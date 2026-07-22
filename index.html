@@ -1697,6 +1697,7 @@ window.saveBadgeNomination = async () => {
     associateId: currentAssociateId, associateName: assoc?.name || ''
   });
   bootstrap.Modal.getInstance(document.getElementById('badgeModal')).hide();
+  listenBadges(currentAssociateId);
   alert(`"${badge}" nomination submitted — an admin will review it.`);
 };
 window.approveBadge = async (associateId, badgeId) => {
