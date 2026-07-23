@@ -9,8 +9,8 @@
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFirestore, collection, collectionGroup, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, increment, deleteField, query, orderBy, limit, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -300,6 +300,17 @@ let allLeaders          = [];
 onAuthStateChanged(auth, async (user) => {
   if (user) {
     currentUser = user;
+
+    // Check if this UID belongs to an associate (portal user)
+    const assocQ = query(collection(db, 'associates'), where('viewerUid', '==', user.uid));
+    const assocSnap = await getDocs(assocQ);
+    if (!assocSnap.empty) {
+      const assocDoc = assocSnap.docs[0];
+      showAssociatePortal();
+      loadAssociatePortal(assocDoc.id, assocDoc.data());
+      return;
+    }
+
     const snap = await getDoc(doc(db, 'users', user.uid));
     if (snap.exists()) {
       const data = snap.data();
@@ -333,7 +344,6 @@ onAuthStateChanged(auth, async (user) => {
     if (currentUserRole !== 'viewer') document.getElementById('addAssocBtn').classList.remove('d-none');
     applyTabVisibility();
     restoreLastView();
-    // Record login event
     (async () => {
       try {
         const _uSnap2 = await getDoc(doc(db, 'users', user.uid));
@@ -374,11 +384,252 @@ document.getElementById('loginPw').addEventListener('keydown', e => { if (e.key 
 function showLogin() {
   document.getElementById('loginScreen').classList.remove('d-none');
   document.getElementById('appShell').classList.add('d-none');
+  document.getElementById('associatePortal').classList.add('d-none');
 }
 function showApp() {
   document.getElementById('loginScreen').classList.add('d-none');
   document.getElementById('appShell').classList.remove('d-none');
+  document.getElementById('associatePortal').classList.add('d-none');
 }
+function showAssociatePortal() {
+  document.getElementById('loginScreen').classList.add('d-none');
+  document.getElementById('appShell').classList.add('d-none');
+  document.getElementById('associatePortal').classList.remove('d-none');
+}
+// ─── Associate Portal ──────────────────────────────────────────────────
+let _apAssocId = null;
+let _apNotes = [];
+let _apAttendance = [];
+let _apPointsLog = [];
+
+window.loadAssociatePortal = async (assocId, assocData) => {
+  _apAssocId = assocId;
+  const pts = Number(assocData.points) || 0;
+
+  // Header
+  document.getElementById('apName').textContent = assocData.name || 'Associate';
+  document.getElementById('apRole').textContent = assocData.role || assocData.department || '';
+  document.getElementById('apPoints').textContent = (pts > 0 ? '+' : '') + pts;
+  document.getElementById('apHomePoints').textContent = (pts > 0 ? '+' : '') + pts;
+
+  // Level
+  let level = 'Developing';
+  if (pts >= 200) level = 'Elite';
+  else if (pts >= 100) level = 'Star';
+  else if (pts >= 50) level = 'Rising';
+  document.getElementById('apLevel').textContent = level;
+
+  // Tenure
+  if (assocData.startDate) {
+    const months = Math.floor((Date.now() - new Date(assocData.startDate)) / (1000*60*60*24*30.44));
+    const yrs = Math.floor(months / 12);
+    const mo = months % 12;
+    document.getElementById('apTenure').textContent = yrs > 0 ? `${yrs}yr ${mo}mo tenure` : `${mo}mo tenure`;
+  }
+
+  // Points progress bar
+  const levelThresholds = [0, 50, 100, 200, 400];
+  const curThresh = levelThresholds.reduce((a, t) => pts >= t ? t : a, 0);
+  const nextThresh = levelThresholds.find(t => t > pts) || null;
+  if (nextThresh) {
+    const pct = Math.min(100, Math.round((pts - curThresh) / (nextThresh - curThresh) * 100));
+    document.getElementById('apBarFill').style.width = pct + '%';
+    document.getElementById('apBarLabel').textContent = `${pts} / ${nextThresh}`;
+  } else {
+    document.getElementById('apBarFill').style.width = '100%';
+    document.getElementById('apBarLabel').textContent = 'Max Level';
+  }
+
+  // Load all data in parallel
+  const [notesSnap, badgesSnap, credsSnap, attendSnap, ptsLogSnap, timeOffSnap] = await Promise.all([
+    getDocs(collection(db, 'notes', assocId, 'entries')),
+    getDocs(collection(db, 'badges', assocId, 'entries')),
+    getDocs(collection(db, 'creds', assocId, 'entries')),
+    getDocs(collection(db, 'attendance', assocId, 'events')),
+    getDocs(query(collection(db, 'pointsLog'), where('associateId', '==', assocId))),
+    getDocs(collection(db, 'timeoff', assocId, 'entries'))
+  ]);
+
+  _apNotes = notesSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.createdAt?.localeCompare(a.createdAt));
+  _apAttendance = attendSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.date?.localeCompare(a.date));
+  _apPointsLog = ptsLogSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.createdAt?.localeCompare(a.createdAt));
+
+  // Badges
+  const approvedBadges = badgesSnap.docs.map(d => d.data()).filter(b => b.status === 'approved');
+  const badgesEl = document.getElementById('apBadges');
+  if (approvedBadges.length === 0) {
+    badgesEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">No badges earned yet.</span>';
+  } else {
+    const BADGE_ICONS = { 'Top Performer':'🏆','Most Improved':'📈','Team Player':'🤝','Perfect Attendance':'📅','Safety Champion':'🦺','Training Leader':'🎓' };
+    badgesEl.innerHTML = approvedBadges.map(b => `<div class="ap-badge-chip">${BADGE_ICONS[b.badge]||'🏅'} ${b.badge}</div>`).join('');
+  }
+
+  // Certs
+  const certs = credsSnap.docs.map(d => d.data());
+  const certsEl = document.getElementById('apCerts');
+  if (certs.length === 0) {
+    certsEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">No certifications on file.</span>';
+  } else {
+    certsEl.innerHTML = certs.map(c => {
+      const expired = c.expiry && new Date(c.expiry) < new Date();
+      return `<div class="ap-cert-row">
+        <span style="font-weight:600;color:#1a2744;">${c.name}</span>
+        <span style="font-size:0.72rem;color:${expired?'#dc2626':'#22c55e'};">${c.expiry ? (expired?'Expired ':'Valid thru ')+c.expiry : 'No expiry'}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Upcoming: anniversary + cert expirations
+  const upcomingEl = document.getElementById('apUpcoming');
+  let upcomingItems = [];
+  if (assocData.startDate) {
+    const start = new Date(assocData.startDate);
+    const now = new Date();
+    const anniv = new Date(start); anniv.setFullYear(now.getFullYear());
+    if (anniv < now) anniv.setFullYear(now.getFullYear() + 1);
+    const daysToAnniv = Math.ceil((anniv - now) / (1000*60*60*24));
+    if (daysToAnniv <= 90) upcomingItems.push({ icon:'🎂', label:`Work Anniversary`, sub:`${anniv.toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${daysToAnniv} days away`, color:'#7c3aed' });
+  }
+  certs.forEach(c => {
+    if (c.expiry) {
+      const expDate = new Date(c.expiry);
+      const now = new Date();
+      const days = Math.ceil((expDate - now) / (1000*60*60*24));
+      if (days <= 60 && days > 0) upcomingItems.push({ icon:'⚠️', label:`${c.name} expiring`, sub:`${c.expiry} — ${days} days`, color:'#f59e0b' });
+    }
+  });
+  if (upcomingItems.length === 0) {
+    upcomingEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">Nothing upcoming in the next 90 days.</span>';
+  } else {
+    upcomingEl.innerHTML = upcomingItems.map(u => `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+      <span style="font-size:1.2rem;">${u.icon}</span>
+      <div><div style="font-size:0.82rem;font-weight:600;color:#1a2744;">${u.label}</div><div style="font-size:0.72rem;color:#94a3b8;">${u.sub}</div></div>
+    </div>`).join('');
+  }
+
+  // Time off
+  const timeOff = timeOffSnap.docs.map(d => d.data()).sort((a,b) => a.date?.localeCompare(b.date));
+  const toEl = document.getElementById('apTimeOff');
+  if (timeOff.length === 0) {
+    toEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">No time off on record.</span>';
+  } else {
+    toEl.innerHTML = timeOff.map(t => `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:0.82rem;">
+      <span style="font-weight:600;color:#1a2744;">${t.date}</span>
+      <span style="color:#64748b;">${t.type||''} ${t.name?'— '+t.name:''}</span>
+    </div>`).join('');
+  }
+
+  // Render notes and attendance now
+  renderApNotes();
+  renderApAttendance();
+};
+
+window.switchApTab = (tab) => {
+  document.querySelectorAll('.ap-tab-panel').forEach(p => p.classList.add('d-none'));
+  document.getElementById('apTab-' + tab).classList.remove('d-none');
+  document.querySelectorAll('.ap-tab').forEach(t => {
+    const isActive = t.dataset.tab === tab;
+    t.style.color = isActive ? '#fff' : 'rgba(255,255,255,0.6)';
+    t.style.borderBottomColor = isActive ? '#f97316' : 'transparent';
+  });
+};
+
+window.renderApNotes = () => {
+  const filter = document.getElementById('apNotesFilter')?.value || 'All';
+  const filtered = filter === 'All' ? _apNotes : _apNotes.filter(n => n.type === filter);
+  const el = document.getElementById('apNotesList');
+  if (filtered.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:0.82rem;padding:24px 0;">No notes found.</div>';
+    return;
+  }
+  el.innerHTML = filtered.map(n => {
+    const date = n.createdAt ? new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
+    return `<div class="ap-note-card type-${n.type}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:${n.type==='Recognition'?'#16a34a':n.type==='Coaching'?'#d97706':n.type==='Performance'?'#7c3aed':'#64748b'}">${n.type}</span>
+        <span style="font-size:0.7rem;color:#94a3b8;">${date}</span>
+      </div>
+      <div style="font-size:0.85rem;color:#1e293b;line-height:1.5;">${n.text}</div>
+      ${n.screenshotData ? `<div class="mt-2"><img src="${n.screenshotData}" alt="Screenshot" style="max-width:100%;border-radius:6px;border:1px solid #e2e8f0;" onclick="openScreenshotLightbox(this.src)"></div>` : ''}
+    </div>`;
+  }).join('');
+};
+
+window.renderApAttendance = () => {
+  const el = document.getElementById('apAttendanceList');
+  if (_apAttendance.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:0.82rem;padding:24px 0;">No attendance events on record.</div>';
+  } else {
+    const ATTEND_COLORS = { Tardy:'#f59e0b', Absence:'#dc2626', 'Left Early':'#f97316', 'Unplanned OT':'#3b82f6', Other:'#64748b' };
+    el.innerHTML = _apAttendance.map(a => `<div class="ap-attendance-card">
+      <div style="width:8px;height:36px;border-radius:4px;background:${ATTEND_COLORS[a.type]||'#64748b'};flex-shrink:0;"></div>
+      <div>
+        <div style="font-size:0.82rem;font-weight:600;color:#1a2744;">${a.type}</div>
+        <div style="font-size:0.72rem;color:#94a3b8;">${a.date}${a.note?' — '+a.note:''}</div>
+      </div>
+    </div>`).join('');
+  }
+
+  // Points history
+  const phEl = document.getElementById('apPointsHistory');
+  if (_apPointsLog.length === 0) {
+    phEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">No points history yet.</span>';
+  } else {
+    phEl.innerHTML = _apPointsLog.slice(0,20).map(p => {
+      const date = p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:0.8rem;">
+        <div><span style="color:#1a2744;font-weight:600;">${p.reason||p.category}</span><br><span style="font-size:0.7rem;color:#94a3b8;">${date}</span></div>
+        <span style="font-weight:700;color:${p.points>0?'#22c55e':'#dc2626'}">${p.points>0?'+':''}${p.points}</span>
+      </div>`;
+    }).join('');
+  }
+};
+
+window.submitAp1on1 = async () => {
+  const date = document.getElementById('ap1on1Date').value;
+  const note = document.getElementById('ap1on1Note').value.trim();
+  if (!date) { alert('Please select a date.'); return; }
+  await addDoc(collection(db, 'oneOnOneRequests'), {
+    associateId: _apAssocId,
+    requestedDate: date,
+    note,
+    status: 'pending',
+    createdAt: new Date().toISOString()
+  });
+  document.getElementById('ap1on1Date').value = '';
+  document.getElementById('ap1on1Note').value = '';
+  const succ = document.getElementById('ap1on1Success');
+  succ.classList.remove('d-none');
+  setTimeout(() => succ.classList.add('d-none'), 3000);
+};
+
+// ─── Access Request (Login Page) ───────────────────────────────────────
+window.showRequestForm = () => {
+  document.getElementById('requestAccessSection').classList.add('d-none');
+  document.getElementById('requestAccessForm').classList.remove('d-none');
+};
+window.cancelRequestForm = () => {
+  document.getElementById('requestAccessForm').classList.add('d-none');
+  document.getElementById('requestAccessSection').classList.remove('d-none');
+  document.getElementById('reqSuccess').classList.add('d-none');
+};
+window.submitAccessRequest = async () => {
+  const first = document.getElementById('reqFirstName').value.trim();
+  const last = document.getElementById('reqLastName').value.trim();
+  const email = document.getElementById('reqEmail').value.trim();
+  if (!first || !last || !email) { alert('Please fill in all fields.'); return; }
+  await addDoc(collection(db, 'accessRequests'), {
+    firstName: first, lastName: last, email,
+    fullName: `${first} ${last}`,
+    status: 'pending',
+    createdAt: new Date().toISOString()
+  });
+  document.getElementById('reqFirstName').value = '';
+  document.getElementById('reqLastName').value = '';
+  document.getElementById('reqEmail').value = '';
+  document.getElementById('reqSuccess').classList.remove('d-none');
+};
+
 function showView(view) {
   document.querySelectorAll('.view').forEach(v => v.classList.add('d-none'));
   document.getElementById(view + 'View').classList.remove('d-none');
@@ -4450,6 +4701,7 @@ window.loadAdminPanel = () => {
   loadResetPanel();
   loadAttResetPanel();
   loadCertResetPanel();
+  loadPendingAccessRequests();
 };
 
 // ─── Tab Visibility ───────────────────────────────────────────────────
@@ -5062,6 +5314,83 @@ window.resetAllCerts = async () => {
     loadCertResetPanel();
   } catch(e) { alert('Error: ' + e.message); }
   finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Reset All Certs'; }
+};
+
+// ─── Access Requests ──────────────────────────────────────────────────
+window.loadPendingAccessRequests = async () => {
+  const el = document.getElementById('accessRequestsList');
+  if (!el) return;
+  const snap = await getDocs(query(collection(db, 'accessRequests'), where('status', '==', 'pending')));
+  if (snap.empty) {
+    el.innerHTML = '<p class="text-muted small mb-0">No pending requests.</p>';
+    return;
+  }
+  // Load associates for matching
+  const assocSnap = await getDocs(collection(db, 'associates'));
+  const associates = assocSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  el.innerHTML = snap.docs.map(d => {
+    const r = d.data();
+    const matchedAssoc = associates.find(a => a.name && a.name.toLowerCase() === r.fullName?.toLowerCase());
+    const assocOpts = associates.map(a => `<option value="${a.id}" ${matchedAssoc?.id === a.id ? 'selected' : ''}>${a.name}</option>`).join('');
+    return `<div class="border rounded p-3 mb-2 bg-light" id="req-${d.id}">
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div>
+          <div class="fw-semibold">${escapeHtml(r.fullName || '')}</div>
+          <div class="text-muted small">${escapeHtml(r.email || '')}</div>
+          <div class="text-muted small">${formatDate(r.createdAt)}</div>
+        </div>
+        <div class="d-flex flex-column gap-1 align-items-end" style="min-width:220px;">
+          <label class="small fw-semibold mb-0">Link to associate:</label>
+          <select class="form-select form-select-sm" id="reqAssoc-${d.id}" style="max-width:200px;">
+            <option value="">— Select —</option>
+            ${assocOpts}
+          </select>
+          <div class="d-flex gap-1 mt-1">
+            <button class="btn btn-sm btn-orange" onclick="approveAccessRequest('${d.id}','${r.email}')">Approve &amp; Send Email</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="denyAccessRequest('${d.id}')">Deny</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+};
+
+window.approveAccessRequest = async (reqId, email) => {
+  const assocId = document.getElementById(`reqAssoc-${reqId}`)?.value;
+  if (!assocId) { alert('Please select an associate to link this account to.'); return; }
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    // Create Firebase Auth account using secondary app
+    const secondaryApp = initializeApp(firebaseConfig, 'secondary_' + Date.now());
+    const secondaryAuth = getAuth(secondaryApp);
+    const tempPw = Math.random().toString(36).slice(-10) + 'A1!';
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, tempPw);
+    const newUid = cred.user.uid;
+    await deleteApp(secondaryApp);
+
+    // Link UID to associate doc
+    await updateDoc(doc(db, 'associates', assocId), { viewerUid: newUid });
+
+    // Mark request approved
+    await updateDoc(doc(db, 'accessRequests', reqId), { status: 'approved', approvedAt: new Date().toISOString() });
+
+    // Send password reset email so they set their own password
+    await sendPasswordResetEmail(auth, email);
+
+    document.getElementById('req-' + reqId)?.remove();
+    alert(`Access approved! A password setup email has been sent to ${email}.`);
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false; btn.textContent = 'Approve & Send Email';
+  }
+};
+
+window.denyAccessRequest = async (reqId) => {
+  if (!confirm('Deny this access request?')) return;
+  await updateDoc(doc(db, 'accessRequests', reqId), { status: 'denied', deniedAt: new Date().toISOString() });
+  document.getElementById('req-' + reqId)?.remove();
 };
 
 // ─── Attendance Bulk Import ────────────────────────────────────────────
@@ -6174,6 +6503,57 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   font-size:0.8rem; cursor:pointer; transition:background .15s;
 }
 .kanban-log-row:hover { background:#e0f2fe; }
+
+/* ── Associate Portal ── */
+#associatePortal {
+  min-height:100vh;
+  background:#f1f5f9;
+  font-family: 'Inter', sans-serif;
+}
+.ap-tab-panel { animation: fadeInUp .2s ease; }
+@keyframes fadeInUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+.ap-note-card {
+  background:#fff;
+  border-radius:12px;
+  padding:14px;
+  margin-bottom:10px;
+  box-shadow:0 2px 8px rgba(0,0,0,0.06);
+  border-left:4px solid #e2e8f0;
+}
+.ap-note-card.type-Coaching { border-left-color:#f59e0b; }
+.ap-note-card.type-Recognition { border-left-color:#22c55e; }
+.ap-note-card.type-Performance { border-left-color:#7c3aed; }
+.ap-note-card.type-General { border-left-color:#64748b; }
+.ap-attendance-card {
+  background:#fff;
+  border-radius:12px;
+  padding:12px 14px;
+  margin-bottom:8px;
+  box-shadow:0 2px 8px rgba(0,0,0,0.06);
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+.ap-badge-chip {
+  background:#1a2744;
+  color:#fff;
+  border-radius:20px;
+  padding:5px 12px;
+  font-size:0.72rem;
+  font-weight:600;
+  display:flex;
+  align-items:center;
+  gap:5px;
+}
+.ap-cert-row {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:8px 0;
+  border-bottom:1px solid #f1f5f9;
+  font-size:0.82rem;
+}
+.ap-cert-row:last-child { border-bottom:none; }
 </style>
 </head>
 <body>
@@ -6195,7 +6575,150 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <input type="password" id="loginPw" class="form-control" placeholder="••••••••" autocomplete="current-password">
     </div>
     <button id="loginBtn" class="btn btn-orange w-100 py-2 fw-semibold" onclick="doLogin()">Sign In</button>
-    <p class="text-center text-muted small mt-3 mb-0">No account? Contact your admin.</p>
+    <hr class="my-3">
+    <div id="requestAccessSection">
+      <p class="text-center text-muted small mb-2">Don't have an account?</p>
+      <button class="btn btn-outline-secondary w-100 btn-sm" onclick="showRequestForm()">Request Access</button>
+    </div>
+    <div id="requestAccessForm" class="d-none">
+      <p class="small fw-semibold mb-2 text-center" style="color:#1a2744">Request Portal Access</p>
+      <div class="mb-2">
+        <input type="text" id="reqFirstName" class="form-control form-control-sm" placeholder="First Name">
+      </div>
+      <div class="mb-2">
+        <input type="text" id="reqLastName" class="form-control form-control-sm" placeholder="Last Name">
+      </div>
+      <div class="mb-3">
+        <input type="email" id="reqEmail" class="form-control form-control-sm" placeholder="Email Address">
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-orange btn-sm flex-fill" onclick="submitAccessRequest()">Submit Request</button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="cancelRequestForm()">Cancel</button>
+      </div>
+      <div id="reqSuccess" class="d-none alert alert-success py-2 mt-2 small">Request submitted! Your manager will set up your access.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ASSOCIATE PORTAL -->
+<div id="associatePortal" class="d-none">
+  <!-- Portal Header -->
+  <div id="apHeader" style="background:linear-gradient(135deg,#1a2744 0%,#243460 100%);padding:20px 16px 0;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,0.3);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div>
+        <div style="color:#f97316;font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;">LAS1 Associate Portal</div>
+        <div id="apName" style="color:#fff;font-size:1.15rem;font-weight:700;line-height:1.2;"></div>
+        <div id="apRole" style="color:#94a3b8;font-size:0.75rem;margin-top:1px;"></div>
+      </div>
+      <div style="text-align:right;">
+        <div id="apPoints" style="color:#f97316;font-size:1.6rem;font-weight:800;line-height:1;"></div>
+        <div style="color:#94a3b8;font-size:0.68rem;text-transform:uppercase;letter-spacing:.5px;">Engagement Pts</div>
+        <button onclick="doLogout()" style="margin-top:6px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:6px;padding:3px 10px;font-size:0.7rem;cursor:pointer;">Sign Out</button>
+      </div>
+    </div>
+    <!-- Tab Bar -->
+    <div style="display:flex;border-bottom:2px solid rgba(255,255,255,0.1);">
+      <button class="ap-tab active" data-tab="home" onclick="switchApTab('home')" style="flex:1;background:none;border:none;color:#fff;padding:10px 4px;font-size:0.78rem;font-weight:600;border-bottom:2px solid #f97316;margin-bottom:-2px;cursor:pointer;"><i class="fas fa-home" style="display:block;font-size:1rem;margin-bottom:2px;"></i>Home</button>
+      <button class="ap-tab" data-tab="notes" onclick="switchApTab('notes')" style="flex:1;background:none;border:none;color:rgba(255,255,255,0.6);padding:10px 4px;font-size:0.78rem;font-weight:600;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;"><i class="fas fa-sticky-note" style="display:block;font-size:1rem;margin-bottom:2px;"></i>Notes</button>
+      <button class="ap-tab" data-tab="attendance" onclick="switchApTab('attendance')" style="flex:1;background:none;border:none;color:rgba(255,255,255,0.6);padding:10px 4px;font-size:0.78rem;font-weight:600;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;"><i class="fas fa-calendar-check" style="display:block;font-size:1rem;margin-bottom:2px;"></i>Attendance</button>
+      <button class="ap-tab" data-tab="schedule" onclick="switchApTab('schedule')" style="flex:1;background:none;border:none;color:rgba(255,255,255,0.6);padding:10px 4px;font-size:0.78rem;font-weight:600;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;"><i class="fas fa-calendar-alt" style="display:block;font-size:1rem;margin-bottom:2px;"></i>Schedule</button>
+    </div>
+  </div>
+
+  <!-- Portal Body -->
+  <div id="apBody" style="padding:16px;max-width:480px;margin:0 auto;padding-bottom:80px;">
+
+    <!-- HOME TAB -->
+    <div id="apTab-home" class="ap-tab-panel">
+      <!-- Points Card -->
+      <div style="background:linear-gradient(135deg,#1a2744,#243460);border-radius:14px;padding:18px;color:#fff;margin-bottom:16px;box-shadow:0 4px 16px rgba(26,39,68,0.18);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div style="font-size:0.72rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Current Points Balance</div>
+            <div id="apHomePoints" style="font-size:2.8rem;font-weight:800;color:#f97316;line-height:1;"></div>
+            <div style="font-size:0.72rem;color:#94a3b8;margin-top:4px;">Engagement Points</div>
+          </div>
+          <div style="text-align:right;">
+            <div id="apLevel" style="background:#f97316;border-radius:8px;padding:6px 14px;font-size:0.8rem;font-weight:700;"></div>
+            <div id="apTenure" style="color:#94a3b8;font-size:0.72rem;margin-top:6px;"></div>
+          </div>
+        </div>
+        <div id="apPointsBar" style="margin-top:14px;">
+          <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:#94a3b8;margin-bottom:4px;">
+            <span>Progress to next level</span>
+            <span id="apBarLabel"></span>
+          </div>
+          <div style="background:rgba(255,255,255,0.15);border-radius:99px;height:6px;overflow:hidden;">
+            <div id="apBarFill" style="height:100%;background:#f97316;border-radius:99px;transition:width .5s;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Badges -->
+      <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);">
+        <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:10px;"><i class="fas fa-medal me-1" style="color:#f97316;"></i>My Badges</div>
+        <div id="apBadges" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+      </div>
+
+      <!-- Certifications -->
+      <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);">
+        <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:10px;"><i class="fas fa-certificate me-1" style="color:#f97316;"></i>My Certifications</div>
+        <div id="apCerts" style=""></div>
+      </div>
+
+      <!-- Upcoming: Anniversary / Point Expirations -->
+      <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);">
+        <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:10px;"><i class="fas fa-bell me-1" style="color:#f97316;"></i>Upcoming</div>
+        <div id="apUpcoming"></div>
+      </div>
+    </div>
+
+    <!-- NOTES TAB -->
+    <div id="apTab-notes" class="ap-tab-panel d-none">
+      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:12px;"><i class="fas fa-sticky-note me-1" style="color:#f97316;"></i>My Notes</div>
+      <div style="margin-bottom:10px;">
+        <select id="apNotesFilter" class="form-select form-select-sm" onchange="renderApNotes()" style="max-width:160px;">
+          <option value="All">All Types</option>
+          <option value="General">General</option>
+          <option value="Coaching">Coaching</option>
+          <option value="Recognition">Recognition</option>
+          <option value="Performance">Performance</option>
+        </select>
+      </div>
+      <div id="apNotesList"></div>
+    </div>
+
+    <!-- ATTENDANCE TAB -->
+    <div id="apTab-attendance" class="ap-tab-panel d-none">
+      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:12px;"><i class="fas fa-calendar-check me-1" style="color:#f97316;"></i>Attendance Events</div>
+      <div id="apAttendanceList"></div>
+      <div style="margin-top:20px;background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);">
+        <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:10px;"><i class="fas fa-star me-1" style="color:#f97316;"></i>Points History</div>
+        <div id="apPointsHistory"></div>
+      </div>
+    </div>
+
+    <!-- SCHEDULE TAB -->
+    <div id="apTab-schedule" class="ap-tab-panel d-none">
+      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:12px;"><i class="fas fa-calendar-alt me-1" style="color:#f97316;"></i>Request a 1:1</div>
+      <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);">
+        <p style="font-size:0.82rem;color:#64748b;margin-bottom:14px;">Submit a request to meet with your manager. They'll confirm the time.</p>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold" style="font-size:0.75rem;">Preferred Date</label>
+          <input type="date" id="ap1on1Date" class="form-control form-control-sm">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold" style="font-size:0.75rem;">Topic / Note <span class="text-muted fw-normal">(optional)</span></label>
+          <textarea id="ap1on1Note" class="form-control form-control-sm" rows="2" placeholder="What would you like to discuss?"></textarea>
+        </div>
+        <button class="btn btn-orange btn-sm w-100" onclick="submitAp1on1()">Submit Request</button>
+        <div id="ap1on1Success" class="d-none alert alert-success py-2 mt-2 small">Request submitted!</div>
+      </div>
+
+      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:12px;"><i class="fas fa-clock me-1" style="color:#f97316;"></i>Time Off</div>
+      <div id="apTimeOff" style="background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);"></div>
+    </div>
+
   </div>
 </div>
 
@@ -7131,6 +7654,15 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Associate Access Requests -->
+      <div class="admin-card mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-user-clock me-2" style="color:#7c3aed"></i>Associate Portal Access Requests</h6>
+          <button class="btn btn-sm btn-outline-secondary py-0" onclick="loadPendingAccessRequests()"><i class="fas fa-sync-alt"></i></button>
+        </div>
+        <div id="accessRequestsList"><p class="text-muted small mb-0">Loading…</p></div>
       </div>
 
       <!-- Pending Badge Approvals -->
