@@ -414,8 +414,9 @@ window.loadAssociatePortal = async (assocId, assocData) => {
   // Header
   document.getElementById('apName').textContent = freshData.name || 'Associate';
   document.getElementById('apRole').textContent = freshData.role || freshData.department || '';
-  document.getElementById('apPoints').textContent = (pts > 0 ? '+' : '') + pts;
-  document.getElementById('apHomePoints').textContent = (pts > 0 ? '+' : '') + pts;
+  const ptsDisplay = (pts > 0 ? '+' : '') + pts;
+  document.getElementById('apPoints').textContent = ptsDisplay;
+  document.getElementById('apHomePoints').textContent = ptsDisplay;
 
   // Reports to
   const apReportsTo = document.getElementById('apReportsTo');
@@ -459,13 +460,14 @@ window.loadAssociatePortal = async (assocId, assocData) => {
   }
 
   // Load all data in parallel
-  const [notesSnap, badgesSnap, credsSnap, attendSnap, ptsLogSnap, timeOffSnap] = await Promise.all([
+  const [notesSnap, badgesSnap, certsDoc, attendSnap, ptsLogSnap, timeOffSnap, oneOnOneSnap] = await Promise.all([
     getDocs(collection(db, 'notes', assocId, 'entries')),
     getDocs(collection(db, 'badges', assocId, 'entries')),
-    getDocs(collection(db, 'credentials', assocId, 'entries')),
+    getDoc(doc(db, 'certs', assocId)),           // certs = single doc per associate
     getDocs(collection(db, 'attendance', assocId, 'events')),
     getDocs(query(collection(db, 'pointsLog'), where('associateId', '==', assocId))),
-    getDocs(collection(db, 'timeoff', assocId, 'entries'))
+    getDocs(collection(db, 'timeoff', assocId, 'entries')),
+    getDocs(collection(db, 'oneOnOnes', assocId, 'entries'))
   ]);
 
   _apNotes = notesSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.createdAt?.localeCompare(a.createdAt));
@@ -482,40 +484,45 @@ window.loadAssociatePortal = async (assocId, assocData) => {
     badgesEl.innerHTML = approvedBadges.map(b => `<div class="ap-badge-chip">${BADGE_ICONS[b.badge]||'🏅'} ${b.badge}</div>`).join('');
   }
 
-  // Certs
-  const certs = credsSnap.docs.map(d => d.data());
+  // Certs — stored as a single doc with cert names as keys
+  const certsData = certsDoc.exists() ? certsDoc.data() : {};
+  const certedList = CERTS.filter(c => {
+    const key = c.replace(/\s+/g, '_');
+    return certsData[key] && (certsData[key].status === 'certified' || certsData[key].status === 'training');
+  });
   const certsEl = document.getElementById('apCerts');
-  if (certs.length === 0) {
+  if (certedList.length === 0) {
     certsEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">No certifications on file.</span>';
   } else {
-    certsEl.innerHTML = certs.map(c => {
-      const expired = c.expiry && new Date(c.expiry) < new Date();
+    certsEl.innerHTML = certedList.map(c => {
+      const key = c.replace(/\s+/g, '_');
+      const d = certsData[key];
+      const isTraining = d.status === 'training';
       return `<div class="ap-cert-row">
-        <span style="font-weight:600;color:#1a2744;">${c.name}</span>
-        <span style="font-size:0.72rem;color:${expired?'#dc2626':'#22c55e'};">${c.expiry ? (expired?'Expired ':'Valid thru ')+c.expiry : 'No expiry'}</span>
+        <span style="font-weight:600;color:#1a2744;">${c}</span>
+        <span style="font-size:0.72rem;color:${isTraining ? '#f59e0b' : '#22c55e'};">
+          ${isTraining ? '⏳ In Training' : '✓ Certified'}
+        </span>
       </div>`;
     }).join('');
   }
 
-  // Upcoming: anniversary + cert expirations
+  // 1:1 history for Schedule tab
+  window._apOneOnOnes = oneOnOneSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => b.date?.localeCompare(a.date));
+  renderApOneOnOnes(freshData);
+
+  // Upcoming: anniversary
   const upcomingEl = document.getElementById('apUpcoming');
   let upcomingItems = [];
-  if (assocData.startDate) {
-    const start = new Date(assocData.startDate);
+  if (freshData.startDate) {
+    const start = new Date(freshData.startDate);
     const now = new Date();
     const anniv = new Date(start); anniv.setFullYear(now.getFullYear());
     if (anniv < now) anniv.setFullYear(now.getFullYear() + 1);
     const daysToAnniv = Math.ceil((anniv - now) / (1000*60*60*24));
-    if (daysToAnniv <= 90) upcomingItems.push({ icon:'🎂', label:`Work Anniversary`, sub:`${anniv.toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${daysToAnniv} days away`, color:'#7c3aed' });
+    if (daysToAnniv <= 90) upcomingItems.push({ icon:'🎂', label:'Work Anniversary', sub:`${anniv.toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${daysToAnniv} days away` });
   }
-  certs.forEach(c => {
-    if (c.expiry) {
-      const expDate = new Date(c.expiry);
-      const now = new Date();
-      const days = Math.ceil((expDate - now) / (1000*60*60*24));
-      if (days <= 60 && days > 0) upcomingItems.push({ icon:'⚠️', label:`${c.name} expiring`, sub:`${c.expiry} — ${days} days`, color:'#f59e0b' });
-    }
-  });
   if (upcomingItems.length === 0) {
     upcomingEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">Nothing upcoming in the next 90 days.</span>';
   } else {
@@ -607,18 +614,67 @@ window.submitAp1on1 = async () => {
   const date = document.getElementById('ap1on1Date').value;
   const note = document.getElementById('ap1on1Note').value.trim();
   if (!date) { alert('Please select a date.'); return; }
-  await addDoc(collection(db, 'oneOnOneRequests'), {
-    associateId: _apAssocId,
-    requestedDate: date,
-    note,
-    status: 'pending',
-    createdAt: new Date().toISOString()
-  });
-  document.getElementById('ap1on1Date').value = '';
-  document.getElementById('ap1on1Note').value = '';
-  const succ = document.getElementById('ap1on1Success');
-  succ.classList.remove('d-none');
-  setTimeout(() => succ.classList.add('d-none'), 3000);
+  const btn = document.querySelector('#apTab-schedule .btn-orange');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    // Write to oneOnOneRequests so supervisor gets notified
+    await addDoc(collection(db, 'oneOnOneRequests'), {
+      associateId: _apAssocId,
+      requestedDate: date,
+      note,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    });
+    document.getElementById('ap1on1Date').value = '';
+    document.getElementById('ap1on1Note').value = '';
+    const succ = document.getElementById('ap1on1Success');
+    succ.classList.remove('d-none');
+    setTimeout(() => succ.classList.add('d-none'), 3000);
+  } catch(e) {
+    alert('Could not submit request. Please try again.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Submit Request'; }
+  }
+};
+
+window.renderApOneOnOnes = (assocData) => {
+  const histEl = document.getElementById('apOneOnOneHistory');
+  if (!histEl) return;
+
+  // Show scheduled next 1:1 if one exists
+  const nextDate = assocData?.next1on1;
+  const nextBy = assocData?.next1on1By;
+  const scheduledEl = document.getElementById('apScheduled1on1');
+  if (scheduledEl) {
+    if (nextDate) {
+      const formatted = new Date(nextDate + 'T00:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+      scheduledEl.innerHTML = `<div style="background:#fff8f1;border:1px solid #fed7aa;border-radius:10px;padding:12px 14px;margin-bottom:16px;">
+        <div style="font-size:0.72rem;color:#f97316;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Scheduled 1:1</div>
+        <div style="font-weight:700;color:#1a2744;">${formatted}</div>
+        ${nextBy ? `<div style="font-size:0.75rem;color:#64748b;">with ${escapeHtml(nextBy)}</div>` : ''}
+      </div>`;
+    } else {
+      scheduledEl.innerHTML = '';
+    }
+  }
+
+  // Meeting history
+  const history = window._apOneOnOnes || [];
+  if (history.length === 0) {
+    histEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">No completed meetings on record.</span>';
+  } else {
+    histEl.innerHTML = history.map(m => {
+      const d = m.date ? new Date(m.date + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+      return `<div style="padding:10px 0;border-bottom:1px solid #f1f5f9;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-weight:600;font-size:0.82rem;color:#1a2744;">${d}</span>
+          ${m.conductedBy ? `<span style="font-size:0.72rem;color:#64748b;">w/ ${escapeHtml(m.conductedBy)}</span>` : ''}
+        </div>
+        ${m.topics ? `<div style="font-size:0.75rem;color:#64748b;margin-top:3px;">${escapeHtml(m.topics)}</div>` : ''}
+        ${m.notes ? `<div style="font-size:0.78rem;color:#374151;margin-top:4px;font-style:italic;">"${escapeHtml(m.notes)}"</div>` : ''}
+      </div>`;
+    }).join('');
+  }
 };
 
 // ─── Access Request (Login Page) ───────────────────────────────────────
@@ -6882,9 +6938,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
     <!-- SCHEDULE TAB -->
     <div id="apTab-schedule" class="ap-tab-panel d-none">
-      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:12px;"><i class="fas fa-calendar-alt me-1" style="color:#f97316;"></i>Request a 1:1</div>
+
+      <!-- Scheduled next 1:1 (set by manager) -->
+      <div id="apScheduled1on1"></div>
+
+      <!-- Request a 1:1 -->
+      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:10px;"><i class="fas fa-calendar-plus me-1" style="color:#f97316;"></i>Request a 1:1</div>
       <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);">
-        <p style="font-size:0.82rem;color:#64748b;margin-bottom:14px;">Submit a request to meet with your manager. They'll confirm the time.</p>
+        <p style="font-size:0.82rem;color:#64748b;margin-bottom:14px;">Submit a preferred date to meet with your manager. They'll confirm the time.</p>
         <div class="mb-2">
           <label class="form-label small fw-semibold" style="font-size:0.75rem;">Preferred Date</label>
           <input type="date" id="ap1on1Date" class="form-control form-control-sm">
@@ -6894,10 +6955,17 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <textarea id="ap1on1Note" class="form-control form-control-sm" rows="2" placeholder="What would you like to discuss?"></textarea>
         </div>
         <button class="btn btn-orange btn-sm w-100" onclick="submitAp1on1()">Submit Request</button>
-        <div id="ap1on1Success" class="d-none alert alert-success py-2 mt-2 small">Request submitted!</div>
+        <div id="ap1on1Success" class="d-none alert alert-success py-2 mt-2 small">Request submitted! Your manager will confirm the time.</div>
       </div>
 
-      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:12px;"><i class="fas fa-clock me-1" style="color:#f97316;"></i>Time Off</div>
+      <!-- Meeting History -->
+      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:10px;"><i class="fas fa-history me-1" style="color:#f97316;"></i>Meeting History</div>
+      <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);">
+        <div id="apOneOnOneHistory"></div>
+      </div>
+
+      <!-- Time Off -->
+      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:10px;"><i class="fas fa-umbrella-beach me-1" style="color:#f97316;"></i>Time Off</div>
       <div id="apTimeOff" style="background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);"></div>
     </div>
 
