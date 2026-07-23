@@ -399,7 +399,6 @@ function showAssociatePortal() {
 }
 // ─── Associate Portal ──────────────────────────────────────────────────
 let _apAssocId = null;
-let _apNotes = [];
 let _apAttendance = [];
 let _apPointsLog = [];
 let _apAttendancePts = 0;
@@ -468,8 +467,7 @@ window.loadAssociatePortal = async (assocId, assocData) => {
   }
 
   // Load all data in parallel
-  const [notesSnap, badgesSnap, certsDoc, attendSnap, ptsLogSnap, timeOffSnap, oneOnOneSnap] = await Promise.all([
-    getDocs(collection(db, 'notes', assocId, 'entries')),
+  const [badgesSnap, certsDoc, attendSnap, ptsLogSnap, timeOffSnap, oneOnOneSnap] = await Promise.all([
     getDocs(collection(db, 'badges', assocId, 'entries')),
     getDoc(doc(db, 'certs', assocId)),           // certs = single doc per associate
     getDocs(collection(db, 'attendance', assocId, 'entries')),
@@ -478,7 +476,6 @@ window.loadAssociatePortal = async (assocId, assocData) => {
     getDocs(collection(db, 'oneOnOnes', assocId, 'entries'))
   ]);
 
-  _apNotes = notesSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.createdAt?.localeCompare(a.createdAt));
   _apAttendance = attendSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.date?.localeCompare(a.date));
   _apPointsLog = ptsLogSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.createdAt?.localeCompare(a.createdAt));
   _apAttendancePts = Number(freshData.attendancePoints ?? 0);
@@ -570,8 +567,7 @@ window.loadAssociatePortal = async (assocId, assocData) => {
     </div>`).join('');
   }
 
-  // Render notes and attendance now
-  renderApNotes();
+  // Render attendance
   renderApAttendance();
 };
 
@@ -583,27 +579,6 @@ window.switchApTab = (tab) => {
     t.style.color = isActive ? '#fff' : 'rgba(255,255,255,0.6)';
     t.style.borderBottomColor = isActive ? '#f97316' : 'transparent';
   });
-};
-
-window.renderApNotes = () => {
-  const filter = document.getElementById('apNotesFilter')?.value || 'All';
-  const filtered = filter === 'All' ? _apNotes : _apNotes.filter(n => n.type === filter);
-  const el = document.getElementById('apNotesList');
-  if (filtered.length === 0) {
-    el.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:0.82rem;padding:24px 0;">No notes found.</div>';
-    return;
-  }
-  el.innerHTML = filtered.map(n => {
-    const date = n.createdAt ? new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
-    return `<div class="ap-note-card type-${n.type}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-        <span style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:${n.type==='Recognition'?'#16a34a':n.type==='Coaching'?'#d97706':n.type==='Performance'?'#7c3aed':'#64748b'}">${n.type}</span>
-        <span style="font-size:0.7rem;color:#94a3b8;">${date}</span>
-      </div>
-      <div style="font-size:0.85rem;color:#1e293b;line-height:1.5;">${n.text}</div>
-      ${n.screenshotData ? `<div class="mt-2"><img src="${n.screenshotData}" alt="Screenshot" style="max-width:100%;border-radius:6px;border:1px solid #e2e8f0;" onclick="openScreenshotLightbox(this.src)"></div>` : ''}
-    </div>`;
-  }).join('');
 };
 
 window.renderApAttendance = () => {
@@ -6911,7 +6886,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     <!-- Tab Bar -->
     <div style="display:flex;border-bottom:2px solid rgba(255,255,255,0.1);">
       <button class="ap-tab active" data-tab="home" onclick="switchApTab('home')" style="flex:1;background:none;border:none;color:#fff;padding:10px 4px;font-size:0.78rem;font-weight:600;border-bottom:2px solid #f97316;margin-bottom:-2px;cursor:pointer;"><i class="fas fa-home" style="display:block;font-size:1rem;margin-bottom:2px;"></i>Home</button>
-      <button class="ap-tab" data-tab="notes" onclick="switchApTab('notes')" style="flex:1;background:none;border:none;color:rgba(255,255,255,0.6);padding:10px 4px;font-size:0.78rem;font-weight:600;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;"><i class="fas fa-sticky-note" style="display:block;font-size:1rem;margin-bottom:2px;"></i>Notes</button>
       <button class="ap-tab" data-tab="attendance" onclick="switchApTab('attendance')" style="flex:1;background:none;border:none;color:rgba(255,255,255,0.6);padding:10px 4px;font-size:0.78rem;font-weight:600;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;"><i class="fas fa-calendar-check" style="display:block;font-size:1rem;margin-bottom:2px;"></i>Attendance</button>
       <button class="ap-tab" data-tab="schedule" onclick="switchApTab('schedule')" style="flex:1;background:none;border:none;color:rgba(255,255,255,0.6);padding:10px 4px;font-size:0.78rem;font-weight:600;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;"><i class="fas fa-calendar-alt" style="display:block;font-size:1rem;margin-bottom:2px;"></i>Schedule</button>
     </div>
@@ -6962,21 +6936,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:10px;"><i class="fas fa-bell me-1" style="color:#f97316;"></i>Upcoming</div>
         <div id="apUpcoming"></div>
       </div>
-    </div>
-
-    <!-- NOTES TAB -->
-    <div id="apTab-notes" class="ap-tab-panel d-none">
-      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:12px;"><i class="fas fa-sticky-note me-1" style="color:#f97316;"></i>My Notes</div>
-      <div style="margin-bottom:10px;">
-        <select id="apNotesFilter" class="form-select form-select-sm" onchange="renderApNotes()" style="max-width:160px;">
-          <option value="All">All Types</option>
-          <option value="General">General</option>
-          <option value="Coaching">Coaching</option>
-          <option value="Recognition">Recognition</option>
-          <option value="Performance">Performance</option>
-        </select>
-      </div>
-      <div id="apNotesList"></div>
     </div>
 
     <!-- ATTENDANCE TAB -->
