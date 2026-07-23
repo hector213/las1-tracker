@@ -474,7 +474,7 @@ window.loadAssociatePortal = async (assocId, assocData) => {
     getDoc(doc(db, 'certs', assocId)),           // certs = single doc per associate
     getDocs(collection(db, 'attendance', assocId, 'entries')),
     getDocs(query(collection(db, 'pointsLog'), where('associateId', '==', assocId))),
-    getDocs(collection(db, 'timeoff', assocId, 'entries')),
+    getDocs(collection(db, 'timeOff', assocId, 'entries')),
     getDocs(collection(db, 'oneOnOnes', assocId, 'entries'))
   ]);
 
@@ -521,8 +521,29 @@ window.loadAssociatePortal = async (assocId, assocData) => {
     .sort((a, b) => b.date?.localeCompare(a.date));
   renderApOneOnOnes(freshData);
 
-  // Upcoming: anniversary
+  // Time off — sort by startDate
+  const timeOff = timeOffSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+  const toEl = document.getElementById('apTimeOff');
+  if (timeOff.length === 0) {
+    toEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">No time off on record.</span>';
+  } else {
+    toEl.innerHTML = timeOff.map(t => {
+      const start = t.startDate ? new Date(t.startDate + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
+      const end   = t.endDate && t.endDate !== t.startDate ? ' – ' + new Date(t.endDate + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #f1f5f9;">
+        <div>
+          <div style="font-size:0.82rem;font-weight:600;color:#1a2744;">${start}${end}</div>
+          ${t.note ? `<div style="font-size:0.7rem;color:#94a3b8;">${escapeHtml(t.note)}</div>` : ''}
+        </div>
+        <span style="font-size:0.72rem;color:#64748b;background:#f1f5f9;border-radius:6px;padding:3px 8px;">${t.type || 'Time Off'}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Upcoming: anniversary + upcoming time off
   const upcomingEl = document.getElementById('apUpcoming');
+  const today = localToday();
   let upcomingItems = [];
   if (freshData.startDate) {
     const start = new Date(freshData.startDate);
@@ -532,24 +553,20 @@ window.loadAssociatePortal = async (assocId, assocData) => {
     const daysToAnniv = Math.ceil((anniv - now) / (1000*60*60*24));
     if (daysToAnniv <= 90) upcomingItems.push({ icon:'🎂', label:'Work Anniversary', sub:`${anniv.toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${daysToAnniv} days away` });
   }
+  // Add upcoming time off (next 90 days)
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() + 90);
+  const cutoffStr = cutoff.toISOString().slice(0,10);
+  timeOff.filter(t => t.startDate && t.startDate >= today && t.startDate <= cutoffStr).forEach(t => {
+    const start = new Date(t.startDate + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    const end   = t.endDate && t.endDate !== t.startDate ? ' – ' + new Date(t.endDate + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
+    upcomingItems.push({ icon:'🏖️', label: t.type || 'Time Off', sub: start + end });
+  });
   if (upcomingItems.length === 0) {
     upcomingEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">Nothing upcoming in the next 90 days.</span>';
   } else {
     upcomingEl.innerHTML = upcomingItems.map(u => `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;">
       <span style="font-size:1.2rem;">${u.icon}</span>
       <div><div style="font-size:0.82rem;font-weight:600;color:#1a2744;">${u.label}</div><div style="font-size:0.72rem;color:#94a3b8;">${u.sub}</div></div>
-    </div>`).join('');
-  }
-
-  // Time off
-  const timeOff = timeOffSnap.docs.map(d => d.data()).sort((a,b) => a.date?.localeCompare(b.date));
-  const toEl = document.getElementById('apTimeOff');
-  if (timeOff.length === 0) {
-    toEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">No time off on record.</span>';
-  } else {
-    toEl.innerHTML = timeOff.map(t => `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:0.82rem;">
-      <span style="font-weight:600;color:#1a2744;">${t.date}</span>
-      <span style="color:#64748b;">${t.type||''} ${t.name?'— '+t.name:''}</span>
     </div>`).join('');
   }
 
