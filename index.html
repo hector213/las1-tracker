@@ -11,7 +11,7 @@
 <script type="module">
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, collection, collectionGroup, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, increment, deleteField, query, orderBy, limit, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, collectionGroup, doc, getDoc, getDocFromServer, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, increment, deleteField, query, orderBy, limit, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMPDpzhZEWZjP9SptREKVSB4dmdhY5cpM",
@@ -406,10 +406,13 @@ let _apPointsLog = [];
 window.loadAssociatePortal = async (assocId, assocData) => {
   _apAssocId = assocId;
 
-  // Fresh read for accurate points (cache can be stale)
-  const freshSnap = await getDoc(doc(db, 'associates', assocId));
-  const freshData = freshSnap.exists() ? freshSnap.data() : assocData;
-  const pts = Number(freshData.points) || 0;
+  // Force server read — bypass Firestore cache so points are always current
+  let freshData = assocData;
+  try {
+    const freshSnap = await getDocFromServer(doc(db, 'associates', assocId));
+    if (freshSnap.exists()) freshData = freshSnap.data();
+  } catch(e) { /* fall back to assocData */ }
+  const pts = Number(freshData.points ?? 0);
 
   // Header
   document.getElementById('apName').textContent = freshData.name || 'Associate';
@@ -6939,27 +6942,11 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     <!-- SCHEDULE TAB -->
     <div id="apTab-schedule" class="ap-tab-panel d-none">
 
-      <!-- Scheduled next 1:1 (set by manager) -->
-      <div id="apScheduled1on1"></div>
-
-      <!-- Request a 1:1 -->
-      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:10px;"><i class="fas fa-calendar-plus me-1" style="color:#f97316;"></i>Request a 1:1</div>
-      <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);">
-        <p style="font-size:0.82rem;color:#64748b;margin-bottom:14px;">Submit a preferred date to meet with your manager. They'll confirm the time.</p>
-        <div class="mb-2">
-          <label class="form-label small fw-semibold" style="font-size:0.75rem;">Preferred Date</label>
-          <input type="date" id="ap1on1Date" class="form-control form-control-sm">
-        </div>
-        <div class="mb-2">
-          <label class="form-label small fw-semibold" style="font-size:0.75rem;">Topic / Note <span class="text-muted fw-normal">(optional)</span></label>
-          <textarea id="ap1on1Note" class="form-control form-control-sm" rows="2" placeholder="What would you like to discuss?"></textarea>
-        </div>
-        <button class="btn btn-orange btn-sm w-100" onclick="submitAp1on1()">Submit Request</button>
-        <div id="ap1on1Success" class="d-none alert alert-success py-2 mt-2 small">Request submitted! Your manager will confirm the time.</div>
-      </div>
+      <!-- Upcoming 1:1 (set by manager in main dashboard) -->
+      <div id="apScheduled1on1" class="mb-3"></div>
 
       <!-- Meeting History -->
-      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:10px;"><i class="fas fa-history me-1" style="color:#f97316;"></i>Meeting History</div>
+      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:10px;"><i class="fas fa-comments me-1" style="color:#f97316;"></i>1:1 Meeting History</div>
       <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);">
         <div id="apOneOnOneHistory"></div>
       </div>
