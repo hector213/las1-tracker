@@ -344,6 +344,7 @@ onAuthStateChanged(auth, async (user) => {
     if (currentUserRole !== 'viewer') document.getElementById('addAssocBtn').classList.remove('d-none');
     applyTabVisibility();
     restoreLastView();
+    checkPendingNotifications();
     (async () => {
       try {
         const _uSnap2 = await getDoc(doc(db, 'users', user.uid));
@@ -404,13 +405,30 @@ let _apPointsLog = [];
 
 window.loadAssociatePortal = async (assocId, assocData) => {
   _apAssocId = assocId;
-  const pts = Number(assocData.points) || 0;
+
+  // Fresh read for accurate points (cache can be stale)
+  const freshSnap = await getDoc(doc(db, 'associates', assocId));
+  const freshData = freshSnap.exists() ? freshSnap.data() : assocData;
+  const pts = Number(freshData.points) || 0;
 
   // Header
-  document.getElementById('apName').textContent = assocData.name || 'Associate';
-  document.getElementById('apRole').textContent = assocData.role || assocData.department || '';
+  document.getElementById('apName').textContent = freshData.name || 'Associate';
+  document.getElementById('apRole').textContent = freshData.role || freshData.department || '';
   document.getElementById('apPoints').textContent = (pts > 0 ? '+' : '') + pts;
   document.getElementById('apHomePoints').textContent = (pts > 0 ? '+' : '') + pts;
+
+  // Reports to
+  const apReportsTo = document.getElementById('apReportsTo');
+  if (freshData.reportsTo) {
+    const mgrSnap = await getDoc(doc(db, 'associates', freshData.reportsTo));
+    if (mgrSnap.exists()) {
+      apReportsTo.textContent = 'Reports to ' + mgrSnap.data().name;
+    } else {
+      apReportsTo.textContent = '';
+    }
+  } else {
+    apReportsTo.textContent = '';
+  }
 
   // Level
   let level = 'Developing';
@@ -420,8 +438,8 @@ window.loadAssociatePortal = async (assocId, assocData) => {
   document.getElementById('apLevel').textContent = level;
 
   // Tenure
-  if (assocData.startDate) {
-    const months = Math.floor((Date.now() - new Date(assocData.startDate)) / (1000*60*60*24*30.44));
+  if (freshData.startDate) {
+    const months = Math.floor((Date.now() - new Date(freshData.startDate)) / (1000*60*60*24*30.44));
     const yrs = Math.floor(months / 12);
     const mo = months % 12;
     document.getElementById('apTenure').textContent = yrs > 0 ? `${yrs}yr ${mo}mo tenure` : `${mo}mo tenure`;
@@ -444,7 +462,7 @@ window.loadAssociatePortal = async (assocId, assocData) => {
   const [notesSnap, badgesSnap, credsSnap, attendSnap, ptsLogSnap, timeOffSnap] = await Promise.all([
     getDocs(collection(db, 'notes', assocId, 'entries')),
     getDocs(collection(db, 'badges', assocId, 'entries')),
-    getDocs(collection(db, 'creds', assocId, 'entries')),
+    getDocs(collection(db, 'credentials', assocId, 'entries')),
     getDocs(collection(db, 'attendance', assocId, 'events')),
     getDocs(query(collection(db, 'pointsLog'), where('associateId', '==', assocId))),
     getDocs(collection(db, 'timeoff', assocId, 'entries'))
@@ -618,16 +636,122 @@ window.submitAccessRequest = async () => {
   const last = document.getElementById('reqLastName').value.trim();
   const email = document.getElementById('reqEmail').value.trim();
   if (!first || !last || !email) { alert('Please fill in all fields.'); return; }
-  await addDoc(collection(db, 'accessRequests'), {
-    firstName: first, lastName: last, email,
-    fullName: `${first} ${last}`,
-    status: 'pending',
-    createdAt: new Date().toISOString()
-  });
-  document.getElementById('reqFirstName').value = '';
-  document.getElementById('reqLastName').value = '';
-  document.getElementById('reqEmail').value = '';
-  document.getElementById('reqSuccess').classList.remove('d-none');
+  const btn = document.querySelector('#requestAccessForm .btn-orange');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    await addDoc(collection(db, 'accessRequests'), {
+      firstName: first, lastName: last, email,
+      fullName: `${first} ${last}`,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    });
+    document.getElementById('reqFirstName').value = '';
+    document.getElementById('reqLastName').value = '';
+    document.getElementById('reqEmail').value = '';
+    document.getElementById('reqSuccess').classList.remove('d-none');
+  } catch(e) {
+    alert('Could not submit — please contact your manager directly.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Send Request'; }
+  }
+};
+
+// ─── Notifications ────────────────────────────────────────────────────
+let _notifRequests = [];
+
+async function checkPendingNotifications() {
+  if (!currentUserAssocId) return;
+  try {
+    // Find all associates who report to this user
+    const directReportsSnap = await getDocs(
+      query(collection(db, 'associates'), where('reportsTo', '==', currentUserAssocId))
+    );
+    if (directReportsSnap.empty) return;
+    const directReportIds = directReportsSnap.docs.map(d => d.id);
+
+    // Get pending 1:1 requests from those associates
+    const reqSnap = await getDocs(
+      query(collection(db, 'oneOnOneRequests'), where('status', '==', 'pending'))
+    );
+    _notifRequests = reqSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(r => directReportIds.includes(r.associateId));
+
+    if (_notifRequests.length === 0) return;
+
+    // Enrich with associate names
+    const names = directReportsSnap.docs.reduce((m, d) => { m[d.id] = d.data().name; return m; }, {});
+    const count = _notifRequests.length;
+    const nameList = [...new Set(_notifRequests.map(r => names[r.associateId] || 'An associate'))];
+    const preview = nameList.length === 1 ? nameList[0] : nameList.length === 2
+      ? `${nameList[0]} and ${nameList[1]}`
+      : `${nameList[0]} and ${nameList.length - 1} others`;
+
+    document.getElementById('notifText').textContent =
+      `${preview} requested a 1:1 meeting — ${count} pending request${count > 1 ? 's' : ''}`;
+    document.getElementById('notifBanner').classList.remove('d-none');
+  } catch(e) { /* non-critical */ }
+}
+
+window.handleNotifClick = () => {
+  openRequestsInbox();
+};
+
+window.openRequestsInbox = async () => {
+  const el = document.getElementById('requestsInboxList');
+  el.innerHTML = '<p class="text-muted small">Loading…</p>';
+  new bootstrap.Modal(document.getElementById('requestsInboxModal')).show();
+
+  const assocSnap = await getDocs(collection(db, 'associates'));
+  const assocMap = assocSnap.docs.reduce((m, d) => { m[d.id] = d.data().name; return m; }, {});
+
+  // Filter to direct reports if we know the supervisor's assoc ID
+  const snap = await getDocs(query(collection(db, 'oneOnOneRequests'), where('status', '==', 'pending')));
+  let requests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  if (currentUserAssocId) {
+    const directReportIds = assocSnap.docs
+      .filter(d => d.data().reportsTo === currentUserAssocId)
+      .map(d => d.id);
+    requests = requests.filter(r => directReportIds.includes(r.associateId));
+  }
+
+  if (requests.length === 0) {
+    el.innerHTML = '<p class="text-muted small mb-0 text-center py-3">No pending requests.</p>';
+    return;
+  }
+
+  el.innerHTML = requests.map(r => {
+    const name = assocMap[r.associateId] || 'Unknown';
+    const date = r.requestedDate ? new Date(r.requestedDate).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) : '—';
+    const submitted = r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
+    return `<div class="d-flex align-items-start gap-3 p-3 rounded mb-2" style="background:#fff8f1;border:1px solid #fed7aa;" id="inbox-${r.id}">
+      <div style="flex:1;">
+        <div class="fw-semibold" style="color:#1a2744;">${escapeHtml(name)}</div>
+        <div style="font-size:0.78rem;color:#f97316;font-weight:600;margin-top:2px;"><i class="fas fa-calendar me-1"></i>${date}</div>
+        ${r.note ? `<div style="font-size:0.78rem;color:#64748b;margin-top:4px;font-style:italic;">"${escapeHtml(r.note)}"</div>` : ''}
+        <div style="font-size:0.7rem;color:#94a3b8;margin-top:4px;">Submitted ${submitted}</div>
+      </div>
+      <div class="d-flex flex-column gap-1 flex-shrink-0">
+        <button class="btn btn-sm btn-orange py-0 px-2" onclick="resolveInboxRequest('${r.id}','confirmed')">Confirm</button>
+        <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="resolveInboxRequest('${r.id}','dismissed')">Dismiss</button>
+      </div>
+    </div>`;
+  }).join('');
+};
+
+window.resolveInboxRequest = async (reqId, status) => {
+  await updateDoc(doc(db, 'oneOnOneRequests', reqId), { status, resolvedAt: new Date().toISOString() });
+  document.getElementById('inbox-' + reqId)?.remove();
+  const el = document.getElementById('requestsInboxList');
+  if (el && !el.querySelector('[id^="inbox-"]')) {
+    el.innerHTML = '<p class="text-muted small mb-0 text-center py-3">All caught up!</p>';
+    dismissNotifBanner();
+  }
+};
+
+window.dismissNotifBanner = () => {
+  document.getElementById('notifBanner').classList.add('d-none');
 };
 
 function showView(view) {
@@ -4695,6 +4819,7 @@ window.loadAdminPanel = () => {
       </td>
     </tr>`).join('');
   });
+  loadOneOnOneRequests();
   loadPendingBadges();
   loadLoginLog();
   loadTabToggles();
@@ -5316,53 +5441,99 @@ window.resetAllCerts = async () => {
   finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Reset All Certs'; }
 };
 
-// ─── Access Requests ──────────────────────────────────────────────────
-window.loadPendingAccessRequests = async () => {
-  const el = document.getElementById('accessRequestsList');
+// ─── 1:1 Meeting Requests ─────────────────────────────────────────────
+window.loadOneOnOneRequests = async () => {
+  const el = document.getElementById('oneOnOneRequestsList');
   if (!el) return;
-  const snap = await getDocs(query(collection(db, 'accessRequests'), where('status', '==', 'pending')));
+  el.innerHTML = '<p class="text-muted small">Loading…</p>';
+
+  const snap = await getDocs(query(collection(db, 'oneOnOneRequests'), where('status', '==', 'pending')));
   if (snap.empty) {
     el.innerHTML = '<p class="text-muted small mb-0">No pending requests.</p>';
     return;
   }
-  // Load associates for matching
+
+  // Load associate names
   const assocSnap = await getDocs(collection(db, 'associates'));
-  const associates = assocSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const assocMap = assocSnap.docs.reduce((m, d) => { m[d.id] = d.data().name; return m; }, {});
 
   el.innerHTML = snap.docs.map(d => {
     const r = d.data();
-    const matchedAssoc = associates.find(a => a.name && a.name.toLowerCase() === r.fullName?.toLowerCase());
-    const assocOpts = associates.map(a => `<option value="${a.id}" ${matchedAssoc?.id === a.id ? 'selected' : ''}>${a.name}</option>`).join('');
-    return `<div class="border rounded p-3 mb-2 bg-light" id="req-${d.id}">
-      <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-        <div>
-          <div class="fw-semibold">${escapeHtml(r.fullName || '')}</div>
-          <div class="text-muted small">${escapeHtml(r.email || '')}</div>
-          <div class="text-muted small">${formatDate(r.createdAt)}</div>
-        </div>
-        <div class="d-flex flex-column gap-1 align-items-end" style="min-width:220px;">
-          <label class="small fw-semibold mb-0">Link to associate:</label>
-          <select class="form-select form-select-sm" id="reqAssoc-${d.id}" style="max-width:200px;">
-            <option value="">— Select —</option>
-            ${assocOpts}
-          </select>
-          <div class="d-flex gap-1 mt-1">
-            <button class="btn btn-sm btn-orange" onclick="approveAccessRequest('${d.id}','${r.email}')">Approve &amp; Send Email</button>
-            <button class="btn btn-sm btn-outline-danger" onclick="denyAccessRequest('${d.id}')">Deny</button>
-          </div>
-        </div>
+    const name = assocMap[r.associateId] || 'Unknown Associate';
+    const date = r.requestedDate ? new Date(r.requestedDate).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) : '—';
+    const submitted = r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
+    return `<div class="d-flex align-items-start gap-3 p-3 rounded mb-2" style="background:#fff8f1;border:1px solid #fed7aa;" id="oor-${d.id}">
+      <div style="flex:1;">
+        <div class="fw-semibold small" style="color:#1a2744;">${escapeHtml(name)}</div>
+        <div style="font-size:0.78rem;color:#f97316;font-weight:600;margin-top:1px;"><i class="fas fa-calendar me-1"></i>Requested: ${date}</div>
+        ${r.note ? `<div style="font-size:0.78rem;color:#64748b;margin-top:4px;font-style:italic;">"${escapeHtml(r.note)}"</div>` : ''}
+        <div style="font-size:0.7rem;color:#94a3b8;margin-top:4px;">Submitted ${submitted}</div>
+      </div>
+      <div class="d-flex flex-column gap-1">
+        <button class="btn btn-sm btn-orange py-0" onclick="resolveOneOnOne('${d.id}','confirmed')">Confirm</button>
+        <button class="btn btn-sm btn-outline-secondary py-0" onclick="resolveOneOnOne('${d.id}','dismissed')">Dismiss</button>
       </div>
     </div>`;
   }).join('');
 };
 
-window.approveAccessRequest = async (reqId, email) => {
-  const assocId = document.getElementById(`reqAssoc-${reqId}`)?.value;
-  if (!assocId) { alert('Please select an associate to link this account to.'); return; }
+window.resolveOneOnOne = async (reqId, status) => {
+  await updateDoc(doc(db, 'oneOnOneRequests', reqId), { status, resolvedAt: new Date().toISOString() });
+  document.getElementById('oor-' + reqId)?.remove();
+  const el = document.getElementById('oneOnOneRequestsList');
+  if (el && !el.querySelector('[id^="oor-"]')) {
+    el.innerHTML = '<p class="text-muted small mb-0">No pending requests.</p>';
+  }
+  // Hide banner if no more pending
+  const remaining = document.querySelectorAll('[id^="oor-"]').length;
+  if (remaining === 0) dismissNotifBanner();
+};
+
+// ─── Portal Access Management ──────────────────────────────────────────
+window.loadPendingAccessRequests = async () => {
+  const el = document.getElementById('accessRequestsList');
+  if (!el) return;
+  el.innerHTML = '<p class="text-muted small">Loading…</p>';
+
+  const snap = await getDocs(query(collection(db, 'accessRequests'), where('status', '==', 'pending')));
+
+  if (snap.empty) {
+    el.innerHTML = '<p class="text-muted small mb-0">No pending requests.</p>';
+    return;
+  }
+
+  el.innerHTML = snap.docs.map(d => {
+    const r = d.data();
+    const date = r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+    return `<div class="d-flex align-items-center justify-content-between gap-3 p-2 rounded mb-2" style="background:#f8fafc;border:1px solid #e2e8f0;" id="req-${d.id}">
+      <div>
+        <div class="fw-semibold small">${escapeHtml(r.fullName || '')}</div>
+        <div class="text-muted" style="font-size:0.78rem;">${escapeHtml(r.email || '')} &bull; ${date}</div>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary py-0 flex-shrink-0" onclick="dismissRequest('${d.id}')">Dismiss</button>
+    </div>`;
+  }).join('');
+};
+
+window.dismissRequest = async (reqId) => {
+  await updateDoc(doc(db, 'accessRequests', reqId), { status: 'dismissed' });
+  document.getElementById('req-' + reqId)?.remove();
+  const el = document.getElementById('accessRequestsList');
+  if (el && !el.querySelector('[id^="req-"]')) {
+    el.innerHTML = '<p class="text-muted small mb-0">No pending requests.</p>';
+  }
+};
+
+window.grantPortalAccess = async (assocId) => {
+  const emailInput = document.getElementById(`pa-email-${assocId}`);
+  const email = emailInput?.value.trim();
+  if (!email) { alert('Please enter the associate\'s email address.'); return; }
+
   const btn = event.target;
   btn.disabled = true; btn.textContent = 'Creating…';
+
   try {
-    // Create Firebase Auth account using secondary app
+    // Create Firebase Auth account via secondary app so admin isn't logged out
     const secondaryApp = initializeApp(firebaseConfig, 'secondary_' + Date.now());
     const secondaryAuth = getAuth(secondaryApp);
     const tempPw = Math.random().toString(36).slice(-10) + 'A1!';
@@ -5370,27 +5541,30 @@ window.approveAccessRequest = async (reqId, email) => {
     const newUid = cred.user.uid;
     await deleteApp(secondaryApp);
 
-    // Link UID to associate doc
-    await updateDoc(doc(db, 'associates', assocId), { viewerUid: newUid });
+    // Save UID + email to associate doc
+    await updateDoc(doc(db, 'associates', assocId), { viewerUid: newUid, portalEmail: email });
 
-    // Mark request approved
-    await updateDoc(doc(db, 'accessRequests', reqId), { status: 'approved', approvedAt: new Date().toISOString() });
-
-    // Send password reset email so they set their own password
+    // Send password setup email to associate
     await sendPasswordResetEmail(auth, email);
 
-    document.getElementById('req-' + reqId)?.remove();
-    alert(`Access approved! A password setup email has been sent to ${email}.`);
+    alert(`✅ Portal access granted!\n\nA password setup email has been sent to:\n${email}\n\nThey can log in once they set their password.`);
+
+    // Refresh the list
+    loadPendingAccessRequests();
   } catch(e) {
-    alert('Error: ' + e.message);
-    btn.disabled = false; btn.textContent = 'Approve & Send Email';
+    if (e.code === 'auth/email-already-in-use') {
+      alert('That email already has a Firebase account. If this associate already has portal access, check the Active status above.');
+    } else {
+      alert('Error: ' + e.message);
+    }
+    btn.disabled = false; btn.textContent = 'Grant Access';
   }
 };
 
-window.denyAccessRequest = async (reqId) => {
-  if (!confirm('Deny this access request?')) return;
-  await updateDoc(doc(db, 'accessRequests', reqId), { status: 'denied', deniedAt: new Date().toISOString() });
-  document.getElementById('req-' + reqId)?.remove();
+window.revokePortalAccess = async (assocId) => {
+  if (!confirm('Remove portal access for this associate? They will no longer be able to log in.')) return;
+  await updateDoc(doc(db, 'associates', assocId), { viewerUid: deleteField(), portalEmail: deleteField() });
+  loadPendingAccessRequests();
 };
 
 // ─── Attendance Bulk Import ────────────────────────────────────────────
@@ -6420,6 +6594,13 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .rec-title { font-weight:700; font-size:0.82rem; color:var(--navy); }
 .rec-detail { font-size:0.78rem; color:#6b7280; margin-top:2px; }
 
+/* Notification Banner */
+@keyframes notifPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+#notifBell { animation: notifPulse 1.2s ease-in-out infinite; display:inline-block; }
+
 /* Admin */
 .admin-card { background:#fff; border-radius:12px; padding:1.5rem; border:1px solid #e5e7eb; margin-bottom:1.5rem; }
 .pending-badge-card { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:0.875rem 1rem; }
@@ -6589,13 +6770,13 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <input type="text" id="reqLastName" class="form-control form-control-sm" placeholder="Last Name">
       </div>
       <div class="mb-3">
-        <input type="email" id="reqEmail" class="form-control form-control-sm" placeholder="Email Address">
+        <input type="email" id="reqEmail" class="form-control form-control-sm" placeholder="Your Email Address">
       </div>
       <div class="d-flex gap-2">
-        <button class="btn btn-orange btn-sm flex-fill" onclick="submitAccessRequest()">Submit Request</button>
+        <button class="btn btn-orange btn-sm flex-fill" onclick="submitAccessRequest()">Send Request</button>
         <button class="btn btn-outline-secondary btn-sm" onclick="cancelRequestForm()">Cancel</button>
       </div>
-      <div id="reqSuccess" class="d-none alert alert-success py-2 mt-2 small">Request submitted! Your manager will set up your access.</div>
+      <div id="reqSuccess" class="d-none alert alert-success py-2 mt-2 small text-center">Request sent! Your manager will set up your access.</div>
     </div>
   </div>
 </div>
@@ -6609,6 +6790,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div style="color:#f97316;font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;">LAS1 Associate Portal</div>
         <div id="apName" style="color:#fff;font-size:1.15rem;font-weight:700;line-height:1.2;"></div>
         <div id="apRole" style="color:#94a3b8;font-size:0.75rem;margin-top:1px;"></div>
+        <div id="apReportsTo" style="color:#64748b;font-size:0.7rem;margin-top:1px;"></div>
       </div>
       <div style="text-align:right;">
         <div id="apPoints" style="color:#f97316;font-size:1.6rem;font-weight:800;line-height:1;"></div>
@@ -6767,6 +6949,20 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   </nav>
 
   <main id="mainContent">
+
+    <!-- NOTIFICATION BANNER -->
+    <div id="notifBanner" class="d-none" style="margin:-1.5rem -1.5rem 1.5rem -1.5rem;">
+      <div id="notifBannerInner" style="background:linear-gradient(90deg,#1a2744,#f97316);padding:10px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;" onclick="handleNotifClick()">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span id="notifBell" style="font-size:1.2rem;">🔔</span>
+          <span id="notifText" style="color:#fff;font-size:0.85rem;font-weight:600;"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="color:rgba(255,255,255,0.8);font-size:0.78rem;">Click to view →</span>
+          <button onclick="event.stopPropagation();dismissNotifBanner()" style="background:rgba(255,255,255,0.15);border:none;color:#fff;border-radius:4px;padding:2px 8px;font-size:0.75rem;cursor:pointer;">✕</button>
+        </div>
+      </div>
+    </div>
 
     <!-- DASHBOARD VIEW -->
     <div id="dashboardView" class="view">
@@ -7656,12 +7852,22 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
       </div>
 
-      <!-- Associate Access Requests -->
+      <!-- 1:1 Meeting Requests -->
+      <div class="admin-card mb-4" id="oneOnOneRequestsCard">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-calendar-check me-2" style="color:#f97316"></i>1:1 Meeting Requests</h6>
+          <button class="btn btn-sm btn-outline-secondary py-0" onclick="loadOneOnOneRequests()"><i class="fas fa-sync-alt"></i></button>
+        </div>
+        <div id="oneOnOneRequestsList"><p class="text-muted small mb-0">Loading…</p></div>
+      </div>
+
+      <!-- Associate Portal Access -->
       <div class="admin-card mb-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
-          <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-user-clock me-2" style="color:#7c3aed"></i>Associate Portal Access Requests</h6>
+          <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-mobile-alt me-2" style="color:#7c3aed"></i>Associate Portal Access</h6>
           <button class="btn btn-sm btn-outline-secondary py-0" onclick="loadPendingAccessRequests()"><i class="fas fa-sync-alt"></i></button>
         </div>
+        <p class="text-muted small mb-3">Grant associates access to their personal mobile portal. They'll receive an email to set their password.</p>
         <div id="accessRequestsList"><p class="text-muted small mb-0">Loading…</p></div>
       </div>
 
@@ -7873,6 +8079,21 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 </div>
 
 <!-- ═══════ MODALS ═══════ -->
+
+<!-- 1:1 Requests Modal (for supervisors) -->
+<div class="modal fade" id="requestsInboxModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0" style="background:linear-gradient(135deg,#1a2744,#243460);border-radius:0.5rem 0.5rem 0 0;">
+        <h5 class="modal-title fw-bold text-white"><i class="fas fa-calendar-check me-2" style="color:#f97316;"></i>1:1 Meeting Requests</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-3">
+        <div id="requestsInboxList"><p class="text-muted small">Loading…</p></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Create User Account -->
 <div class="modal fade" id="newUserModal" tabindex="-1">
