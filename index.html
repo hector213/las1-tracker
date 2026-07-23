@@ -11,7 +11,7 @@
 <script type="module">
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, collection, collectionGroup, doc, getDoc, getDocFromServer, getDocs, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, increment, deleteField, query, orderBy, limit, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, collectionGroup, doc, getDoc, getDocFromServer, getDocs, getDocsFromServer, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, increment, deleteField, query, orderBy, limit, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMPDpzhZEWZjP9SptREKVSB4dmdhY5cpM",
@@ -301,9 +301,9 @@ onAuthStateChanged(auth, async (user) => {
   if (user) {
     currentUser = user;
 
-    // Check if this UID belongs to an associate (portal user)
+    // Check if this UID belongs to an associate (portal user) — force server read for fresh points
     const assocQ = query(collection(db, 'associates'), where('viewerUid', '==', user.uid));
-    const assocSnap = await getDocs(assocQ);
+    const assocSnap = await getDocsFromServer(assocQ);
     if (!assocSnap.empty) {
       const assocDoc = assocSnap.docs[0];
       showAssociatePortal();
@@ -406,12 +406,8 @@ let _apPointsLog = [];
 window.loadAssociatePortal = async (assocId, assocData) => {
   _apAssocId = assocId;
 
-  // Force server read — bypass Firestore cache so points are always current
-  let freshData = assocData;
-  try {
-    const freshSnap = await getDocFromServer(doc(db, 'associates', assocId));
-    if (freshSnap.exists()) freshData = freshSnap.data();
-  } catch(e) { /* fall back to assocData */ }
+  // assocData already comes from getDocsFromServer in auth flow — always fresh
+  const freshData = assocData;
   const pts = Number(freshData.points ?? 0);
 
   // Header
@@ -424,7 +420,7 @@ window.loadAssociatePortal = async (assocId, assocData) => {
   // Reports to
   const apReportsTo = document.getElementById('apReportsTo');
   if (freshData.reportsTo) {
-    const mgrSnap = await getDoc(doc(db, 'associates', freshData.reportsTo));
+    const mgrSnap = await getDocFromServer(doc(db, 'associates', freshData.reportsTo));
     if (mgrSnap.exists()) {
       apReportsTo.textContent = 'Reports to ' + mgrSnap.data().name;
     } else {
