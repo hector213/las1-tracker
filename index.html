@@ -406,9 +406,21 @@ let _apPointsLog = [];
 window.loadAssociatePortal = async (assocId, assocData) => {
   _apAssocId = assocId;
 
-  // assocData already comes from getDocsFromServer in auth flow — always fresh
-  const freshData = assocData;
-  const pts = Number(freshData.points ?? 0);
+  // Always do a direct server read by doc ID to guarantee fresh points data
+  let freshData = assocData;
+  try {
+    const directSnap = await getDocFromServer(doc(db, 'associates', assocId));
+    if (directSnap.exists()) freshData = directSnap.data();
+  } catch(e) {
+    // fallback to query data if direct read fails
+  }
+
+  const pts = Number(freshData.points ?? freshData.engagementPoints ?? 0);
+
+  // DEBUG — shows raw Firestore value on screen, remove once points confirmed working
+  const _debugKeys = Object.keys(freshData).join(', ');
+  const _debugPts = JSON.stringify(freshData.points);
+  document.getElementById('apDebug').textContent = `doc:${assocId} | pts raw:${_debugPts} | computed:${pts} | fields:${_debugKeys}`;
 
   // Header
   document.getElementById('apName').textContent = freshData.name || 'Associate';
@@ -6864,6 +6876,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
   <!-- Portal Body -->
   <div id="apBody" style="padding:16px;max-width:480px;margin:0 auto;padding-bottom:80px;">
+    <!-- DEBUG: remove once points confirmed -->
+    <div id="apDebug" style="background:#fef9c3;border:1px solid #fde047;border-radius:6px;padding:8px 10px;font-size:0.68rem;color:#713f12;word-break:break-all;margin-bottom:12px;"></div>
 
     <!-- HOME TAB -->
     <div id="apTab-home" class="ap-tab-panel">
