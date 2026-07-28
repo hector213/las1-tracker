@@ -4481,8 +4481,18 @@ function renderHRRecords(records) {
             .map(k => `<span class="badge" style="background:#e2e8f0;color:#333;font-weight:500;margin-right:3px;font-size:0.72rem">${k.charAt(0).toUpperCase()+k.slice(1)}</span>`)
             .join('');
           const color = TIER_COLORS[r.tier] || '#555';
+          const submittedHtml = r.submittedToHR
+            ? `<div style="display:inline-flex;align-items:center;gap:4px;background:#dcfce7;border:1px solid #86efac;border-radius:5px;padding:2px 7px;font-size:0.7rem;color:#15803d;font-weight:600;margin-top:3px;">
+                <i class="fas fa-check-circle"></i> ${new Date(r.submittedToHR).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+               </div>`
+            : `<button onclick="logHRSubmission(${i})" style="display:inline-flex;align-items:center;gap:4px;background:#f0f9ff;border:1px solid #7dd3fc;border-radius:5px;padding:2px 7px;font-size:0.7rem;color:#0369a1;font-weight:600;cursor:pointer;margin-top:3px;" title="Log date submitted to HR">
+                <i class="fas fa-paper-plane"></i> Submit to HR
+               </button>`;
           return `<tr>
-            <td style="padding:10px 14px;font-weight:600">${r.associateName || '—'}</td>
+            <td style="padding:10px 14px">
+              <div style="font-weight:600;">${r.associateName || '—'}</div>
+              ${submittedHtml}
+            </td>
             <td style="padding:10px 14px"><span style="color:${color};font-weight:600;font-size:0.82rem">${r.tierLabel || r.tier || '—'}</span></td>
             <td style="padding:10px 14px;text-align:center">${r.points ?? '—'}</td>
             <td style="padding:10px 14px;color:#555">${r.signedAt || '—'}</td>
@@ -4499,6 +4509,22 @@ function renderHRRecords(records) {
 }
 
 window.filterHRRecords = () => renderHRRecords(window._hrRecords || []);
+
+window.logHRSubmission = async (idx) => {
+  const records = window._hrRecords || [];
+  const r = records[idx];
+  if (!r) return;
+  if (r.submittedToHR) return; // already logged
+
+  const now = new Date().toISOString();
+  try {
+    await updateDoc(doc(db, 'signedWarnings', r.id), { submittedToHR: now });
+    records[idx].submittedToHR = now;
+    renderHRRecords(records);
+  } catch(e) {
+    alert('Could not save — ' + e.message);
+  }
+};
 
 function _loadScript(src, globalCheck) {
   return new Promise((resolve, reject) => {
@@ -4749,7 +4775,8 @@ window.listenOneOnOnes = async (associateId) => {
     window._1on1Entries = entries;
     render1on1Log(entries);
     const badge = document.getElementById('oneOnOneCountBadge');
-    if (badge) badge.textContent = entries.length;
+    const hasScheduled = !!(allAssociates.find(a => a.id === associateId)?.next1on1);
+    if (badge) badge.textContent = entries.length + (hasScheduled ? 1 : 0);
   } catch(e) {
     container.innerHTML = '<div class="text-muted small py-2">No meetings logged yet.</div>';
     window._1on1Entries = [];
