@@ -3558,8 +3558,9 @@ function clearCache(key) { delete _viewCache[key]; }
 const TIME_OFF_TYPES = {
   'vacation':   { label: 'Vacation',              color: '#0ea5e9', bg: '#e0f2fe', text: '#0c4a6e' },
   'unpaid':     { label: 'Unpaid Day Off',         color: '#dc2626', bg: '#fee2e2', text: '#7f1d1d' },
-  'fmla':       { label: 'FMLA / Medical',         color: '#059669', bg: '#d1fae5', text: '#064e3b' },
-  'leave':      { label: 'Leave of Absence',       color: '#6b7280', bg: '#f3f4f6', text: '#1f2937' },
+  'fmla':        { label: 'FMLA / Medical',         color: '#059669', bg: '#d1fae5', text: '#064e3b' },
+  'bereavement': { label: 'Bereavement',            color: '#475569', bg: '#e2e8f0', text: '#1e293b' },
+  'leave':       { label: 'Leave of Absence',       color: '#6b7280', bg: '#f3f4f6', text: '#1f2937' },
   'prehire':    { label: 'Pre-Hire Approved',      color: '#7c3aed', bg: '#ede9fe', text: '#4c1d95' }
 };
 
@@ -8402,6 +8403,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <option value="left-early-before">Left Early (before half shift) (+1.0 pt)</option>
           <option value="left-early-after">Left Early (after half shift) (+0.5 pt)</option>
           <option value="left-early-sick">Early Out — Sick Time Used (no point)</option>
+          <option value="fmla-pending">Pending FMLA (no point)</option>
+          <option value="fmla-approved">Approved FMLA (no point)</option>
+          <option value="bereavement">Bereavement (no point)</option>
         </select>
       </div>
       <div class="mb-3">
@@ -8659,6 +8663,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <option value="sick">Sick</option>
             <option value="personal">Personal</option>
             <option value="fmla">FMLA</option>
+            <option value="bereavement">Bereavement</option>
             <option value="loa">Leave of Absence</option>
             <option value="out">Out (Other)</option>
             <option value="unpaid">Unpaid</option>
