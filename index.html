@@ -39,6 +39,18 @@ const BADGES = [
   { key: 'leadership-list',     label: 'Leadership List',           emoji: '⭐', tier: 'elite'    },
   { key: 'employee-of-month',   label: 'Employee of the Month',     emoji: '🏅', tier: 'elite-plus' },
   // Cert milestone badges — auto-awarded, not available for manual nomination
+  // Productivity milestone badges — 20 pts per 100 units
+  { key: 'large-pack-300',  label: 'Large Pack — 300 Units',   emoji: '📦', tier: 'productivity', points:  60 },
+  { key: 'large-pack-400',  label: 'Large Pack — 400 Units',   emoji: '📦', tier: 'productivity', points:  80 },
+  { key: 'large-pack-500',  label: 'Large Pack — 500 Units',   emoji: '📦', tier: 'productivity', points: 100 },
+  { key: 'small-pack-600',  label: 'Small Pack — 600 Units',   emoji: '📬', tier: 'productivity', points: 120 },
+  { key: 'small-pack-700',  label: 'Small Pack — 700 Units',   emoji: '📬', tier: 'productivity', points: 140 },
+  { key: 'small-pack-800',  label: 'Small Pack — 800 Units',   emoji: '📬', tier: 'productivity', points: 160 },
+  { key: 'small-pack-900',  label: 'Small Pack — 900 Units',   emoji: '📬', tier: 'productivity', points: 180 },
+  { key: 'small-pack-1000', label: 'Small Pack — 1000 Units',  emoji: '📬', tier: 'productivity', points: 200 },
+  { key: 'replen-pick-1000',label: 'Replen Pick — 1000 Units', emoji: '🔄', tier: 'productivity', points: 200 },
+  { key: 'op-pick-600',     label: 'OP Pick — 600 Units',      emoji: '🎯', tier: 'productivity', points: 120 },
+  // Cert milestone badges — auto-awarded, not available for manual nomination
   { key: 'cert-25',  label: '25% Foundations Badge',  aliases: ['Training Starter','Foundations Badge'],  emoji: '📗', tier: 'milestone', autoOnly: true },
   { key: 'cert-50',  label: '50% Core Practitioner', aliases: ['Half Trained','Core Practitioner'],      emoji: '📘', tier: 'milestone', autoOnly: true },
   { key: 'cert-75',  label: '75% Advanced Operator', aliases: ['Well Trained','Advanced Operator'],      emoji: '📙', tier: 'milestone', autoOnly: true },
@@ -97,12 +109,13 @@ const ATTENDANCE_TYPES = [
   { key: 'doctors-note',        label: "Called Out — Doctor's Note",                   points: 0,   icon: 'fa-file-medical',   color: '#0891b2' },
 ];
 const POINT_VALUES = {
-  badge:  { standard: 25, elite: 100, 'elite-plus': 200 },
+  badge:  { standard: 25, productivity: 50, elite: 200, 'elite-plus': 300 },
   note:   { Recognition: 10, Coaching: 0, Performance: 0, General: 0 }
 };
 function badgePoints(badgeLabel) {
   const def = BADGES.find(b => b.label === badgeLabel);
-  return def ? POINT_VALUES.badge[def.tier] : POINT_VALUES.badge.standard;
+  if (!def) return POINT_VALUES.badge.standard;
+  return def.points ?? POINT_VALUES.badge[def.tier] ?? POINT_VALUES.badge.standard;
 }
 function notePoints(noteType) {
   return POINT_VALUES.note[noteType] ?? 0;
@@ -7521,51 +7534,81 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       </div>
 
       <div class="row g-4">
-        <div class="col-lg-6">
+
+        <!-- Point Values -->
+        <div class="col-12">
           <div class="admin-card">
-            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-star me-2" style="color:var(--orange)"></i>Point Values</h6>
-            <table class="table table-sm small mb-0">
-              <thead class="table-light"><tr><th>Action</th><th class="text-end">Points</th></tr></thead>
-              <tbody>
-                <tr><td>Standard Badge approved (Top Performer, Team Player, etc.)</td><td class="text-end fw-bold text-success">+25</td></tr>
-                <tr><td>Elite Badge approved (Leadership List)</td><td class="text-end fw-bold text-success">+100</td></tr>
-                <tr><td>Employee of the Month badge approved</td><td class="text-end fw-bold text-success">+200</td></tr>
-                <tr><td>Recognition note added</td><td class="text-end fw-bold text-success">+10</td></tr>
-                <tr><td>Leadership note added</td><td class="text-end fw-bold text-success">+15</td></tr>
-                <tr><td>Certification earned</td><td class="text-end fw-bold text-success">+10</td></tr>
-                <tr><td>Coaching note</td><td class="text-end text-muted">0</td></tr>
-                <tr><td>General note</td><td class="text-end text-muted">0</td></tr>
-                <tr><td>Warning note added</td><td class="text-end fw-bold text-danger">-10</td></tr>
-                <tr><td>PIP note added</td><td class="text-end fw-bold text-danger">-150</td></tr>
-                <tr><td>Certification removed</td><td class="text-end fw-bold text-danger">-10</td></tr>
-                <tr><td>Badge removed</td><td class="text-end fw-bold text-danger">Reversed</td></tr>
-                <tr><td>Note deleted</td><td class="text-end fw-bold text-danger">Reversed</td></tr>
-              </tbody>
-            </table>
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-star me-2" style="color:var(--orange)"></i>Engagement Point Values</h6>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <div class="fw-semibold small mb-2" style="color:var(--navy)">Badges</div>
+                <table class="table table-sm small mb-0">
+                  <thead class="table-light"><tr><th>Badge</th><th class="text-end">Points</th></tr></thead>
+                  <tbody>
+                    <tr><td>Standard Badge (Top Performer, Team Player, etc.)</td><td class="text-end fw-bold text-success">+25</td></tr>
+                    <tr><td>Leadership List <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:0.65rem">Elite</span></td><td class="text-end fw-bold text-success">+200</td></tr>
+                    <tr><td>Employee of the Month <span class="badge" style="background:#fef3c7;color:#92400e;font-size:0.65rem">Elite+</span></td><td class="text-end fw-bold text-success">+300</td></tr>
+                    <tr><td colspan="2" class="pt-2 fw-semibold small" style="color:var(--navy)">Productivity Badges <span class="text-muted fw-normal">(20 pts per 100 units)</span></td></tr>
+                    <tr><td>Large Pack — 300 Units 📦</td><td class="text-end fw-bold text-success">+60</td></tr>
+                    <tr><td>Large Pack — 400 Units 📦</td><td class="text-end fw-bold text-success">+80</td></tr>
+                    <tr><td>Large Pack — 500 Units 📦</td><td class="text-end fw-bold text-success">+100</td></tr>
+                    <tr><td>Small Pack — 600 Units 📬</td><td class="text-end fw-bold text-success">+120</td></tr>
+                    <tr><td>Small Pack — 700 Units 📬</td><td class="text-end fw-bold text-success">+140</td></tr>
+                    <tr><td>Small Pack — 800 Units 📬</td><td class="text-end fw-bold text-success">+160</td></tr>
+                    <tr><td>Small Pack — 900 Units 📬</td><td class="text-end fw-bold text-success">+180</td></tr>
+                    <tr><td>Small Pack — 1000 Units 📬</td><td class="text-end fw-bold text-success">+200</td></tr>
+                    <tr><td>Replen Pick — 1000 Units 🔄</td><td class="text-end fw-bold text-success">+200</td></tr>
+                    <tr><td>OP Pick — 600 Units 🎯</td><td class="text-end fw-bold text-success">+120</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="col-md-6">
+                <div class="fw-semibold small mb-2" style="color:var(--navy)">Notes & Certifications</div>
+                <table class="table table-sm small mb-0">
+                  <thead class="table-light"><tr><th>Action</th><th class="text-end">Points</th></tr></thead>
+                  <tbody>
+                    <tr><td>Recognition note added</td><td class="text-end fw-bold text-success">+10</td></tr>
+                    <tr><td>Leadership note added</td><td class="text-end fw-bold text-success">+15</td></tr>
+                    <tr><td>Certification earned</td><td class="text-end fw-bold text-success">+10</td></tr>
+                    <tr><td>Coaching note</td><td class="text-end text-muted">0</td></tr>
+                    <tr><td>General note</td><td class="text-end text-muted">0</td></tr>
+                    <tr><td>Warning note added</td><td class="text-end fw-bold text-danger">−10</td></tr>
+                    <tr><td>PIP note added</td><td class="text-end fw-bold text-danger">−150</td></tr>
+                    <tr><td>Certification removed</td><td class="text-end fw-bold text-danger">−10</td></tr>
+                    <tr><td>Badge removed</td><td class="text-end fw-bold text-danger">Reversed</td></tr>
+                    <tr><td>Note deleted</td><td class="text-end fw-bold text-danger">Reversed</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
 
+        <!-- Dashboard -->
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-users me-2" style="color:var(--orange)"></i>Dashboard</h6>
             <p class="small text-muted">Associate cards show only non-leadership staff. Leadership appears in the "Meet Your Leadership Team" section above. Cards are sorted alphabetically. Use the search bar to find by name or employee ID, or filter by shift, status, flag, or certification.</p>
-            <p class="small text-muted mb-0">The stats bar shows: <strong>Active</strong> (all active roster), <strong>Associates</strong> (excluding leadership), <strong>In Building</strong> (active minus today's call-outs and early-outs, including leadership), and <strong>Call Outs / Early Outs</strong> for today.</p>
+            <p class="small text-muted mb-0">The stats bar shows: <strong>Active</strong> (all active roster), <strong>Associates</strong> (excluding leadership), <strong>In Building</strong> (active minus today's call-outs and early-outs), and <strong>Call Outs / Early Outs</strong> for today.</p>
             <h6 class="fw-bold mb-2 mt-3" style="color:var(--navy)"><i class="fas fa-id-card me-2" style="color:var(--orange)"></i>Card Banners</h6>
-            <p class="small text-muted mb-0">Associate cards display a colored banner when a status is active today: <span style="color:#dc2626;font-weight:600">OUT</span> (call-out logged), <span style="color:#ea580c;font-weight:600">Early Out</span> (early-out logged), <span style="color:#d97706;font-weight:600">Tardy</span> (late arrival), or a <span style="color:#0ea5e9;font-weight:600">time-off type</span> (Vacation, FMLA, etc.). Banners reset automatically each day. An orange pulsing dot appears when a profile has new activity you haven't viewed.</p>
+            <p class="small text-muted mb-0">Cards show a single colored banner for the associate's current status today. Attendance events take priority: <span style="color:#7c0000;font-weight:600">NCNS</span>, <span style="color:#dc2626;font-weight:600">OUT</span> (call-out), <span style="color:#ea580c;font-weight:600">Early Out</span>, <span style="color:#d97706;font-weight:600">Tardy</span>. If no attendance event, the time-off type shows: <span style="color:#0ea5e9;font-weight:600">Vacation</span>, <span style="color:#059669;font-weight:600">FMLA / Medical</span>, <span style="color:#475569;font-weight:600">Bereavement</span>, etc. Only one banner appears at a time. Banners reset automatically each day.</p>
             <h6 class="fw-bold mb-2 mt-3" style="color:var(--navy)"><i class="fas fa-user me-2" style="color:var(--orange)"></i>Associate Profiles</h6>
-            <p class="small text-muted mb-0">Click any card to open a profile. From there you can add manager notes, toggle certifications, nominate badges, set a Reports To supervisor, and view the private watch notes section (supervisors/admins only). Use the Export PDF button to generate a printable summary for HR records.</p>
+            <p class="small text-muted mb-0">Click any card to open a profile. From there you can add manager notes, toggle certifications, nominate badges, log attendance, schedule 1:1 meetings, and manage time off. Use Export PDF to generate a printable HR summary.</p>
             <h6 class="fw-bold mb-2 mt-3" style="color:var(--navy)"><i class="fas fa-sticky-note me-2" style="color:var(--orange)"></i>Note Types</h6>
-            <p class="small text-muted mb-0"><strong>Coaching:</strong> performance conversations, no point impact. <strong>Recognition:</strong> positive callouts, +10 pts. <strong>Leadership:</strong> leadership potential observations, +15 pts. <strong>Warning:</strong> formal warnings, -10 pts. <strong>PIP:</strong> performance improvement plan entries, -150 pts. <strong>General:</strong> misc notes, no point impact.</p>
+            <p class="small text-muted mb-0"><strong>Coaching:</strong> 0 pts. <strong>Recognition:</strong> +10 pts. <strong>Leadership:</strong> +15 pts. <strong>Warning:</strong> −10 pts. <strong>PIP:</strong> −150 pts. <strong>General:</strong> 0 pts.</p>
           </div>
         </div>
 
+        <!-- Achievement Badges -->
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-trophy me-2" style="color:var(--orange)"></i>Achievement Badges</h6>
-            <p class="small text-muted">Leads, Supervisors, and Admins can nominate associates for badges. Each nomination requires a reason. Nominations show as <em>Pending</em> until an Admin approves them in the Admin panel. Once approved, points are awarded automatically. Badges stack; an associate can earn the same badge multiple times. Hover over a badge to see the nomination reason.</p>
+            <p class="small text-muted">Leads, Supervisors, and Admins can nominate associates for badges. Each nomination requires a reason and goes to an Admin for approval. Once approved, points are awarded automatically. Badges stack — an associate can earn the same badge multiple times.</p>
+            <p class="small text-muted mb-0"><strong>Tiers:</strong> Standard (25 pts) · Productivity (60–200 pts based on units) · Elite/Leadership List (200 pts) · Employee of the Month (300 pts). Productivity badges cover Large Pack (300–500 units), Small Pack (600–1000 units), Replen Pick (1000 units), and OP Pick (600 units).</p>
           </div>
         </div>
 
+        <!-- Certifications -->
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-certificate me-2" style="color:var(--orange)"></i>Certifications</h6>
@@ -7573,6 +7616,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </div>
         </div>
 
+        <!-- Private Watch Notes -->
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-lock me-2" style="color:var(--orange)"></i>Private Watch Notes</h6>
@@ -7580,26 +7624,32 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </div>
         </div>
 
+        <!-- Attendance Reference -->
         <div class="col-12">
           <div class="admin-card">
-            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-calendar-alt me-2" style="color:var(--orange)"></i>Attendance Point Reference</h6>
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-calendar-alt me-2" style="color:var(--orange)"></i>Attendance Event Reference</h6>
             <div class="table-responsive">
               <table class="table table-sm small mb-0">
-                <thead class="table-light"><tr><th>Event</th><th>Description</th><th class="text-end">Points</th></tr></thead>
+                <thead class="table-light"><tr><th>Event</th><th>Description</th><th class="text-end">Att. Points</th></tr></thead>
                 <tbody>
-                  <tr><td><i class="fas fa-phone-slash me-2" style="color:#dc2626"></i><strong>Call Out</strong></td><td class="text-muted">Absent with no sick time coverage</td><td class="text-end fw-bold" style="color:#dc2626">+1.0</td></tr>
-                  <tr><td><i class="fas fa-notes-medical me-2" style="color:#d97706"></i><strong>Call Out — Sick Time (half+)</strong></td><td class="text-muted">Uses sick time covering at least half the shift</td><td class="text-end fw-bold" style="color:#d97706">+0.5</td></tr>
-                  <tr><td><i class="fas fa-notes-medical me-2" style="color:#dc2626"></i><strong>Call Out — Sick Time (under half)</strong></td><td class="text-muted">Uses sick time but not enough to cover half shift</td><td class="text-end fw-bold" style="color:#dc2626">+1.0</td></tr>
-                  <tr><td><i class="fas fa-notes-medical me-2" style="color:#059669"></i><strong>Call Out — Sick Time Used (no point)</strong></td><td class="text-muted">Full sick time coverage, recorded for tracking only</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
-                  <tr><td><i class="fas fa-clock me-2" style="color:#d97706"></i><strong>Late Arrival</strong></td><td class="text-muted">Arrived late but before the half-shift mark</td><td class="text-end fw-bold" style="color:#d97706">+0.5</td></tr>
-                  <tr><td><i class="fas fa-clock me-2" style="color:#dc2626"></i><strong>Late Arrival (after half shift)</strong></td><td class="text-muted">Arrived after the half-shift mark</td><td class="text-end fw-bold" style="color:#dc2626">+1.0</td></tr>
-                  <tr><td><i class="fas fa-sign-out-alt me-2" style="color:#dc2626"></i><strong>Left Early (before half shift)</strong></td><td class="text-muted">Left before completing half the shift</td><td class="text-end fw-bold" style="color:#dc2626">+1.0</td></tr>
-                  <tr><td><i class="fas fa-sign-out-alt me-2" style="color:#d97706"></i><strong>Left Early (after half shift)</strong></td><td class="text-muted">Left after completing more than half the shift</td><td class="text-end fw-bold" style="color:#d97706">+0.5</td></tr>
-                  <tr><td><i class="fas fa-sign-out-alt me-2" style="color:#059669"></i><strong>Early Out — Sick Time Used (no point)</strong></td><td class="text-muted">Left early with full sick time coverage, recorded for tracking only</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
+                  <tr><td><strong>NCNS</strong></td><td class="text-muted">No call, no show</td><td class="text-end fw-bold" style="color:#7c0000">+2.0</td></tr>
+                  <tr><td><strong>Call Out</strong></td><td class="text-muted">Absent, no sick time coverage</td><td class="text-end fw-bold" style="color:#dc2626">+1.0</td></tr>
+                  <tr><td><strong>Call Out — Sick Time (≥ half shift)</strong></td><td class="text-muted">Sick time covers at least half shift</td><td class="text-end fw-bold" style="color:#d97706">+0.5</td></tr>
+                  <tr><td><strong>Call Out — Sick Time (under half)</strong></td><td class="text-muted">Sick time doesn't cover half shift</td><td class="text-end fw-bold" style="color:#dc2626">+1.0</td></tr>
+                  <tr><td><strong>Call Out — Sick Time Used (no point)</strong></td><td class="text-muted">Full sick time coverage, tracking only</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
+                  <tr><td><strong>Called Out — Doctor's Note</strong></td><td class="text-muted">Absent with doctor's note on file</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
+                  <tr><td><strong>Late Arrival</strong></td><td class="text-muted">Arrived late, before half-shift mark</td><td class="text-end fw-bold" style="color:#d97706">+0.5</td></tr>
+                  <tr><td><strong>Late Arrival (after half shift)</strong></td><td class="text-muted">Arrived after half-shift mark</td><td class="text-end fw-bold" style="color:#dc2626">+1.0</td></tr>
+                  <tr><td><strong>Left Early (before half shift)</strong></td><td class="text-muted">Left before completing half shift</td><td class="text-end fw-bold" style="color:#dc2626">+1.0</td></tr>
+                  <tr><td><strong>Left Early (after half shift)</strong></td><td class="text-muted">Left after completing more than half shift</td><td class="text-end fw-bold" style="color:#d97706">+0.5</td></tr>
+                  <tr><td><strong>Early Out — Sick Time Used (no point)</strong></td><td class="text-muted">Left early with full sick time coverage</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
+                  <tr style="background:#f0fdf4"><td><strong>Pending FMLA</strong></td><td class="text-muted">FMLA application submitted, awaiting approval</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
+                  <tr style="background:#f0fdf4"><td><strong>Approved FMLA</strong></td><td class="text-muted">FMLA approved — protected leave</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
+                  <tr style="background:#f0fdf4"><td><strong>Bereavement</strong></td><td class="text-muted">Bereavement leave — recorded for tracking only</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
                 </tbody>
               </table>
             </div>
-            <p class="small text-muted mt-2 mb-0"><i class="fas fa-info-circle me-1" style="color:var(--orange)"></i>Color coding: <span style="color:#059669;font-weight:600">Green 0–2.9</span> · <span style="color:#ca8a04;font-weight:600">Yellow 3–5.9</span> · <span style="color:#dc2626;font-weight:600">Red 6+</span>. See the Attendance Policy card below for disciplinary thresholds.</p>
+            <p class="small text-muted mt-2 mb-0"><i class="fas fa-info-circle me-1" style="color:var(--orange)"></i>FMLA and Bereavement entries log for documentation but never add attendance points. <span style="color:#059669;font-weight:600">Green 0–2.9</span> · <span style="color:#ca8a04;font-weight:600">Yellow 3–5.9</span> · <span style="color:#ea580c;font-weight:600">Orange 6–8.9</span> · <span style="color:#dc2626;font-weight:600">Red 9+</span></p>
           </div>
         </div>
 
@@ -7611,15 +7661,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <table class="table table-sm small mb-0">
                 <thead class="table-light"><tr><th>Points</th><th>Step</th><th>Action</th></tr></thead>
                 <tbody>
-                  <tr><td><span class="fw-bold" style="color:#059669">0 – 2.9</span></td><td>Good Standing</td><td class="text-muted">No action required. Green indicator.</td></tr>
-                  <tr><td><span class="fw-bold" style="color:#ca8a04">3 – 5.9</span></td><td>Documented Verbal</td><td class="text-muted">Issue a documented verbal warning. Yellow indicator.</td></tr>
-                  <tr><td><span class="fw-bold" style="color:#ea580c">6 – 8.9</span></td><td>Written Warning</td><td class="text-muted">Issue a written warning. Orange indicator.</td></tr>
-                  <tr><td><span class="fw-bold" style="color:#dc2626">9 – 9.9</span></td><td>Final Warning</td><td class="text-muted">Issue a final written warning. Red indicator.</td></tr>
+                  <tr><td><span class="fw-bold" style="color:#059669">0 – 2.9</span></td><td>Good Standing</td><td class="text-muted">No action required.</td></tr>
+                  <tr><td><span class="fw-bold" style="color:#ca8a04">3 – 5.9</span></td><td>Documented Verbal</td><td class="text-muted">Issue a documented verbal warning.</td></tr>
+                  <tr><td><span class="fw-bold" style="color:#ea580c">6 – 8.9</span></td><td>Written Warning</td><td class="text-muted">Issue a written warning.</td></tr>
+                  <tr><td><span class="fw-bold" style="color:#dc2626">9 – 9.9</span></td><td>Final Warning</td><td class="text-muted">Issue a final written warning.</td></tr>
                   <tr style="background:#fee2e2"><td><span class="fw-bold" style="color:#7f1d1d">10+</span></td><td><strong>Termination</strong></td><td class="text-muted">Associate has reached the termination threshold.</td></tr>
                 </tbody>
               </table>
             </div>
-            <p class="small text-muted mt-2 mb-0"><i class="fas fa-info-circle me-1" style="color:var(--orange)"></i>Points accumulate across all attendance events. The Associate filter on the Attendance tracker and the name badge in the log table both reflect the associate's current color/status automatically.</p>
           </div>
         </div>
 
@@ -7627,20 +7676,94 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-flag me-2" style="color:var(--orange)"></i>Associate Flags</h6>
-            <p class="small text-muted mb-2">Leads, Supervisors, and Admins can set a flag on any associate profile to indicate their current situation. Flags appear on the associate card on the dashboard.</p>
+            <p class="small text-muted mb-2">Leads, Supervisors, and Admins can set a flag on any associate profile. Flags appear on the card on the dashboard.</p>
             <table class="table table-sm small mb-0">
               <tbody>
-                <tr><td><span class="badge bg-secondary">No Flag</span></td><td class="text-muted small">Default — no special flag set.</td></tr>
-                <tr><td><span class="badge bg-success">High Potential</span></td><td class="text-muted small">Top performer showing leadership and growth potential.</td></tr>
-                <tr><td><span class="badge bg-warning text-dark">Needs Support</span></td><td class="text-muted small">Associate may need additional coaching or resources.</td></tr>
-                <tr><td><span class="badge bg-danger">Attendance Issue</span></td><td class="text-muted small">Ongoing attendance concerns; see attendance log.</td></tr>
-                <tr><td><span class="badge bg-info text-dark">Leadership Track</span></td><td class="text-muted small">Associate is being developed for a leadership role.</td></tr>
-                <tr><td><span class="badge bg-secondary">Transitioning</span></td><td class="text-muted small">Role change, department transfer, or status change in progress.</td></tr>
-                <tr><td><span class="badge bg-warning text-dark">Watch</span></td><td class="text-muted small">Associate is being monitored for performance or conduct concerns.</td></tr>
-                <tr><td><span class="badge bg-danger">PIP Track</span></td><td class="text-muted small">Associate is on a formal Performance Improvement Plan.</td></tr>
-                <tr><td><span class="badge" style="background:#f97316;color:#fff">Low UPH</span></td><td class="text-muted small">Associate is consistently below target UPH for their role.</td></tr>
+                <tr><td><span class="badge bg-secondary">No Flag</span></td><td class="text-muted small">Default — no special flag.</td></tr>
+                <tr><td><span class="badge bg-success">High Potential</span></td><td class="text-muted small">Top performer with leadership potential.</td></tr>
+                <tr><td><span class="badge bg-warning text-dark">Needs Support</span></td><td class="text-muted small">May need additional coaching or resources.</td></tr>
+                <tr><td><span class="badge bg-danger">Attendance Issue</span></td><td class="text-muted small">Ongoing attendance concerns.</td></tr>
+                <tr><td><span class="badge bg-info text-dark">Leadership Track</span></td><td class="text-muted small">Being developed for a leadership role.</td></tr>
+                <tr><td><span class="badge bg-secondary">Transitioning</span></td><td class="text-muted small">Role change or transfer in progress.</td></tr>
+                <tr><td><span class="badge bg-warning text-dark">Watch</span></td><td class="text-muted small">Being monitored for performance or conduct.</td></tr>
+                <tr><td><span class="badge bg-danger">PIP Track</span></td><td class="text-muted small">On a formal Performance Improvement Plan.</td></tr>
+                <tr><td><span class="badge" style="background:#f97316;color:#fff">Low UPH</span></td><td class="text-muted small">Consistently below target UPH for their role.</td></tr>
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- Time Off -->
+        <div class="col-lg-6">
+          <div class="admin-card">
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-calendar-minus me-2" style="color:var(--orange)"></i>Time Off Calendar</h6>
+            <p class="small text-muted mb-2">The <strong>Time Off</strong> sidebar tab lets supervisors and admins schedule and track associate time away.</p>
+            <ul class="small text-muted ps-3 mb-2">
+              <li><strong>Calendar View:</strong> Click any day to add an entry pre-filled with that date.</li>
+              <li><strong>Types:</strong> Vacation, Sick, Personal, FMLA, Bereavement, Leave of Absence, Out (Other), Unpaid.</li>
+              <li><strong>Card Banners:</strong> When an entry is active today, a banner appears on the associate's card. Only one banner shows at a time — attendance events take priority.</li>
+              <li><strong>Upcoming Events:</strong> Entries within the next 40 days also appear in the Upcoming Events dashboard panel.</li>
+            </ul>
+            <p class="small text-muted mb-0"><i class="fas fa-info-circle me-1" style="color:var(--orange)"></i>Time off and attendance logs are independent. Adding FMLA or Bereavement to both systems will not create duplicate banners or double-count points.</p>
+          </div>
+        </div>
+
+        <!-- HR Records -->
+        <div class="col-lg-6">
+          <div class="admin-card">
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-file-signature me-2" style="color:var(--orange)"></i>HR Records</h6>
+            <p class="small text-muted mb-2">The <strong>HR Records</strong> tab stores all signed corrective action forms. Each record shows the associate name, warning tier, points at time of signing, and signature status.</p>
+            <ul class="small text-muted ps-3 mb-0">
+              <li><strong>Submit to HR:</strong> A blue button under each associate's name lets you log the date the form was physically submitted to HR. Once clicked, it stamps the date and turns green — persists across sessions.</li>
+              <li><strong>View / PDF:</strong> Open the full signed form or download it as a PDF.</li>
+              <li><strong>Filter:</strong> Search by name or filter by warning tier.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 1:1 Meetings -->
+        <div class="col-lg-6">
+          <div class="admin-card">
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-comments me-2" style="color:#6366f1"></i>1:1 Meetings</h6>
+            <p class="small text-muted mb-0">On any associate profile, the <strong>1:1 Meetings</strong> panel lets you schedule upcoming meetings and log completed ones. The badge count reflects both scheduled and completed meetings combined. When a supervisor logs in, a pulsing banner appears if any direct report has a pending 1:1 request. Completed meetings are stored in history and visible on the associate's mobile portal under the Schedule tab.</p>
+          </div>
+        </div>
+
+        <!-- Associate Portal -->
+        <div class="col-12">
+          <div class="admin-card" style="border-left:4px solid var(--orange)">
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-mobile-alt me-2" style="color:var(--orange)"></i>Associate Mobile Portal</h6>
+            <p class="small text-muted mb-2">Associates can log in to a mobile-friendly portal using credentials created by an admin. The portal gives read-only access to their own data — they cannot see other associates' information.</p>
+            <div class="row g-3">
+              <div class="col-md-4">
+                <div class="fw-semibold small mb-1" style="color:var(--navy)">🏠 Home Tab</div>
+                <ul class="small text-muted ps-3 mb-0">
+                  <li>Current engagement points balance</li>
+                  <li>Level (Developing / Rising / Star / Elite)</li>
+                  <li>Progress bar to next level</li>
+                  <li>Approved badges</li>
+                  <li>Certifications on file</li>
+                  <li>Upcoming time off &amp; anniversaries</li>
+                </ul>
+              </div>
+              <div class="col-md-4">
+                <div class="fw-semibold small mb-1" style="color:var(--navy)">📅 Attendance Tab</div>
+                <ul class="small text-muted ps-3 mb-0">
+                  <li>Attendance point total with policy status</li>
+                  <li>Full event list with points per event</li>
+                  <li>Engagement points history</li>
+                </ul>
+              </div>
+              <div class="col-md-4">
+                <div class="fw-semibold small mb-1" style="color:var(--navy)">🗓️ Schedule Tab</div>
+                <ul class="small text-muted ps-3 mb-0">
+                  <li>Next scheduled 1:1 meeting</li>
+                  <li>Completed 1:1 meeting history</li>
+                  <li>Upcoming time off entries</li>
+                </ul>
+              </div>
+            </div>
+            <p class="small text-muted mt-3 mb-0"><strong>Granting access:</strong> In the Admin Panel → Portal Access Management, enter the associate's email and click Grant Access. The system creates their login and sends a password reset email automatically. Associates can also request access from the login page.</p>
           </div>
         </div>
 
@@ -7648,13 +7771,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-camera me-2" style="color:var(--orange)"></i>Shift Snapshots</h6>
-            <p class="small text-muted mb-2">Leads, Supervisors, and Admins can import productivity snapshots via the <strong>Import Snapshot</strong> button on the dashboard. Three methods are available:</p>
+            <p class="small text-muted mb-2">Import productivity snapshots via the <strong>Import Snapshot</strong> button on the dashboard. Three methods available:</p>
             <ul class="small text-muted ps-3 mb-0">
-              <li><strong>Upload Image:</strong> Take a screenshot of the shift report — OCR will extract the data automatically.</li>
-              <li><strong>Paste Snapshot:</strong> Select all and copy the shift report, then paste it into the text box.</li>
-              <li><strong>Manual Entry:</strong> Type in the Employee ID, date, UPH, and other fields directly.</li>
+              <li><strong>Upload Image:</strong> OCR extracts the data automatically from a screenshot.</li>
+              <li><strong>Paste Snapshot:</strong> Copy and paste the shift report text.</li>
+              <li><strong>Manual Entry:</strong> Type Employee ID, date, UPH, and units directly.</li>
             </ul>
-            <p class="small text-muted mt-2 mb-0">Snapshots appear on the associate's profile under the <em>Shift Snapshots</em> tab, showing UPH, units, target, and on-pace status over time.</p>
           </div>
         </div>
 
@@ -7662,12 +7784,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-calendar-alt me-2" style="color:var(--orange)"></i>Team Attendance Tracker</h6>
-            <p class="small text-muted mb-2">The <strong>Attendance</strong> sidebar tab shows a team-wide view of all logged attendance events. Features include:</p>
+            <p class="small text-muted mb-2">The <strong>Attendance</strong> sidebar shows a team-wide view of all logged events.</p>
             <ul class="small text-muted ps-3 mb-0">
-              <li><strong>At-Risk Panel:</strong> Shows up to 8 associates with the most points in the selected period, with policy step labels.</li>
-              <li><strong>Period Filter:</strong> Scope the view to This Week, This Month, This Year, or All Time.</li>
-              <li><strong>Log Table:</strong> Filter by associate, shift, event type, and date range. Associate names are color-coded by policy status.</li>
-              <li><strong>Calendar:</strong> Visual month calendar showing which days had events.</li>
+              <li><strong>At-Risk Panel:</strong> Up to 8 associates with the most points, with policy step labels.</li>
+              <li><strong>Period Filter:</strong> This Week, This Month, This Year, or All Time.</li>
+              <li><strong>Log Table:</strong> Filter by associate, shift, event type, and date range.</li>
+              <li><strong>Calendar:</strong> Visual month view of which days had events.</li>
             </ul>
           </div>
         </div>
@@ -7676,57 +7798,46 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-key me-2" style="color:#6366f1"></i>System Credentials</h6>
-            <p class="small text-muted mb-0">The <strong>System Credentials</strong> panel on each profile stores system logins (WMS, scheduler, etc.) tied to that associate. Leads and above can add entries; only Admins can delete them. Passwords are masked by default — click the eye icon to reveal or the copy icon to copy without displaying. Credentials are stored in Firebase and are not visible to Viewer-role accounts.</p>
+            <p class="small text-muted mb-0">The <strong>System Credentials</strong> panel stores system logins (WMS, scheduler, etc.) per associate. Leads and above can add entries; only Admins can delete. Passwords are masked by default — click the eye icon to reveal. Not visible to Viewer-role accounts.</p>
           </div>
         </div>
 
-        <div class="col-lg-6">
-          <div class="admin-card">
-            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-calendar-minus me-2" style="color:var(--orange)"></i>Time Off</h6>
-            <p class="small text-muted mb-2">The <strong>Time Off</strong> sidebar tab lets supervisors and admins schedule and track associate time away. Features include:</p>
-            <ul class="small text-muted ps-3 mb-2">
-              <li><strong>Calendar View:</strong> Click any month tab to switch months. Click a day on the calendar to add a time off entry pre-filled with that date. Associates with active entries appear as colored chips on the calendar.</li>
-              <li><strong>Types:</strong> Vacation, Unpaid Day Off, FMLA / Medical, Leave of Absence, Pre-Hire Approved.</li>
-              <li><strong>Card Banners:</strong> When an entry is active today, a matching banner appears on the associate's dashboard card automatically.</li>
-              <li><strong>Upcoming Events:</strong> Time off starting within the next 40 days also appears in the Upcoming Events panel on the dashboard.</li>
-            </ul>
-            <p class="small text-muted mb-0">Entries are stored per-associate in Firebase and update in real time.</p>
-          </div>
-        </div>
-
+        <!-- Corrective Action -->
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-print me-2" style="color:var(--orange)"></i>Corrective Action Form</h6>
-            <p class="small text-muted mb-2">When an associate reaches a warning threshold on the Attendance tab, a <strong>Print Corrective Action</strong> button appears on their warning tier card. Clicking it generates a print-ready corrective action form that includes:</p>
+            <p class="small text-muted mb-2">When an associate reaches a warning threshold on the Attendance tab, a <strong>Print Corrective Action</strong> button appears. The generated form includes:</p>
             <ul class="small text-muted ps-3 mb-0">
-              <li>Associate name, employee ID, hire date, and shift schedule</li>
-              <li>Warning tier (Documented Verbal, Written Warning, Final Warning, Termination)</li>
-              <li>Pre-filled attendance summary with all logged events</li>
-              <li>Manager name (Hector Marron) and signature lines</li>
-              <li>Previous discipline history pulled from logged warnings</li>
+              <li>Associate name, employee ID, hire date, shift</li>
+              <li>Warning tier and pre-filled attendance summary</li>
+              <li>Signature lines and previous discipline history</li>
             </ul>
           </div>
         </div>
 
-        <div class="col-lg-6">
+        <!-- Roles & Permissions -->
+        <div class="col-12">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-shield-alt me-2" style="color:var(--orange)"></i>Roles & Permissions</h6>
             <table class="table table-sm small mb-0">
               <thead class="table-light"><tr><th>Action</th><th>Viewer</th><th>Lead</th><th>Supervisor</th><th>Admin</th></tr></thead>
               <tbody>
                 <tr><td>View profiles & notes</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
-                <tr><td>Add notes & toggle certs</td><td></td><td>✓</td><td>✓</td><td>✓</td></tr>
+                <tr><td>Add notes, toggle certs, log attendance</td><td></td><td>✓</td><td>✓</td><td>✓</td></tr>
                 <tr><td>Nominate badges</td><td></td><td>✓</td><td>✓</td><td>✓</td></tr>
                 <tr><td>View & add credentials</td><td></td><td>✓</td><td>✓</td><td>✓</td></tr>
+                <tr><td>Schedule 1:1 meetings, manage time off</td><td></td><td>✓</td><td>✓</td><td>✓</td></tr>
                 <tr><td>Delete notes</td><td></td><td></td><td>✓</td><td>✓</td></tr>
                 <tr><td>View private watch notes</td><td></td><td></td><td>✓</td><td>✓</td></tr>
                 <tr><td>Approve/reject badges</td><td></td><td></td><td></td><td>✓</td></tr>
                 <tr><td>Delete credentials</td><td></td><td></td><td></td><td>✓</td></tr>
+                <tr><td>Grant associate portal access</td><td></td><td></td><td></td><td>✓</td></tr>
                 <tr><td>Manage user accounts</td><td></td><td></td><td></td><td>✓</td></tr>
               </tbody>
             </table>
           </div>
         </div>
+
       </div>
     </div>
 
