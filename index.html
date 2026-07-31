@@ -3778,6 +3778,9 @@ window.deleteTimeOff = async (assocId, entryId) => {
   clearCache('todayTimeOff');
   clearCache('milestones_firestore');
   loadTimeOff();
+  // Rebuild the today map and re-render cards so banners update immediately
+  await loadTodayTimeOff();
+  renderCards();
 };
 
 // ─── Today's Attendance Stats (cached) ───────────────────────────────
