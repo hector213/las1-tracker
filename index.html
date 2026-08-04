@@ -2059,12 +2059,29 @@ function listenGoals(assocId) {
   }).catch(() => {});
 }
 
+function renderProgressNotes(notes, goalId, canManage) {
+  if (!notes.length) return '<div class="text-muted py-1" style="font-size:0.75rem">No progress notes yet.</div>';
+  return notes.slice().reverse().map(n => {
+    const d = n.date ? new Date(n.date) : null;
+    const dateStr = d
+      ? d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) + ' ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})
+      : '—';
+    return '<div class="progress-note-entry">' +
+      '<div class="d-flex justify-content-between align-items-center">' +
+        '<div class="progress-note-date">' + dateStr + ' · ' + escapeHtml(n.addedBy||'—') + '</div>' +
+        (canManage ? '<button class="btn btn-link p-0 text-danger" style="font-size:0.65rem;line-height:1" onclick="deleteProgressNote(\'' + goalId + '\',\'' + n.id + '\')">remove</button>' : '') +
+      '</div>' +
+      '<div class="progress-note-text">' + escapeHtml(n.text) + '</div>' +
+    '</div>';
+  }).join('');
+}
+
 function renderGoals(goals) {
   const container = document.getElementById('goalsContainer');
   if (!container) return;
   const canManage = roleAtLeast('supervisor');
   if (!goals.length) {
-    container.innerHTML = `<div class="text-center text-muted py-3 small"><i class="fas fa-bullseye me-1"></i>No goals set yet.</div>`;
+    container.innerHTML = '<div class="text-center text-muted py-3 small"><i class="fas fa-bullseye me-1"></i>No goals set yet.</div>';
     return;
   }
   const statusColor = { Active: '#2563eb', Completed: '#059669', 'On Hold': '#d97706' };
@@ -2073,30 +2090,113 @@ function renderGoals(goals) {
     const color = statusColor[g.status] || '#6b7280';
     const icon  = catIcon[g.category] || 'fa-bullseye';
     const overdue = g.dueDate && g.status === 'Active' && g.dueDate < new Date().toISOString().slice(0,10);
-    return `<div class="goal-card" style="border-left:4px solid ${color}">
-      <div class="d-flex justify-content-between align-items-start mb-1 flex-wrap gap-1">
-        <div class="d-flex align-items-center gap-2 flex-wrap">
-          <i class="fas ${icon}" style="color:${color};font-size:0.8rem"></i>
-          <span class="goal-category-badge">${escapeHtml(g.category||'General')}</span>
-          <span class="goal-status-badge" style="background:${color}22;color:${color}">${g.status}</span>
-          ${overdue ? `<span class="goal-status-badge" style="background:#fee2e2;color:#dc2626"><i class="fas fa-exclamation-circle me-1"></i>Overdue</span>` : ''}
-        </div>
-        ${canManage ? `<div class="d-flex align-items-center gap-1">
-          <select class="form-select form-select-sm py-0 px-1" style="font-size:0.72rem;width:auto;height:24px" onchange="updateGoalStatus('${g.id}',this.value)">
-            <option ${g.status==='Active'?'selected':''}>Active</option>
-            <option ${g.status==='Completed'?'selected':''}>Completed</option>
-            <option ${g.status==='On Hold'?'selected':''}>On Hold</option>
-          </select>
-          <button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deleteGoal('${g.id}')"><i class="fas fa-trash-alt"></i></button>
-        </div>` : ''}
-      </div>
-      <div class="goal-title mt-1">${escapeHtml(g.title)}</div>
-      ${g.dueDate ? `<div class="goal-meta mt-1"><i class="fas fa-calendar-day me-1"></i>Due ${new Date(g.dueDate+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>` : ''}
-      ${g.notes ? `<div class="small text-muted mt-1" style="white-space:pre-wrap;font-size:0.8rem">${escapeHtml(g.notes)}</div>` : ''}
-      <div class="goal-meta mt-1"><i class="fas fa-user me-1"></i>Set by ${escapeHtml(g.createdBy||'—')} · ${formatDate(g.createdAt)}</div>
-    </div>`;
+    const pNotes = g.progressNotes || [];
+    const notesHtml = renderProgressNotes(pNotes, g.id, canManage);
+    const addNoteForm = canManage
+      ? '<div class="d-flex gap-2 mt-2">' +
+          '<textarea class="form-control form-control-sm" id="progressInput-' + g.id + '" rows="1" placeholder="Add a progress note…" style="font-size:0.8rem;resize:none"></textarea>' +
+          '<button class="btn btn-sm text-white fw-semibold" style="background:#2563eb;border:none;white-space:nowrap;font-size:0.75rem" onclick="addProgressNote(\'' + g.id + '\')">' +
+            '<i class="fas fa-plus me-1"></i>Add' +
+          '</button>' +
+        '</div>'
+      : '';
+    const dueLine = g.dueDate
+      ? '<div class="goal-meta mt-1"><i class="fas fa-calendar-day me-1"></i>Due ' + new Date(g.dueDate+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) + '</div>'
+      : '';
+    const notesLine = g.notes
+      ? '<div class="small text-muted mt-1" style="white-space:pre-wrap;font-size:0.8rem">' + escapeHtml(g.notes) + '</div>'
+      : '';
+    const overdueTag = overdue
+      ? '<span class="goal-status-badge" style="background:#fee2e2;color:#dc2626"><i class="fas fa-exclamation-circle me-1"></i>Overdue</span>'
+      : '';
+    const statusDropdown = canManage
+      ? '<div class="d-flex align-items-center gap-1">' +
+          '<select class="form-select form-select-sm py-0 px-1" style="font-size:0.72rem;width:auto;height:24px" onchange="updateGoalStatus(\'' + g.id + '\',this.value)">' +
+            '<option ' + (g.status==='Active'?'selected':'') + '>Active</option>' +
+            '<option ' + (g.status==='Completed'?'selected':'') + '>Completed</option>' +
+            '<option ' + (g.status==='On Hold'?'selected':'') + '>On Hold</option>' +
+          '</select>' +
+          '<button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deleteGoal(\'' + g.id + '\')"><i class="fas fa-trash-alt"></i></button>' +
+        '</div>'
+      : '';
+    return '<div class="goal-card" style="border-left:4px solid ' + color + '">' +
+      '<div class="d-flex justify-content-between align-items-start mb-1 flex-wrap gap-1">' +
+        '<div class="d-flex align-items-center gap-2 flex-wrap">' +
+          '<i class="fas ' + icon + '" style="color:' + color + ';font-size:0.8rem"></i>' +
+          '<span class="goal-category-badge">' + escapeHtml(g.category||'General') + '</span>' +
+          '<span class="goal-status-badge" style="background:' + color + '22;color:' + color + '">' + g.status + '</span>' +
+          overdueTag +
+        '</div>' +
+        statusDropdown +
+      '</div>' +
+      '<div class="goal-title mt-1">' + escapeHtml(g.title) + '</div>' +
+      dueLine +
+      notesLine +
+      '<div class="goal-meta mt-1"><i class="fas fa-user me-1"></i>Set by ' + escapeHtml(g.createdBy||'—') + ' · ' + formatDate(g.createdAt) + '</div>' +
+      '<div class="mt-2 pt-1" style="border-top:1px solid #e2e8f0">' +
+        '<button class="btn btn-link p-0" style="font-size:0.72rem;color:#64748b;text-decoration:none" onclick="toggleGoalProgress(\'' + g.id + '\')">' +
+          '<i class="fas fa-history me-1"></i>' + pNotes.length + ' progress note' + (pNotes.length !== 1 ? 's' : '') +
+        '</button>' +
+      '</div>' +
+      '<div id="goalProgress-' + g.id + '" class="d-none goal-progress-area">' +
+        '<div id="goalProgressLog-' + g.id + '">' + notesHtml + '</div>' +
+        addNoteForm +
+      '</div>' +
+    '</div>';
   }).join('');
 }
+
+window.toggleGoalProgress = (goalId) => {
+  const area = document.getElementById('goalProgress-' + goalId);
+  if (area) area.classList.toggle('d-none');
+};
+
+window.addProgressNote = async (goalId) => {
+  const input = document.getElementById('progressInput-' + goalId);
+  const text = input ? input.value.trim() : '';
+  if (!text) return;
+  const note = {
+    id: Date.now().toString(),
+    text,
+    date: new Date().toISOString(),
+    addedBy: currentUser?.email || '—'
+  };
+  try {
+    const goalRef = doc(db, 'goals', currentAssociateId, 'entries', goalId);
+    const snap = await getDoc(goalRef);
+    if (!snap.exists()) return;
+    const updated = [...(snap.data().progressNotes || []), note];
+    await updateDoc(goalRef, { progressNotes: updated });
+    const g = lastGoals.find(x => x.id === goalId);
+    if (g) g.progressNotes = updated;
+    input.value = '';
+    const logEl = document.getElementById('goalProgressLog-' + goalId);
+    const btn = input.nextElementSibling;
+    const canManage = roleAtLeast('supervisor');
+    if (logEl) logEl.innerHTML = renderProgressNotes(updated, goalId, canManage);
+    // update toggle button count
+    const toggleBtn = document.querySelector('[onclick="toggleGoalProgress(\'' + goalId + '\')"]');
+    if (toggleBtn) toggleBtn.innerHTML = '<i class="fas fa-history me-1"></i>' + updated.length + ' progress note' + (updated.length !== 1 ? 's' : '');
+  } catch(e) { alert('Could not save note — ' + e.message); }
+};
+
+window.deleteProgressNote = async (goalId, noteId) => {
+  if (!confirm('Remove this progress note?')) return;
+  try {
+    const goalRef = doc(db, 'goals', currentAssociateId, 'entries', goalId);
+    const snap = await getDoc(goalRef);
+    if (!snap.exists()) return;
+    const updated = (snap.data().progressNotes || []).filter(n => n.id !== noteId);
+    await updateDoc(goalRef, { progressNotes: updated });
+    const g = lastGoals.find(x => x.id === goalId);
+    if (g) g.progressNotes = updated;
+    const logEl = document.getElementById('goalProgressLog-' + goalId);
+    const canManage = roleAtLeast('supervisor');
+    if (logEl) logEl.innerHTML = renderProgressNotes(updated, goalId, canManage);
+    const toggleBtn = document.querySelector('[onclick="toggleGoalProgress(\'' + goalId + '\')"]');
+    if (toggleBtn) toggleBtn.innerHTML = '<i class="fas fa-history me-1"></i>' + updated.length + ' progress note' + (updated.length !== 1 ? 's' : '');
+  } catch(e) { alert('Could not remove note — ' + e.message); }
+};
 
 window.toggleGoalsPanel = () => {
   goalsOpen = !goalsOpen;
@@ -2124,6 +2224,7 @@ window.saveGoal = async () => {
     dueDate:  document.getElementById('goalDueDate').value || null,
     notes:    document.getElementById('goalNotes').value.trim(),
     status:   'Active',
+    progressNotes: [],
     createdAt: new Date().toISOString(),
     createdBy: currentUser?.email || '—'
   };
@@ -6862,6 +6963,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .goal-title { color:#1e293b; font-size:0.875rem; line-height:1.5; font-weight:600; }
 .goal-meta { font-size:0.7rem; color:#94a3b8; }
 #goalsChevron.open { transform:rotate(180deg); }
+.goal-progress-area { padding-top:0.6rem; }
+.progress-note-entry { background:#f1f5f9; border-radius:6px; padding:0.35rem 0.6rem; margin-bottom:0.35rem; border-left:3px solid #cbd5e1; }
+.progress-note-date { font-size:0.67rem; color:#94a3b8; }
+.progress-note-text { font-size:0.78rem; color:#1e293b; white-space:pre-wrap; margin-top:2px; line-height:1.4; }
 
 /* Leadership panel */
 .leadership-panel { background:linear-gradient(135deg,#1a2744 0%,#2d3f6b 100%); border-radius:14px; padding:1.25rem 1.5rem; }
