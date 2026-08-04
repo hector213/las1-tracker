@@ -2248,15 +2248,15 @@ function renderTurnoverView() {
               const reason = a.exitReason || (a.status === 'resigned' ? 'Resigned' : 'Terminated');
               const isRes  = reason === 'Resigned';
               const lastDay = a.exitLastDay ? new Date(a.exitLastDay+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
-              return \`<tr>
-                <td class="fw-semibold">\${escapeHtml(a.name)}</td>
-                <td><span class="badge" style="background:\${isRes?'#dbeafe':'#fee2e2'};color:\${isRes?'#1d4ed8':'#b91c1c'}">\${escapeHtml(reason)}</span></td>
-                <td>\${lastDay}</td>
-                <td class="text-muted">\${escapeHtml(a.department||'—')}</td>
-                <td class="text-muted">\${escapeHtml(a.shift||'—')}</td>
-                <td class="text-muted">\${t !== null ? t+' mo' : '—'}</td>
-                <td class="text-muted" style="max-width:180px;white-space:normal">\${escapeHtml(a.exitNotes||'—')}</td>
-              </tr>\`;
+              return '<tr>' +
+                '<td class="fw-semibold">' + escapeHtml(a.name) + '</td>' +
+                '<td><span class="badge" style="background:' + (isRes?'#dbeafe':'#fee2e2') + ';color:' + (isRes?'#1d4ed8':'#b91c1c') + '">' + escapeHtml(reason) + '</span></td>' +
+                '<td>' + lastDay + '</td>' +
+                '<td class="text-muted">' + escapeHtml(a.department||'—') + '</td>' +
+                '<td class="text-muted">' + escapeHtml(a.shift||'—') + '</td>' +
+                '<td class="text-muted">' + (t !== null ? t+' mo' : '—') + '</td>' +
+                '<td class="text-muted" style="max-width:180px;white-space:normal">' + escapeHtml(a.exitNotes||'—') + '</td>' +
+                '</tr>';
             }).join('')}
           </tbody>
         </table>
