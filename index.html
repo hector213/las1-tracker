@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LAS1 Engagement Tracker</title>
+<title>Operational Health Tracker</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
@@ -1640,7 +1640,7 @@ function renderNotes(notes) {
         </div>
         <div class="d-flex align-items-center gap-2">
           <span class="text-muted small">${formatDateTime(n.createdAt)}</span>
-          ${(currentUserRole === 'admin' || currentUserRole === 'supervisor')
+          ${roleAtLeast('admin')
             ? `<button class="btn btn-sm btn-link text-danger p-0" onclick="deleteNote('${n.id}')"><i class="fas fa-times"></i></button>` : ''}
         </div>
       </div>
@@ -1824,6 +1824,7 @@ window.saveNote = async () => {
   }
 };
 window.deleteNote = async (noteId) => {
+  if (!roleAtLeast('admin')) return;
   if (!confirm('Delete this note?')) return;
   const _basePoints = Number(allAssociates.find(a => a.id === currentAssociateId)?.points) || 0;
   const noteSnap = await getDoc(doc(db, 'notes', currentAssociateId, 'entries', noteId));
@@ -1875,7 +1876,7 @@ function renderCreds(creds) {
     <div class="cred-card">
       <div class="d-flex justify-content-between align-items-start">
         <div class="cred-system"><i class="fas fa-desktop me-1" style="color:#6366f1"></i>${escapeHtml(c.system)}</div>
-        <button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deleteCred('${c.id}')"><i class="fas fa-trash-alt"></i></button>
+        ${roleAtLeast('admin') ? `<button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deleteCred('${c.id}')"><i class="fas fa-trash-alt"></i></button>` : ''}
       </div>
       <div class="cred-row"><span class="cred-label">Username</span><span>${escapeHtml(c.username)}</span>
         <button class="btn btn-sm btn-link p-0 ms-1" style="font-size:0.75rem;color:#6366f1" onclick="copyToClipboard('${escapeHtml(c.username)}',this)" title="Copy"><i class="fas fa-copy"></i></button>
@@ -1955,6 +1956,7 @@ window.saveCred = async () => {
 };
 
 window.deleteCred = async (credId) => {
+  if (!roleAtLeast('admin')) return;
   if (!confirm('Delete this credential entry?')) return;
   await deleteDoc(doc(db, 'credentials', currentAssociateId, 'entries', credId));
   listenCreds(currentAssociateId);
@@ -1993,7 +1995,7 @@ function renderWatchNotes(notes) {
       <div class="watch-note-text">${escapeHtml(n.text)}</div>
       <div class="d-flex justify-content-between align-items-center">
         <div class="watch-note-meta"><i class="fas fa-user-shield me-1"></i>${escapeHtml(n.author || '—')} · ${formatDate(n.createdAt)}</div>
-        ${canEdit ? `<button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deleteWatchNote('${n.id}')"><i class="fas fa-trash-alt"></i></button>` : ''}
+        ${roleAtLeast('admin') ? `<button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deleteWatchNote('${n.id}')"><i class="fas fa-trash-alt"></i></button>` : ''}
       </div>
     </div>`).join('');
 }
@@ -2035,6 +2037,7 @@ window.saveWatchNote = async () => {
 };
 
 window.deleteWatchNote = async (noteId) => {
+  if (!roleAtLeast('admin')) return;
   if (!confirm('Delete this watch note?')) return;
   await deleteDoc(doc(db, 'watchnotes', currentAssociateId, 'entries', noteId));
 };
@@ -2069,7 +2072,7 @@ function renderProgressNotes(notes, goalId, canManage) {
     return '<div class="progress-note-entry">' +
       '<div class="d-flex justify-content-between align-items-center">' +
         '<div class="progress-note-date">' + dateStr + ' · ' + escapeHtml(n.addedBy||'—') + '</div>' +
-        (canManage ? '<button class="btn btn-link p-0 text-danger" style="font-size:0.65rem;line-height:1" onclick="deleteProgressNote(\'' + goalId + '\',\'' + n.id + '\')">remove</button>' : '') +
+        (roleAtLeast('admin') ? '<button class="btn btn-link p-0 text-danger" style="font-size:0.65rem;line-height:1" onclick="deleteProgressNote(\'' + goalId + '\',\'' + n.id + '\')">remove</button>' : '') +
       '</div>' +
       '<div class="progress-note-text">' + escapeHtml(n.text) + '</div>' +
     '</div>';
@@ -2116,7 +2119,7 @@ function renderGoals(goals) {
             '<option ' + (g.status==='Completed'?'selected':'') + '>Completed</option>' +
             '<option ' + (g.status==='On Hold'?'selected':'') + '>On Hold</option>' +
           '</select>' +
-          '<button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deleteGoal(\'' + g.id + '\')"><i class="fas fa-trash-alt"></i></button>' +
+          (roleAtLeast('admin') ? '<button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deleteGoal(\'' + g.id + '\')"><i class="fas fa-trash-alt"></i></button>' : '') +
         '</div>'
       : '';
     return '<div class="goal-card" style="border-left:4px solid ' + color + '">' +
@@ -2181,6 +2184,7 @@ window.addProgressNote = async (goalId) => {
 };
 
 window.deleteProgressNote = async (goalId, noteId) => {
+  if (!roleAtLeast('admin')) return;
   if (!confirm('Remove this progress note?')) return;
   try {
     const goalRef = doc(db, 'goals', currentAssociateId, 'entries', goalId);
@@ -2242,6 +2246,7 @@ window.updateGoalStatus = async (goalId, status) => {
 };
 
 window.deleteGoal = async (goalId) => {
+  if (!roleAtLeast('admin')) return;
   if (!confirm('Delete this goal?')) return;
   await deleteDoc(doc(db, 'goals', currentAssociateId, 'entries', goalId));
   listenGoals(currentAssociateId);
@@ -2471,7 +2476,7 @@ function renderBadges(badges) {
         const cardClass = isElite ? 'badge-card-elite' : 'badge-card-active';
         const tooltip   = [`Awarded by ${b.approvedBy||'?'} on ${formatDate(b.approvedAt)}`, b.reason ? `\n"${b.reason}"` : ''].join('');
         return `<div class="badge-card ${cardClass}" title="${escapeHtml(tooltip)}">
-          ${roleAtLeast('om') ? `<button class="badge-remove-btn" onclick="removeBadge('${b.id}')" title="Remove">×</button>` : ''}
+          ${roleAtLeast('admin') ? `<button class="badge-remove-btn" onclick="removeBadge('${b.id}')" title="Remove">×</button>` : ''}
           <div class="badge-emoji">${def.emoji}</div>
           <div class="badge-label">${escapeHtml(def.label)}</div>
           <div class="badge-date">${formatDate(b.approvedAt)}</div>
@@ -2583,6 +2588,7 @@ window.rejectBadge = async (associateId, badgeId) => {
   listenBadges(associateId); // refresh badge display immediately
 };
 window.removeBadge = async (badgeId) => {
+  if (!roleAtLeast('admin')) return;
   if (!confirm('Remove this badge?')) return;
   const badgeSnap = await getDoc(doc(db, 'badges', currentAssociateId, 'entries', badgeId));
   if (badgeSnap.exists()) {
@@ -2804,7 +2810,7 @@ window.openEditAssociate = (id, data) => {
   const delBtn = document.getElementById('deleteAssocBtn');
   delBtn.disabled = false;
   delBtn.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Delete';
-  if (roleAtLeast('om')) delBtn.classList.remove('d-none');
+  if (roleAtLeast('admin')) delBtn.classList.remove('d-none');
   else delBtn.classList.add('d-none');
   ['Name','EmployeeId','Role','Dept'].forEach(f => {
     const key = f === 'EmployeeId' ? 'employeeId' : f === 'Dept' ? 'department' : f.toLowerCase();
@@ -2868,6 +2874,7 @@ window.saveAssociate = async () => {
 
 // ─── Delete Associate (admin only) ────────────────────────────────────
 window.deleteAssociate = async () => {
+  if (!roleAtLeast('admin')) return;
   const id   = document.getElementById('assocId').value;
   const name = document.getElementById('assocName').value.trim() || 'this associate';
   if (!id) return;
@@ -3318,7 +3325,7 @@ window.updateAttFilterColor = async () => {
     if (!wContainer) return;
     const canLog = roleAtLeast('lead');
     const assocId = sel.value;
-    const canDelete = roleAtLeast('supervisor');
+    const canDelete = roleAtLeast('admin');
     wContainer.innerHTML = WARNING_TIERS.map(tier => {
       const issued  = warnings.filter(w => w.type === tier.key).sort((a,b) => new Date(b.issuedAt)-new Date(a.issuedAt));
       const isActive = pts >= tier.threshold;
@@ -3779,27 +3786,30 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
         <tr>
           <td style="padding:6px 8px 4px;vertical-align:top">
             <div style="font-size:8pt;color:#555;margin-bottom:3px">Employee Signature</div>
-            <div class="sig-canvas-wrap" id="wrap-employee">
-              <canvas id="sig-employee" width="220" height="64" style="border:1.5px solid #555;border-radius:3px;cursor:crosshair;display:block;background:#fff;touch-action:none"></canvas>
-              <button class="clear-btn" onclick="clearSig('sig-employee')">✕ Clear</button>
+            <div class="sig-canvas-wrap" id="wrap-employee" onclick="openSigExpand('employee')" style="position:relative;cursor:pointer;display:inline-block">
+              <canvas id="sig-employee" width="220" height="64" style="border:1.5px solid #334155;border-radius:3px;display:block;background:#fff"></canvas>
+              <div id="sigplaceholder-employee" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:8pt;color:#94a3b8;pointer-events:none;gap:4px"><span>✏</span><span>Click to sign</span></div>
+              <button class="clear-btn" onclick="event.stopPropagation();clearSig('employee')">✕ Clear</button>
             </div>
             <div class="sig-img-wrap" id="img-employee" style="display:none"><img id="imgdata-employee" style="height:64px;border-bottom:1.5px solid #333"></div>
             <div style="font-size:8.5pt;margin-top:3px">Date: <span id="sigdate-employee"></span></div>
           </td>
           <td style="padding:6px 8px 4px;vertical-align:top">
             <div style="font-size:8pt;color:#555;margin-bottom:3px">Manager Signature</div>
-            <div class="sig-canvas-wrap" id="wrap-manager">
-              <canvas id="sig-manager" width="220" height="64" style="border:1.5px solid #555;border-radius:3px;cursor:crosshair;display:block;background:#fff;touch-action:none"></canvas>
-              <button class="clear-btn" onclick="clearSig('sig-manager')">✕ Clear</button>
+            <div class="sig-canvas-wrap" id="wrap-manager" onclick="openSigExpand('manager')" style="position:relative;cursor:pointer;display:inline-block">
+              <canvas id="sig-manager" width="220" height="64" style="border:1.5px solid #334155;border-radius:3px;display:block;background:#fff"></canvas>
+              <div id="sigplaceholder-manager" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:8pt;color:#94a3b8;pointer-events:none;gap:4px"><span>✏</span><span>Click to sign</span></div>
+              <button class="clear-btn" onclick="event.stopPropagation();clearSig('manager')">✕ Clear</button>
             </div>
             <div class="sig-img-wrap" id="img-manager" style="display:none"><img id="imgdata-manager" style="height:64px;border-bottom:1.5px solid #333"></div>
             <div style="font-size:8.5pt;margin-top:3px">Date: <span id="sigdate-manager"></span></div>
           </td>
           <td style="padding:6px 8px 4px;vertical-align:top">
             <div style="font-size:8pt;color:#555;margin-bottom:3px">Witness Signature <span style="color:#888">(if employee refuses)</span></div>
-            <div class="sig-canvas-wrap" id="wrap-witness">
-              <canvas id="sig-witness" width="220" height="64" style="border:1.5px solid #555;border-radius:3px;cursor:crosshair;display:block;background:#fff;touch-action:none"></canvas>
-              <button class="clear-btn" onclick="clearSig('sig-witness')">✕ Clear</button>
+            <div class="sig-canvas-wrap" id="wrap-witness" onclick="openSigExpand('witness')" style="position:relative;cursor:pointer;display:inline-block">
+              <canvas id="sig-witness" width="220" height="64" style="border:1.5px solid #334155;border-radius:3px;display:block;background:#fff"></canvas>
+              <div id="sigplaceholder-witness" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:8pt;color:#94a3b8;pointer-events:none;gap:4px"><span>✏</span><span>Click to sign</span></div>
+              <button class="clear-btn" onclick="event.stopPropagation();clearSig('witness')">✕ Clear</button>
             </div>
             <div class="sig-img-wrap" id="img-witness" style="display:none"><img id="imgdata-witness" style="height:64px;border-bottom:1.5px solid #333"></div>
             <div style="font-size:8.5pt;margin-top:3px">Date: <span id="sigdate-witness"></span></div>
@@ -3823,34 +3833,71 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 
 <script>
 (function(){
-  const canvases = ['sig-employee','sig-manager','sig-witness'];
-  canvases.forEach(id => {
-    const canvas = document.getElementById(id);
-    const ctx = canvas.getContext('2d');
-    let drawing = false;
-    ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // ── Expand overlay logic ──────────────────────────────────────────────
+  var _currentSigRole = null;
+  var expandCanvas = document.getElementById('sigExpandCanvas');
+  var expandCtx = expandCanvas.getContext('2d');
+  expandCtx.strokeStyle = '#111'; expandCtx.lineWidth = 2.5; expandCtx.lineCap = 'round'; expandCtx.lineJoin = 'round';
+  var expandDrawing = false;
 
-    function getPos(e) {
-      const r = canvas.getBoundingClientRect();
-      const src = e.touches ? e.touches[0] : e;
-      return { x: src.clientX - r.left, y: src.clientY - r.top };
+  function getExpandPos(e) {
+    var r = expandCanvas.getBoundingClientRect();
+    var scaleX = expandCanvas.width / r.width;
+    var scaleY = expandCanvas.height / r.height;
+    var src = e.touches ? e.touches[0] : e;
+    return { x: (src.clientX - r.left) * scaleX, y: (src.clientY - r.top) * scaleY };
+  }
+  function expandStart(e) { e.preventDefault(); expandDrawing = true; var p = getExpandPos(e); expandCtx.beginPath(); expandCtx.moveTo(p.x, p.y); }
+  function expandMove(e) { e.preventDefault(); if (!expandDrawing) return; var p = getExpandPos(e); expandCtx.lineTo(p.x, p.y); expandCtx.stroke(); }
+  function expandEnd(e) { e.preventDefault(); expandDrawing = false; }
+
+  expandCanvas.addEventListener('mousedown', expandStart);
+  expandCanvas.addEventListener('mousemove', expandMove);
+  expandCanvas.addEventListener('mouseup', expandEnd);
+  expandCanvas.addEventListener('mouseleave', expandEnd);
+  expandCanvas.addEventListener('touchstart', expandStart, {passive:false});
+  expandCanvas.addEventListener('touchmove', expandMove, {passive:false});
+  expandCanvas.addEventListener('touchend', expandEnd);
+
+  window.openSigExpand = function(role) {
+    _currentSigRole = role;
+    expandCtx.clearRect(0, 0, expandCanvas.width, expandCanvas.height);
+    var smallCanvas = document.getElementById('sig-' + role);
+    if (smallCanvas && !isBlank(smallCanvas)) {
+      expandCtx.drawImage(smallCanvas, 0, 0, expandCanvas.width, expandCanvas.height);
     }
-    function start(e) { e.preventDefault(); drawing = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); }
-    function move(e) { e.preventDefault(); if (!drawing) return; const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); }
-    function end(e) { e.preventDefault(); drawing = false; }
+    var labels = { employee: 'Employee Signature', manager: 'Manager Signature', witness: 'Witness Signature' };
+    document.getElementById('sigExpandLabel').textContent = labels[role] || 'Sign Here';
+    var overlay = document.getElementById('sigExpandOverlay');
+    overlay.style.display = 'flex';
+  };
 
-    canvas.addEventListener('mousedown', start);
-    canvas.addEventListener('mousemove', move);
-    canvas.addEventListener('mouseup', end);
-    canvas.addEventListener('mouseleave', end);
-    canvas.addEventListener('touchstart', start, {passive:false});
-    canvas.addEventListener('touchmove', move, {passive:false});
-    canvas.addEventListener('touchend', end);
-  });
+  window.clearExpandSig = function() {
+    expandCtx.clearRect(0, 0, expandCanvas.width, expandCanvas.height);
+  };
 
-  window.clearSig = function(id) {
-    const canvas = document.getElementById(id);
-    canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+  window.cancelExpandSig = function() {
+    document.getElementById('sigExpandOverlay').style.display = 'none';
+    _currentSigRole = null;
+  };
+
+  window.doneExpandSig = function() {
+    if (!_currentSigRole) return;
+    var smallCanvas = document.getElementById('sig-' + _currentSigRole);
+    var ctx = smallCanvas.getContext('2d');
+    ctx.clearRect(0, 0, smallCanvas.width, smallCanvas.height);
+    ctx.drawImage(expandCanvas, 0, 0, smallCanvas.width, smallCanvas.height);
+    var placeholder = document.getElementById('sigplaceholder-' + _currentSigRole);
+    if (placeholder) placeholder.style.display = 'none';
+    document.getElementById('sigExpandOverlay').style.display = 'none';
+    _currentSigRole = null;
+  };
+
+  window.clearSig = function(role) {
+    var canvas = document.getElementById('sig-' + role);
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    var placeholder = document.getElementById('sigplaceholder-' + role);
+    if (placeholder) placeholder.style.display = 'flex';
   };
 
   function isBlank(canvas) {
@@ -3930,6 +3977,21 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 })();
 <\/script>
 
+<!-- Signature Expand Overlay -->
+<div id="sigExpandOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.78);z-index:99999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;padding:28px;width:700px;max-width:96vw;box-shadow:0 24px 64px rgba(0,0,0,0.35)">
+    <div id="sigExpandLabel" style="font-size:12pt;font-weight:700;color:#1e293b;margin-bottom:4px">Sign Here</div>
+    <div style="font-size:8.5pt;color:#64748b;margin-bottom:14px">Draw your signature below using mouse or touch</div>
+    <canvas id="sigExpandCanvas" width="644" height="220" style="border:2px solid #334155;border-radius:8px;cursor:crosshair;display:block;background:#fff;touch-action:none;width:100%;box-sizing:border-box"></canvas>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px">
+      <button onclick="clearExpandSig()" style="padding:9px 20px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:600">✕ Clear</button>
+      <div style="display:flex;gap:10px">
+        <button onclick="cancelExpandSig()" style="padding:9px 20px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:600">Cancel</button>
+        <button onclick="doneExpandSig()" style="padding:9px 28px;background:#1a2744;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:700;letter-spacing:0.02em">✓ Done</button>
+      </div>
+    </div>
+  </div>
+</div>
 </div><!-- end #page-wrap -->
 </body>
 </html>`;
@@ -4155,6 +4217,7 @@ window.saveTimeOff = async () => {
 };
 
 window.deleteTimeOff = async (assocId, entryId) => {
+  if (!roleAtLeast('admin')) return;
   if (!confirm('Remove this time off entry?')) return;
   await deleteDoc(doc(db, 'timeOff', assocId, 'entries', entryId));
   clearCache('todayTimeOff');
@@ -4334,6 +4397,7 @@ window.logWarning = async (type) => {
 };
 
 window.deleteWarning = async (warningId) => {
+  if (!roleAtLeast('admin')) return;
   if (!confirm('Remove this warning record?')) return;
   await deleteDoc(doc(db, 'warnings', currentAssociateId, 'entries', warningId));
 };
@@ -4366,6 +4430,7 @@ window.saveAttendance = async () => {
 };
 
 window.deleteAttendance = async (entryId, type, pts) => {
+  if (!roleAtLeast('admin')) return;
   if (!confirm('Remove this attendance entry?')) return;
   await deleteDoc(doc(db, 'attendance', currentAssociateId, 'entries', entryId));
   await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(-pts) });
@@ -4903,7 +4968,7 @@ function renderHRRecords(records) {
             <td style="padding:10px 14px;text-align:right">
               <button class="btn btn-sm btn-orange" onclick="viewHRRecord(${i})"><i class="fas fa-eye me-1"></i>View</button>
               <button class="btn btn-sm btn-outline-secondary ms-1" onclick="downloadHRRecord(${i})" title="Download as PDF"><i class="fas fa-file-pdf me-1"></i>PDF</button>
-              <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteHRRecord(${i})" title="Delete record"><i class="fas fa-trash"></i></button>
+              ${roleAtLeast('admin') ? `<button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteHRRecord(${i})" title="Delete record"><i class="fas fa-trash"></i></button>` : ''}
             </td>
           </tr>`;
         }).join('')}
@@ -5050,6 +5115,7 @@ window.downloadHRRecord = async (idx) => {
 };
 
 window.deleteHRRecord = async (idx) => {
+  if (!roleAtLeast('admin')) return;
   const r = (window._hrRecords || [])[idx];
   if (!r) return;
   const name = r.associateName || 'this associate';
@@ -5200,7 +5266,7 @@ function render1on1Log(entries) {
           <div style="font-weight:600;color:var(--navy);font-size:0.9rem"><i class="fas fa-comments me-1" style="color:#6366f1"></i>${formatDate(e.date)}</div>
           ${e.conductedBy ? `<div class="text-muted" style="font-size:0.78rem"><i class="fas fa-user me-1"></i>Conducted by: ${escapeHtml(e.conductedBy)}</div>` : ''}
         </div>
-        ${roleAtLeast('supervisor') ? `<button class="btn btn-sm btn-outline-danger py-0 px-2" style="font-size:0.72rem" onclick="delete1on1('${e.id}')"><i class="fas fa-trash"></i></button>` : ''}
+        ${roleAtLeast('admin') ? `<button class="btn btn-sm btn-outline-danger py-0 px-2" style="font-size:0.72rem" onclick="delete1on1('${e.id}')"><i class="fas fa-trash"></i></button>` : ''}
       </div>
       ${e.topics ? `<div style="margin-top:6px;font-size:0.82rem"><span class="fw-semibold">Topics:</span> ${escapeHtml(e.topics)}</div>` : ''}
       ${e.notes ? `<div style="margin-top:4px;font-size:0.82rem;color:#374151">${escapeHtml(e.notes)}</div>` : ''}
@@ -5284,6 +5350,7 @@ window.clearScheduled1on1 = async () => {
 };
 
 window.delete1on1 = async (entryId) => {
+  if (!roleAtLeast('admin')) return;
   if (!confirm('Delete this 1:1 record?')) return;
   await deleteDoc(doc(db, 'oneOnOnes', currentAssociateId, 'entries', entryId));
   window._1on1Entries = (window._1on1Entries || []).filter(e => e.id !== entryId);
