@@ -3026,7 +3026,7 @@ window.exportProfilePDF = async () => {
     const ptsStr = (e.points || 0) === 0 ? '<span class="att-pts-zero">0 pts</span>' : `<span class="att-pts-pos">+${e.points} pts</span>`;
     return `<div class="att-row"><span>${new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} — ${info.label}${e.note ? ' <em style="color:#9ca3af">(' + e.note + ')</em>' : ''}</span>${ptsStr}</div>`;
   }).join('') : '<div style="color:#9ca3af;font-size:0.85rem">No attendance events recorded.</div>'}
-  <div style="margin-top:32px;font-size:0.72rem;color:#9ca3af">Exported ${new Date().toLocaleString()} · LAS1 Engagement Tracker</div>
+  <div style="margin-top:32px;font-size:0.72rem;color:#9ca3af">Exported ${new Date().toLocaleString()} · Operational Health Tracker</div>
   </body></html>`;
 
   const win = window.open('', '_blank');
@@ -3826,9 +3826,25 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 </div>
 <div id="save-status" style="text-align:center;margin-top:10px;font-size:10pt;display:none"></div>
 
+<!-- Signature Expand Overlay -->
+<div id="sigExpandOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.78);z-index:99999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;padding:28px;width:700px;max-width:96vw;box-shadow:0 24px 64px rgba(0,0,0,0.35)">
+    <div id="sigExpandLabel" style="font-size:12pt;font-weight:700;color:#1e293b;margin-bottom:4px">Sign Here</div>
+    <div style="font-size:8.5pt;color:#64748b;margin-bottom:14px">Draw your signature below using mouse or touch</div>
+    <canvas id="sigExpandCanvas" width="644" height="220" style="border:2px solid #334155;border-radius:8px;cursor:crosshair;display:block;background:#fff;touch-action:none;width:100%;box-sizing:border-box"></canvas>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px">
+      <button onclick="clearExpandSig()" style="padding:9px 20px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:600">✕ Clear</button>
+      <div style="display:flex;gap:10px">
+        <button onclick="cancelExpandSig()" style="padding:9px 20px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:600">Cancel</button>
+        <button onclick="doneExpandSig()" style="padding:9px 28px;background:#1a2744;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:700;letter-spacing:0.02em">✓ Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <style>
   .clear-btn { font-size:8pt;padding:2px 8px;margin-top:3px;background:#eee;border:1px solid #bbb;border-radius:3px;cursor:pointer; }
-  @media print { #action-bar, .clear-btn, #save-status { display:none!important; } .sig-canvas-wrap { display:none!important; } .sig-img-wrap { display:block!important; } }
+  @media print { #action-bar, .clear-btn, #save-status, #sigExpandOverlay { display:none!important; } .sig-canvas-wrap { display:none!important; } .sig-img-wrap { display:block!important; } }
 </style>
 
 <script>
@@ -3977,21 +3993,6 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 })();
 <\/script>
 
-<!-- Signature Expand Overlay -->
-<div id="sigExpandOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.78);z-index:99999;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:14px;padding:28px;width:700px;max-width:96vw;box-shadow:0 24px 64px rgba(0,0,0,0.35)">
-    <div id="sigExpandLabel" style="font-size:12pt;font-weight:700;color:#1e293b;margin-bottom:4px">Sign Here</div>
-    <div style="font-size:8.5pt;color:#64748b;margin-bottom:14px">Draw your signature below using mouse or touch</div>
-    <canvas id="sigExpandCanvas" width="644" height="220" style="border:2px solid #334155;border-radius:8px;cursor:crosshair;display:block;background:#fff;touch-action:none;width:100%;box-sizing:border-box"></canvas>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px">
-      <button onclick="clearExpandSig()" style="padding:9px 20px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:600">✕ Clear</button>
-      <div style="display:flex;gap:10px">
-        <button onclick="cancelExpandSig()" style="padding:9px 20px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:600">Cancel</button>
-        <button onclick="doneExpandSig()" style="padding:9px 28px;background:#1a2744;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:700;letter-spacing:0.02em">✓ Done</button>
-      </div>
-    </div>
-  </div>
-</div>
 </div><!-- end #page-wrap -->
 </body>
 </html>`;
@@ -4350,7 +4351,7 @@ window.openInBuildingList = () => {
     </tr></thead>
     <tbody>${rows || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#9ca3af">No personnel currently in building.</td></tr>'}</tbody>
   </table>
-  <div class="footer">LAS1 Engagement Tracker &nbsp;·&nbsp; Emergency Roster &nbsp;·&nbsp; ${now}</div>
+  <div class="footer">Operational Health Tracker &nbsp;·&nbsp; Emergency Roster &nbsp;·&nbsp; ${now}</div>
   </body></html>`);
   win.document.close();
 };
@@ -7492,8 +7493,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   <!-- Sidebar -->
   <nav id="sidebar">
     <div class="sidebar-brand">
-      <div class="brand-name">LAS1 Engagement Tracker</div>
-      <div class="brand-sub">Performance Intelligence</div>
+      <div class="brand-name">Operational Health Tracker</div>
+      <div class="brand-sub">LAS1 Operations</div>
     </div>
     <div class="sidebar-nav">
       <a class="nav-link active" data-view="dashboard" onclick="loadDashboard()">
