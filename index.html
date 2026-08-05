@@ -3851,8 +3851,18 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 (function(){
   // ── Expand overlay logic ──────────────────────────────────────────────
   var _currentSigRole = null;
+  // Full-resolution signature store — keyed by role, set on Done, cleared on Clear
+  var _sigDataURLs = {};
+
   var expandCanvas = document.getElementById('sigExpandCanvas');
+  // Boost internal resolution to 2x for crisp rendering on high-DPI screens
+  var dpr = window.devicePixelRatio || 1;
+  expandCanvas.width  = 1288;
+  expandCanvas.height = 440;
+  expandCanvas.style.width  = '100%';
+  expandCanvas.style.height = '220px';
   var expandCtx = expandCanvas.getContext('2d');
+  expandCtx.scale(dpr, dpr);
   expandCtx.strokeStyle = '#111'; expandCtx.lineWidth = 2.5; expandCtx.lineCap = 'round'; expandCtx.lineJoin = 'round';
   var expandDrawing = false;
 
@@ -3878,14 +3888,15 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   window.openSigExpand = function(role) {
     _currentSigRole = role;
     expandCtx.clearRect(0, 0, expandCanvas.width, expandCanvas.height);
-    var smallCanvas = document.getElementById('sig-' + role);
-    if (smallCanvas && !isBlank(smallCanvas)) {
-      expandCtx.drawImage(smallCanvas, 0, 0, expandCanvas.width, expandCanvas.height);
+    // If a full-res sig already exists, load it back in for editing
+    if (_sigDataURLs[role]) {
+      var img = new Image();
+      img.onload = function() { expandCtx.drawImage(img, 0, 0, expandCanvas.width, expandCanvas.height); };
+      img.src = _sigDataURLs[role];
     }
     var labels = { employee: 'Employee Signature', manager: 'Manager Signature', witness: 'Witness Signature' };
     document.getElementById('sigExpandLabel').textContent = labels[role] || 'Sign Here';
-    var overlay = document.getElementById('sigExpandOverlay');
-    overlay.style.display = 'flex';
+    document.getElementById('sigExpandOverlay').style.display = 'flex';
   };
 
   window.clearExpandSig = function() {
@@ -3899,6 +3910,9 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 
   window.doneExpandSig = function() {
     if (!_currentSigRole) return;
+    // Store full-resolution dataURL — this is what gets saved and printed
+    _sigDataURLs[_currentSigRole] = expandCanvas.toDataURL('image/png');
+    // Draw a downscaled thumbnail on the small preview canvas only
     var smallCanvas = document.getElementById('sig-' + _currentSigRole);
     var ctx = smallCanvas.getContext('2d');
     ctx.clearRect(0, 0, smallCanvas.width, smallCanvas.height);
@@ -3910,6 +3924,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   };
 
   window.clearSig = function(role) {
+    delete _sigDataURLs[role];
     var canvas = document.getElementById('sig-' + role);
     canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
     var placeholder = document.getElementById('sigplaceholder-' + role);
@@ -3917,8 +3932,11 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   };
 
   function isBlank(canvas) {
-    const d = canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
-    for (let i=3; i<d.length; i+=4) { if (d[i] > 0) return false; }
+    // Check full-res store first
+    var role = canvas.id ? canvas.id.replace('sig-', '') : '';
+    if (_sigDataURLs[role]) return false;
+    var d = canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+    for (var i=3; i<d.length; i+=4) { if (d[i] > 0) return false; }
     return true;
   }
 
@@ -3942,7 +3960,8 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
     ['employee','manager','witness'].forEach(role => {
       const c = document.getElementById('sig-'+role);
       if (!isBlank(c)) {
-        sigs[role] = c.toDataURL('image/png');
+        // Use full-res dataURL if available, fall back to canvas
+        sigs[role] = _sigDataURLs[role] || c.toDataURL('image/png');
         document.getElementById('sigdate-'+role).textContent = todayStr;
         document.getElementById('imgdata-'+role).src = sigs[role];
         document.getElementById('img-'+role).style.display = 'block';
@@ -7494,7 +7513,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   <nav id="sidebar">
     <div class="sidebar-brand">
       <div class="brand-name">Operational Health Tracker</div>
-      <div class="brand-sub">LAS1 Operations</div>
+      <div class="brand-sub">Performance Intelligence</div>
     </div>
     <div class="sidebar-nav">
       <a class="nav-link active" data-view="dashboard" onclick="loadDashboard()">
