@@ -4133,359 +4133,144 @@ window.gcUpdateTierDefaults = () => {
   }
 };
 
+// Shared static strings for the general corrective popup window (defined once, reused per call)
+const _GC_CSS = '<style>*{box-sizing:border-box;margin:0;padding:0}#page-wrap{max-width:960px;margin:0 auto;padding:48px 72px;background:#fff}@page{margin:.75in}.doc-title{text-align:center;border:2px solid #1a2744;padding:10px 0 6px}.doc-title h1{font-size:16pt;font-weight:700;letter-spacing:1px;color:#1a2744;text-transform:uppercase}.doc-title h2{font-size:10pt;font-weight:700;color:#333;margin-top:2px}.outer-table{width:100%;border-collapse:collapse;border:1.5px solid #1a2744}.outer-table td{border:1px solid #aaa;padding:0;vertical-align:top}.sec-header{background:#1a2744;color:#fff;font-weight:700;font-size:9.5pt;text-transform:uppercase;letter-spacing:.5px;padding:6px 16px}.field-cell{padding:8px 16px 5px}.field-label{font-size:8pt;color:#555;margin-bottom:1px}.field-value{font-size:10.5pt;font-weight:600;border-bottom:1px solid #333;min-height:20px;padding-bottom:2px}.check-table{width:100%;border-collapse:collapse}.check-table td{padding:5px 14px;border:none;vertical-align:middle;font-size:10pt}.text-area-cell{padding:8px 16px;font-size:10pt;min-height:68px;line-height:1.55}.text-area-cell.short{min-height:44px}.sig-table{width:100%;border-collapse:collapse}.sig-table td{padding:24px 10px 6px;border:1px solid #aaa;vertical-align:bottom;font-size:9.5pt;width:33%}.clear-btn{font-size:8pt;padding:2px 8px;margin-top:3px;background:#eee;border:1px solid #bbb;border-radius:3px;cursor:pointer}@media print{button{display:none!important}#page-wrap{margin:0!important;padding:.15in .45in!important;max-width:100%!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}.text-area-cell{min-height:30px!important;padding:4px 10px!important}.sig-table td{padding:10px 8px 3px!important}.field-cell{padding:4px 10px 3px!important}.sec-header{padding:3px 10px!important}#action-bar,#save-status,#sigExpandOverlay{display:none!important}.sig-canvas-wrap{display:none!important}.sig-img-wrap{display:block!important}}</style>';
+
+const _GC_SIG_OVERLAY = '<div id="sigExpandOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,.78);z-index:99999;align-items:center;justify-content:center"><div style="background:#fff;border-radius:14px;padding:28px;width:700px;max-width:96vw;box-shadow:0 24px 64px rgba(0,0,0,.35)"><div id="sigExpandLabel" style="font-size:12pt;font-weight:700;color:#1e293b;margin-bottom:4px">Sign Here</div><div style="font-size:8.5pt;color:#64748b;margin-bottom:14px">Draw your signature below using mouse or touch</div><canvas id="sigExpandCanvas" width="644" height="220" style="border:2px solid #334155;border-radius:8px;cursor:crosshair;display:block;background:#fff;touch-action:none;width:100%;box-sizing:border-box"></canvas><div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px"><button onclick="clearExpandSig()" style="padding:9px 20px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:600">✕ Clear</button><div style="display:flex;gap:10px"><button onclick="cancelExpandSig()" style="padding:9px 20px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:600">Cancel</button><button onclick="doneExpandSig()" style="padding:9px 28px;background:#1a2744;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:700">✓ Done</button></div></div></div></div>';
+
+const _GC_SIG_INIT = '(function(){var _r=null,_d={},ec=document.getElementById("sigExpandCanvas"),dpr=window.devicePixelRatio||1;ec.width=1288;ec.height=440;ec.style.width="100%";ec.style.height="220px";var x=ec.getContext("2d");x.scale(dpr,dpr);x.strokeStyle="#111";x.lineWidth=2.5;x.lineCap="round";x.lineJoin="round";var draw=false;function pos(e){var r=ec.getBoundingClientRect(),s=e.touches?e.touches[0]:e;return{x:(s.clientX-r.left)*(ec.width/r.width),y:(s.clientY-r.top)*(ec.height/r.height)}}function ds(e){e.preventDefault();draw=true;var p=pos(e);x.beginPath();x.moveTo(p.x,p.y)}function dm(e){e.preventDefault();if(!draw)return;var p=pos(e);x.lineTo(p.x,p.y);x.stroke()}function de(e){e.preventDefault();draw=false}ec.addEventListener("mousedown",ds);ec.addEventListener("mousemove",dm);ec.addEventListener("mouseup",de);ec.addEventListener("mouseleave",de);ec.addEventListener("touchstart",ds,{passive:false});ec.addEventListener("touchmove",dm,{passive:false});ec.addEventListener("touchend",de);window.openSigExpand=function(role){_r=role;x.clearRect(0,0,ec.width,ec.height);if(_d[role]){var i=new Image();i.onload=function(){x.drawImage(i,0,0,ec.width,ec.height)};i.src=_d[role]}var L={employee:"Employee Signature",manager:"Manager Signature",witness:"Witness Signature"};document.getElementById("sigExpandLabel").textContent=L[role]||"Sign Here";document.getElementById("sigExpandOverlay").style.display="flex"};window.clearExpandSig=function(){x.clearRect(0,0,ec.width,ec.height)};window.cancelExpandSig=function(){document.getElementById("sigExpandOverlay").style.display="none";_r=null};window.doneExpandSig=function(){if(!_r)return;_d[_r]=ec.toDataURL("image/png");var sc=document.getElementById("sig-"+_r),c=sc.getContext("2d");c.clearRect(0,0,sc.width,sc.height);c.drawImage(ec,0,0,sc.width,sc.height);var ph=document.getElementById("sigplaceholder-"+_r);if(ph)ph.style.display="none";document.getElementById("sigExpandOverlay").style.display="none";_r=null};window.clearSig=function(role){delete _d[role];var cv=document.getElementById("sig-"+role);cv.getContext("2d").clearRect(0,0,cv.width,cv.height);var ph=document.getElementById("sigplaceholder-"+role);if(ph)ph.style.display="flex"};function blank(cv){var role=cv.id?cv.id.replace("sig-",""):"";if(_d[role])return false;var px=cv.getContext("2d").getImageData(0,0,cv.width,cv.height).data;for(var i=3;i<px.length;i+=4){if(px[i]>0)return false}return true}function td(){var d=new Date();return(d.getMonth()+1)+"/"+d.getDate()+"/"+d.getFullYear()}';
+
+function _gcSigBox(role, label) {
+  const extra = role === 'witness' ? ' <span style="color:#888">(if employee refuses)</span>' : '';
+  return '<td style="padding:6px 8px 4px;vertical-align:top">'
+    + '<div style="font-size:8pt;color:#555;margin-bottom:3px">' + label + extra + '</div>'
+    + '<div class="sig-canvas-wrap" id="wrap-' + role + '" onclick="openSigExpand(\'' + role + '\')" style="position:relative;cursor:pointer;display:inline-block">'
+    + '<canvas id="sig-' + role + '" width="220" height="64" style="border:1.5px solid #334155;border-radius:3px;display:block;background:#fff"></canvas>'
+    + '<div id="sigplaceholder-' + role + '" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:8pt;color:#94a3b8;pointer-events:none;gap:4px"><span>✏</span><span>Click to sign</span></div>'
+    + '<button class="clear-btn" onclick="event.stopPropagation();clearSig(\'' + role + '\')">✕ Clear</button>'
+    + '</div>'
+    + '<div class="sig-img-wrap" id="img-' + role + '" style="display:none"><img id="imgdata-' + role + '" style="height:64px;border-bottom:1.5px solid #333"></div>'
+    + '<div style="font-size:8.5pt;margin-top:3px">Date: <span id="sigdate-' + role + '"></span></div>'
+    + '</td>';
+}
+
+function _gcCheck(checked) {
+  return checked
+    ? '<td style="width:22px;text-align:center"><span style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border:1.5px solid #222;background:#1a2744;color:#fff;font-size:11px;font-weight:700">✓</span></td>'
+    : '<td style="width:22px;text-align:center"><span style="display:inline-block;width:15px;height:15px;border:1.5px solid #555"></span></td>';
+}
+
 window.generateGeneralCorrective = () => {
   const assoc = allAssociates.find(a => a.id === currentAssociateId);
   if (!assoc) return;
+  const typeKey = document.getElementById('gcTypeKey').value;
+  const type    = GENERAL_CORRECTIVE_TYPES.find(t => t.key === typeKey);
+  const tier    = document.getElementById('gcTier').value;
+  const incDate = document.getElementById('gcIncidentDate').value;
+  const desc    = document.getElementById('gcDescription').value.trim();
+  const prior   = document.getElementById('gcPriorHistory').value.trim();
+  const action  = document.getElementById('gcActionTaken').value.trim();
+  const plan    = document.getElementById('gcPlanImprovement').value.trim();
+  if (!desc) { alert('Please enter a description of the incident before generating the form.'); return; }
 
-  const typeKey     = document.getElementById('gcTypeKey').value;
-  const type        = GENERAL_CORRECTIVE_TYPES.find(t => t.key === typeKey);
-  const tier        = document.getElementById('gcTier').value;
-  const incDate     = document.getElementById('gcIncidentDate').value;
-  const description = document.getElementById('gcDescription').value.trim();
-  const priorHist   = document.getElementById('gcPriorHistory').value.trim();
-  const actionTaken = document.getElementById('gcActionTaken').value.trim();
-  const planImp     = document.getElementById('gcPlanImprovement').value.trim();
-
-  if (!description) { alert('Please enter a description of the incident before generating the form.'); return; }
-
-  const tierLabels = { verbal: 'Verbal Warning', written: 'First Written Warning', final: 'Final Warning', termination: 'Termination' };
-  const tierLabel  = tierLabels[tier] || tier;
-  const incDateFmt = incDate ? new Date(incDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—';
-  const issuedDate = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const TIER_LABELS = { verbal:'Verbal Warning', written:'First Written Warning', final:'Final Warning', termination:'Termination' };
+  const tierLabel  = TIER_LABELS[tier] || tier;
+  const incDateFmt = incDate ? new Date(incDate + 'T00:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '—';
+  const today      = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
   const resolvedId = currentAssociateId;
-  const managerName = 'Hector Marron';
-  const consequences = tier === 'termination'
-    ? 'Employment is being terminated.'
-    : 'Any further violations of this or any other company policy may result in further disciplinary action up to and including termination of employment.';
+  const conseq     = tier === 'termination' ? 'Employment is being terminated.' : 'Any further violations of this or any other company policy may result in further disciplinary action up to and including termination of employment.';
 
   const win = window.open('', '_blank', 'width=1000,height=850,scrollbars=yes,resizable=yes');
   if (!win) { alert('Pop-ups are blocked. Please allow pop-ups for this page.'); return; }
-  win.document.write('<html><body style="font-family:Arial;padding:40px;color:#666;text-align:center"><p style="font-size:14pt">Loading document…</p></body></html>');
-
+  win.document.write('<html><body style="font-family:Arial;padding:40px;color:#666;text-align:center"><p>Loading…</p></body></html>');
   bootstrap.Modal.getInstance(document.getElementById('issueCorrectiveModal'))?.hide();
 
-  const cb = (checked) => checked
-    ? '<td style="width:22px;text-align:center"><span style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border:1.5px solid #222;background:#1a2744;color:#fff;font-size:11px;font-weight:bold">✓</span></td>'
-    : '<td style="width:22px;text-align:center"><span style="display:inline-block;width:15px;height:15px;border:1.5px solid #555"></span></td>';
+  const eh = escapeHtml, nl = s => eh(s).replace(/\n/g,'<br>');
+  const typeLabel   = eh(type ? type.label : typeKey);
+  const sectionCode = eh(type ? type.section : '');
+  const sectionDesc = eh(type ? type.sectionDesc : '');
+  const aName = eh(assoc.name), aId = eh(assoc.employeeId||''), aRole = eh(assoc.role||''), aDept = eh(assoc.department||'LAS1 Operations');
 
-  const descHtml    = escapeHtml(description).replace(/\n/g, '<br>');
-  const priorHtml   = priorHist ? escapeHtml(priorHist).replace(/\n/g, '<br>') : '';
-  const actionHtml  = escapeHtml(actionTaken).replace(/\n/g, '<br>');
-  const planHtml    = escapeHtml(planImp).replace(/\n/g, '<br>');
-  const consHtml    = escapeHtml(consequences);
-  const typeLabel   = escapeHtml(type ? type.label : typeKey);
-  const sectionCode = escapeHtml(type ? type.section : '');
-  const sectionDesc = escapeHtml(type ? type.sectionDesc : '');
-  const assocName   = escapeHtml(assoc.name);
-  const assocId     = escapeHtml(assoc.employeeId || '');
-  const assocRole   = escapeHtml(assoc.role || '');
-  const assocDept   = escapeHtml(assoc.department || 'LAS1 Operations');
+  const saveScript = 'window.saveAndPrint=async function(){'
+    + 'var eC=document.getElementById("sig-employee"),mC=document.getElementById("sig-manager");'
+    + 'if(blank(eC)&&blank(mC)){alert("Please provide at least one signature before saving.");return;}'
+    + 'var ts=td(),sigs={};'
+    + '["employee","manager","witness"].forEach(function(role){'
+    + 'var c=document.getElementById("sig-"+role);if(!blank(c)){'
+    + 'sigs[role]=_d[role]||c.toDataURL("image/png");'
+    + 'document.getElementById("sigdate-"+role).textContent=ts;'
+    + 'document.getElementById("imgdata-"+role).src=sigs[role];'
+    + 'document.getElementById("img-"+role).style.display="block";'
+    + 'document.getElementById("wrap-"+role).style.display="none";}});'
+    + 'var st=document.getElementById("save-status"),ab=document.getElementById("action-bar");'
+    + 'st.style.display="block";st.style.color="#555";st.textContent="Saving to HR records…";'
+    + 'ab.style.display="none";st.style.display="none";'
+    + 'var dh="<!DOCTYPE html>"+document.documentElement.outerHTML;'
+    + 'ab.style.display="";st.style.display="block";'
+    + 'try{if(window.opener&&window.opener.saveSignedWarning){'
+    + 'await window.opener.saveSignedWarning({associateId:"' + resolvedId + '",associateName:"' + assoc.name.replace(/"/g,'\\"') + '",tier:"' + tier + '",tierLabel:"' + tierLabel + '",formType:"' + typeKey + '",formTypeLabel:"' + (type?type.label.replace(/"/g,'\\"'):typeKey) + '",points:0,signedAt:ts,signatures:sigs,documentHtml:dh});'
+    + 'st.style.color="#16a34a";st.innerHTML="✓ Saved to HR records.&nbsp;<button onclick=\\"window.print()\\" style=\\"padding:6px 18px;background:#1a2744;color:#fff;border:none;border-radius:4px;cursor:pointer\\">🖶️ Print</button>";'
+    + '}else{st.style.color="#d97706";st.innerHTML="⚠ Could not reach main app.&nbsp;<button onclick=\\"window.print()\\" style=\\"padding:6px 18px;background:#555;color:#fff;border:none;border-radius:4px;cursor:pointer\\">🖶️ Print</button>";}'
+    + '}catch(err){st.style.color="#dc2626";st.textContent="✗ Save failed: "+err.message;}};})();';
 
-  const sigScript = [
-    '(function(){',
-    '  var _currentSigRole = null;',
-    '  var _sigDataURLs = {};',
-    '  var expandCanvas = document.getElementById("sigExpandCanvas");',
-    '  var dpr = window.devicePixelRatio || 1;',
-    '  expandCanvas.width  = 1288;',
-    '  expandCanvas.height = 440;',
-    '  expandCanvas.style.width  = "100%";',
-    '  expandCanvas.style.height = "220px";',
-    '  var expandCtx = expandCanvas.getContext("2d");',
-    '  expandCtx.scale(dpr, dpr);',
-    '  expandCtx.strokeStyle = "#111"; expandCtx.lineWidth = 2.5; expandCtx.lineCap = "round"; expandCtx.lineJoin = "round";',
-    '  var expandDrawing = false;',
-    '  function getExpandPos(e) {',
-    '    var r = expandCanvas.getBoundingClientRect();',
-    '    var src = e.touches ? e.touches[0] : e;',
-    '    return { x: (src.clientX - r.left) * (expandCanvas.width / r.width), y: (src.clientY - r.top) * (expandCanvas.height / r.height) };',
-    '  }',
-    '  function expandStart(e) { e.preventDefault(); expandDrawing = true; var p = getExpandPos(e); expandCtx.beginPath(); expandCtx.moveTo(p.x, p.y); }',
-    '  function expandMove(e)  { e.preventDefault(); if (!expandDrawing) return; var p = getExpandPos(e); expandCtx.lineTo(p.x, p.y); expandCtx.stroke(); }',
-    '  function expandEnd(e)   { e.preventDefault(); expandDrawing = false; }',
-    '  expandCanvas.addEventListener("mousedown", expandStart);',
-    '  expandCanvas.addEventListener("mousemove", expandMove);',
-    '  expandCanvas.addEventListener("mouseup",   expandEnd);',
-    '  expandCanvas.addEventListener("mouseleave",expandEnd);',
-    '  expandCanvas.addEventListener("touchstart", expandStart, {passive:false});',
-    '  expandCanvas.addEventListener("touchmove",  expandMove,  {passive:false});',
-    '  expandCanvas.addEventListener("touchend",   expandEnd);',
-    '  window.openSigExpand = function(role) {',
-    '    _currentSigRole = role;',
-    '    expandCtx.clearRect(0, 0, expandCanvas.width, expandCanvas.height);',
-    '    if (_sigDataURLs[role]) { var img = new Image(); img.onload = function() { expandCtx.drawImage(img, 0, 0, expandCanvas.width, expandCanvas.height); }; img.src = _sigDataURLs[role]; }',
-    '    var labels = { employee: "Employee Signature", manager: "Manager Signature", witness: "Witness Signature" };',
-    '    document.getElementById("sigExpandLabel").textContent = labels[role] || "Sign Here";',
-    '    document.getElementById("sigExpandOverlay").style.display = "flex";',
-    '  };',
-    '  window.clearExpandSig  = function() { expandCtx.clearRect(0, 0, expandCanvas.width, expandCanvas.height); };',
-    '  window.cancelExpandSig = function() { document.getElementById("sigExpandOverlay").style.display = "none"; _currentSigRole = null; };',
-    '  window.doneExpandSig = function() {',
-    '    if (!_currentSigRole) return;',
-    '    _sigDataURLs[_currentSigRole] = expandCanvas.toDataURL("image/png");',
-    '    var smallCanvas = document.getElementById("sig-" + _currentSigRole);',
-    '    var ctx = smallCanvas.getContext("2d");',
-    '    ctx.clearRect(0, 0, smallCanvas.width, smallCanvas.height);',
-    '    ctx.drawImage(expandCanvas, 0, 0, smallCanvas.width, smallCanvas.height);',
-    '    var ph = document.getElementById("sigplaceholder-" + _currentSigRole);',
-    '    if (ph) ph.style.display = "none";',
-    '    document.getElementById("sigExpandOverlay").style.display = "none";',
-    '    _currentSigRole = null;',
-    '  };',
-    '  window.clearSig = function(role) {',
-    '    delete _sigDataURLs[role];',
-    '    var canvas = document.getElementById("sig-" + role);',
-    '    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);',
-    '    var ph = document.getElementById("sigplaceholder-" + role);',
-    '    if (ph) ph.style.display = "flex";',
-    '  };',
-    '  function isBlank(canvas) {',
-    '    var role = canvas.id ? canvas.id.replace("sig-", "") : "";',
-    '    if (_sigDataURLs[role]) return false;',
-    '    var d = canvas.getContext("2d").getImageData(0,0,canvas.width,canvas.height).data;',
-    '    for (var i=3; i<d.length; i+=4) { if (d[i] > 0) return false; }',
-    '    return true;',
-    '  }',
-    '  function today() { var d = new Date(); return (d.getMonth()+1)+"/"+d.getDate()+"/"+d.getFullYear(); }',
-    '  window.saveAndPrint = async function() {',
-    '    var empC = document.getElementById("sig-employee");',
-    '    var mgrC = document.getElementById("sig-manager");',
-    '    if (isBlank(empC) && isBlank(mgrC)) { alert("Please provide at least one signature before saving."); return; }',
-    '    var todayStr = today();',
-    '    var sigs = {};',
-    '    ["employee","manager","witness"].forEach(function(role) {',
-    '      var c = document.getElementById("sig-"+role);',
-    '      if (!isBlank(c)) {',
-    '        sigs[role] = _sigDataURLs[role] || c.toDataURL("image/png");',
-    '        document.getElementById("sigdate-"+role).textContent = todayStr;',
-    '        document.getElementById("imgdata-"+role).src = sigs[role];',
-    '        document.getElementById("img-"+role).style.display = "block";',
-    '        document.getElementById("wrap-"+role).style.display = "none";',
-    '      }',
-    '    });',
-    '    var status = document.getElementById("save-status");',
-    '    status.style.display = "block"; status.style.color = "#555"; status.textContent = "Saving to HR records…";',
-    '    var ab = document.getElementById("action-bar"); var ss = document.getElementById("save-status");',
-    '    if (ab) ab.style.display = "none"; if (ss) ss.style.display = "none";',
-    '    var documentHtml = "<!DOCTYPE html>" + document.documentElement.outerHTML;',
-    '    if (ab) ab.style.display = ""; if (ss) ss.style.display = "block";',
-    '    try {',
-    '      if (window.opener && window.opener.saveSignedWarning) {',
-    '        await window.opener.saveSignedWarning({',
-    '          associateId: "' + resolvedId + '",',
-    '          associateName: "' + assoc.name.replace(/"/g, '\\"') + '",',
-    '          tier: "' + tier + '",',
-    '          tierLabel: "' + tierLabel + '",',
-    '          formType: "' + typeKey + '",',
-    '          formTypeLabel: "' + (type ? type.label.replace(/"/g, '\\"') : typeKey) + '",',
-    '          points: 0,',
-    '          signedAt: todayStr,',
-    '          signatures: sigs,',
-    '          documentHtml: documentHtml',
-    '        });',
-    '        status.style.color = "#16a34a";',
-    '        status.innerHTML = "✓ Signed copy saved to HR records. <button onclick=\\"window.print()\\" style=\\"margin-left:10px;padding:6px 18px;background:#1a2744;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:10pt;font-weight:bold\\">🖶️ Print / Save as PDF</button>";',
-    '      } else {',
-    '        status.style.color = "#d97706";',
-    '        status.innerHTML = "⚠ Could not reach main app. <button onclick=\\"window.print()\\" style=\\"margin-left:10px;padding:6px 18px;background:#555;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:10pt;font-weight:bold\\">🖶️ Print / Save as PDF</button>";',
-    '      }',
-    '    } catch(err) {',
-    '      status.style.color = "#dc2626";',
-    '      status.textContent = "✗ Save failed: " + err.message;',
-    '    }',
-    '  };',
-    '})();'
-  ].join('\n');
-
-  const html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n'
-    + '<title>Employee Warning Notice — ' + assocName + '</title>\n'
-    + '<style>\n'
-    + '* { box-sizing:border-box; margin:0; padding:0; }\n'
-    + '#page-wrap { max-width:960px; margin:0 auto; padding:48px 72px; background:#fff; }\n'
-    + '@page { margin:0.75in; }\n'
-    + '.doc-title { text-align:center; border:2px solid #1a2744; padding:10px 0 6px; }\n'
-    + '.doc-title h1 { font-size:16pt; font-weight:bold; letter-spacing:1px; color:#1a2744; text-transform:uppercase; }\n'
-    + '.doc-title h2 { font-size:10pt; font-weight:bold; color:#333; margin-top:2px; }\n'
-    + '.outer-table { width:100%; border-collapse:collapse; border:1.5px solid #1a2744; }\n'
-    + '.outer-table td { border:1px solid #aaa; padding:0; vertical-align:top; }\n'
-    + '.sec-header { background:#1a2744; color:#fff; font-weight:bold; font-size:9.5pt; text-transform:uppercase; letter-spacing:0.5px; padding:6px 16px; }\n'
-    + '.field-cell { padding:8px 16px 5px; }\n'
-    + '.field-label { font-size:8pt; color:#555; margin-bottom:1px; }\n'
-    + '.field-value { font-size:10.5pt; font-weight:600; border-bottom:1px solid #333; min-height:20px; padding-bottom:2px; }\n'
-    + '.check-table { width:100%; border-collapse:collapse; }\n'
-    + '.check-table td { padding:5px 14px; border:none; vertical-align:middle; font-size:10pt; }\n'
-    + '.text-area-cell { padding:8px 16px; font-size:10pt; min-height:68px; line-height:1.55; }\n'
-    + '.text-area-cell.short { min-height:44px; }\n'
-    + '.sig-table { width:100%; border-collapse:collapse; }\n'
-    + '.sig-table td { padding:24px 10px 6px; border:1px solid #aaa; vertical-align:bottom; font-size:9.5pt; width:33%; }\n'
-    + '.clear-btn { font-size:8pt;padding:2px 8px;margin-top:3px;background:#eee;border:1px solid #bbb;border-radius:3px;cursor:pointer; }\n'
-    + '@media print {\n'
-    + '  button { display:none !important; }\n'
-    + '  #page-wrap { margin:0 !important; padding:0.15in 0.45in !important; max-width:100% !important; }\n'
-    + '  * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }\n'
-    + '  .text-area-cell { min-height:30px !important; padding:4px 10px !important; }\n'
-    + '  .sig-table td { padding:10px 8px 3px !important; }\n'
-    + '  .field-cell { padding:4px 10px 3px !important; }\n'
-    + '  .sec-header { padding:3px 10px !important; }\n'
-    + '  #action-bar, #save-status, #sigExpandOverlay { display:none !important; }\n'
-    + '  .sig-canvas-wrap { display:none !important; }\n'
-    + '  .sig-img-wrap { display:block !important; }\n'
-    + '}\n'
-    + '</style>\n</head>\n'
-    + '<body style="font-family:Arial,sans-serif;font-size:10.5pt;color:#111;background:#fff;">\n'
-    + '<div id="page-wrap">\n\n'
-    + '<div class="doc-title">\n'
-    + '  <div style="font-size:8.5pt;color:#555;letter-spacing:2px;margin-bottom:4px">CarParts.com</div>\n'
-    + '  <h1>Employee Warning Notice</h1>\n'
-    + '  <h2>' + typeLabel + '</h2>\n'
-    + '</div>\n\n'
-    + '<table class="outer-table" style="margin-top:0">\n'
-    + '  <tr><td colspan="4" class="sec-header">Employee Information</td></tr>\n'
-    + '  <tr>\n'
-    + '    <td style="width:50%" class="field-cell"><div class="field-label">Employee Name :</div><div class="field-value" style="text-align:center">' + assocName + '</div></td>\n'
-    + '    <td style="width:50%" class="field-cell"><div class="field-label">Date :</div><div class="field-value" style="text-align:center">' + issuedDate + '</div></td>\n'
-    + '  </tr>\n'
-    + '  <tr>\n'
-    + '    <td class="field-cell"><div class="field-label">Employee ID :</div><div class="field-value" style="text-align:center">' + assocId + '</div></td>\n'
-    + '    <td class="field-cell"><div class="field-label">Job Title :</div><div class="field-value" style="text-align:center">' + assocRole + '</div></td>\n'
-    + '  </tr>\n'
-    + '  <tr>\n'
-    + '    <td class="field-cell"><div class="field-label">Manager :</div><div class="field-value" style="text-align:center">' + escapeHtml(managerName) + '</div></td>\n'
-    + '    <td class="field-cell"><div class="field-label">Department :</div><div class="field-value" style="text-align:center">' + assocDept + '</div></td>\n'
-    + '  </tr>\n\n'
-    + '  <tr><td colspan="4" class="sec-header">Type of Warning</td></tr>\n'
-    + '  <tr><td colspan="4"><table class="check-table"><tr>\n'
-    + '    ' + cb(tier==='verbal') + '<td>Verbal Warning</td>\n'
-    + '    ' + cb(tier==='written') + '<td>First Written Warning</td>\n'
-    + '    ' + cb(tier==='final') + '<td>Final Warning</td>\n'
-    + '    ' + cb(tier==='termination') + '<td>Termination</td>\n'
-    + '  </tr></table></td></tr>\n\n'
-    + '  <tr><td colspan="4" class="sec-header">Type of Offense</td></tr>\n'
-    + '  <tr><td colspan="4"><table class="check-table">\n'
-    + '    <tr>\n'
-    + '      ' + cb(typeKey==='boisterous') + '<td>Boisterous / Disruptive Activity</td>\n'
-    + '      ' + cb(typeKey==='dress-code') + '<td>Dress Code Violation</td>\n'
-    + '      ' + cb(typeKey==='insubordination') + '<td>Insubordination / Disrespectful Conduct</td>\n'
-    + '    </tr>\n'
-    + '    <tr>\n'
-    + '      ' + cb(typeKey==='negligence') + '<td>Negligence / Property Damage</td>\n'
-    + '      ' + cb(typeKey==='electronic-devices') + '<td>Personal Electronic Device Violation</td>\n'
-    + '      ' + cb(typeKey==='weapons') + '<td>Weapons Policy Violation</td>\n'
-    + '    </tr>\n'
-    + '    <tr>\n'
-    + '      ' + cb(typeKey==='safety') + '<td>Safety Rule Violation</td>\n'
-    + '      ' + cb(typeKey==='timekeeping') + '<td>Timekeeping Violation</td>\n'
-    + '      ' + cb(typeKey==='theft') + '<td>Theft / Improper Removal of Property</td>\n'
-    + '    </tr>\n'
-    + '  </table></td></tr>\n\n'
-    + '  <tr><td colspan="4" class="sec-header">Applicable Policy Reference</td></tr>\n'
-    + '  <tr>\n'
-    + '    <td class="field-cell" style="width:18%;vertical-align:top">\n'
-    + '      <div class="field-label">Section Code</div>\n'
-    + '      <div style="font-size:11pt;font-weight:700;color:#1a2744;margin-top:4px">' + sectionCode + '</div>\n'
-    + '    </td>\n'
-    + '    <td colspan="3" class="field-cell" style="vertical-align:top">\n'
-    + '      <div class="field-label" style="margin-bottom:3px">Policy Description</div>\n'
-    + '      <div style="font-size:9.5pt;line-height:1.5;color:#333">' + sectionDesc + '</div>\n'
-    + '    </td>\n'
-    + '  </tr>\n\n'
-    + '  <tr><td colspan="4" class="sec-header">Details</td></tr>\n'
-    + '  <tr>\n'
-    + '    <td class="field-cell" style="width:26%;vertical-align:top">\n'
-    + '      <div class="field-label">Date of Incident :</div>\n'
-    + '      <div class="field-value" style="text-align:center">' + incDateFmt + '</div>\n'
-    + '      <div style="margin-top:12px">\n'
-    + '        <div class="field-label">Warning Level :</div>\n'
-    + '        <div style="font-size:13pt;font-weight:900;color:#1a2744;margin-top:4px;border-bottom:2px solid #1a2744;padding-bottom:4px">' + escapeHtml(tierLabel) + '</div>\n'
-    + '      </div>\n'
-    + '      <div style="margin-top:10px">\n'
-    + '        <div class="field-label">Corrective Issued :</div>\n'
-    + '        <div class="field-value">' + issuedDate + '</div>\n'
-    + '      </div>\n'
-    + '    </td>\n'
-    + '    <td colspan="3" class="field-cell" style="vertical-align:top">\n'
-    + '      <div class="field-label" style="font-weight:bold;color:#111;margin-bottom:4px">Description of Incident :</div>\n'
-    + '      <div class="text-area-cell" style="padding:0;min-height:88px">' + descHtml + '</div>\n'
-    + (priorHtml ? '      <div class="field-label" style="font-weight:bold;color:#111;margin-top:8px;margin-bottom:4px">Prior History :</div>\n      <div class="text-area-cell short" style="padding:0">' + priorHtml + '</div>\n' : '')
-    + '    </td>\n'
-    + '  </tr>\n'
-    + '  <tr>\n'
-    + '    <td colspan="4" class="field-cell">\n'
-    + '      <div class="field-label" style="font-weight:bold;color:#111;margin-bottom:3px">Plan for Improvement :</div>\n'
-    + '      <div class="text-area-cell" style="padding:0">' + planHtml + '</div>\n'
-    + '    </td>\n'
-    + '  </tr>\n'
-    + '  <tr>\n'
-    + '    <td colspan="4" class="field-cell">\n'
-    + '      <div class="field-label" style="margin-bottom:2px"><strong>Action Taken :</strong></div>\n'
-    + '      <div class="text-area-cell short" style="padding:0">' + actionHtml + '</div>\n'
-    + '    </td>\n'
-    + '  </tr>\n'
-    + '  <tr>\n'
-    + '    <td colspan="4" class="field-cell">\n'
-    + '      <div class="field-label" style="margin-bottom:2px"><strong>Consequences of Further Infractions :</strong></div>\n'
-    + '      <div class="text-area-cell short" style="padding:0">' + consHtml + '</div>\n'
-    + '    </td>\n'
-    + '  </tr>\n\n'
-    + '  <tr><td colspan="4" class="sec-header">Acknowledgement of Receipt of Warning</td></tr>\n'
-    + '  <tr><td colspan="4" style="padding:6px 8px;font-size:9.5pt;color:#444">'
-    + 'By signing this form, you confirm that you understand the information in this warning. You also confirm that you and your manager have discussed the warning and a plan for improvement. Signing this form does not necessarily indicate that you agree with this warning.'
-    + '</td></tr>\n'
-    + '  <tr><td colspan="4" style="padding:0"><table class="sig-table">\n'
-    + '    <tr>\n'
-    + '      <td style="padding:6px 8px 4px;vertical-align:top">\n'
-    + '        <div style="font-size:8pt;color:#555;margin-bottom:3px">Employee Signature</div>\n'
-    + '        <div class="sig-canvas-wrap" id="wrap-employee" onclick="openSigExpand(\'employee\')" style="position:relative;cursor:pointer;display:inline-block">\n'
-    + '          <canvas id="sig-employee" width="220" height="64" style="border:1.5px solid #334155;border-radius:3px;display:block;background:#fff"></canvas>\n'
-    + '          <div id="sigplaceholder-employee" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:8pt;color:#94a3b8;pointer-events:none;gap:4px"><span>✏</span><span>Click to sign</span></div>\n'
-    + '          <button class="clear-btn" onclick="event.stopPropagation();clearSig(\'employee\')">✕ Clear</button>\n'
-    + '        </div>\n'
-    + '        <div class="sig-img-wrap" id="img-employee" style="display:none"><img id="imgdata-employee" style="height:64px;border-bottom:1.5px solid #333"></div>\n'
-    + '        <div style="font-size:8.5pt;margin-top:3px">Date: <span id="sigdate-employee"></span></div>\n'
-    + '      </td>\n'
-    + '      <td style="padding:6px 8px 4px;vertical-align:top">\n'
-    + '        <div style="font-size:8pt;color:#555;margin-bottom:3px">Manager Signature</div>\n'
-    + '        <div class="sig-canvas-wrap" id="wrap-manager" onclick="openSigExpand(\'manager\')" style="position:relative;cursor:pointer;display:inline-block">\n'
-    + '          <canvas id="sig-manager" width="220" height="64" style="border:1.5px solid #334155;border-radius:3px;display:block;background:#fff"></canvas>\n'
-    + '          <div id="sigplaceholder-manager" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:8pt;color:#94a3b8;pointer-events:none;gap:4px"><span>✏</span><span>Click to sign</span></div>\n'
-    + '          <button class="clear-btn" onclick="event.stopPropagation();clearSig(\'manager\')">✕ Clear</button>\n'
-    + '        </div>\n'
-    + '        <div class="sig-img-wrap" id="img-manager" style="display:none"><img id="imgdata-manager" style="height:64px;border-bottom:1.5px solid #333"></div>\n'
-    + '        <div style="font-size:8.5pt;margin-top:3px">Date: <span id="sigdate-manager"></span></div>\n'
-    + '      </td>\n'
-    + '      <td style="padding:6px 8px 4px;vertical-align:top">\n'
-    + '        <div style="font-size:8pt;color:#555;margin-bottom:3px">Witness Signature <span style="color:#888">(if employee refuses)</span></div>\n'
-    + '        <div class="sig-canvas-wrap" id="wrap-witness" onclick="openSigExpand(\'witness\')" style="position:relative;cursor:pointer;display:inline-block">\n'
-    + '          <canvas id="sig-witness" width="220" height="64" style="border:1.5px solid #334155;border-radius:3px;display:block;background:#fff"></canvas>\n'
-    + '          <div id="sigplaceholder-witness" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:8pt;color:#94a3b8;pointer-events:none;gap:4px"><span>✏</span><span>Click to sign</span></div>\n'
-    + '          <button class="clear-btn" onclick="event.stopPropagation();clearSig(\'witness\')">✕ Clear</button>\n'
-    + '        </div>\n'
-    + '        <div class="sig-img-wrap" id="img-witness" style="display:none"><img id="imgdata-witness" style="height:64px;border-bottom:1.5px solid #333"></div>\n'
-    + '        <div style="font-size:8.5pt;margin-top:3px">Date: <span id="sigdate-witness"></span></div>\n'
-    + '      </td>\n'
-    + '    </tr>\n'
-    + '  </table></td></tr>\n'
-    + '</table>\n\n'
-    + '<div id="action-bar" style="text-align:center;margin-top:20px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">\n'
-    + '  <button onclick="window.print()" style="padding:10px 28px;background:#555;color:#fff;border:none;border-radius:6px;font-size:10.5pt;cursor:pointer;font-weight:bold">🖶️ Print Unsigned Copy</button>\n'
-    + '  <button onclick="saveAndPrint()" style="padding:10px 28px;background:#1a2744;color:#fff;border:none;border-radius:6px;font-size:10.5pt;cursor:pointer;font-weight:bold">✍️ Save &amp; Download PDF</button>\n'
-    + '</div>\n'
-    + '<div id="save-status" style="text-align:center;margin-top:10px;font-size:10pt;display:none"></div>\n\n'
-    + '<div id="sigExpandOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.78);z-index:99999;align-items:center;justify-content:center">\n'
-    + '  <div style="background:#fff;border-radius:14px;padding:28px;width:700px;max-width:96vw;box-shadow:0 24px 64px rgba(0,0,0,0.35)">\n'
-    + '    <div id="sigExpandLabel" style="font-size:12pt;font-weight:700;color:#1e293b;margin-bottom:4px">Sign Here</div>\n'
-    + '    <div style="font-size:8.5pt;color:#64748b;margin-bottom:14px">Draw your signature below using mouse or touch</div>\n'
-    + '    <canvas id="sigExpandCanvas" width="644" height="220" style="border:2px solid #334155;border-radius:8px;cursor:crosshair;display:block;background:#fff;touch-action:none;width:100%;box-sizing:border-box"></canvas>\n'
-    + '    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px">\n'
-    + '      <button onclick="clearExpandSig()" style="padding:9px 20px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:600">✕ Clear</button>\n'
-    + '      <div style="display:flex;gap:10px">\n'
-    + '        <button onclick="cancelExpandSig()" style="padding:9px 20px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:600">Cancel</button>\n'
-    + '        <button onclick="doneExpandSig()" style="padding:9px 28px;background:#1a2744;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:9.5pt;font-weight:700">✓ Done</button>\n'
-    + '      </div>\n'
-    + '    </div>\n'
-    + '  </div>\n'
-    + '</div>\n\n'
-    + '<script>\n' + sigScript + '\n<\/script>\n\n'
+  const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
+    + '<title>Employee Warning Notice — ' + aName + '</title>'
+    + _GC_CSS + '</head>'
+    + '<body style="font-family:Arial,sans-serif;font-size:10.5pt;color:#111;background:#fff;">'
+    + '<div id="page-wrap">'
+    + '<div class="doc-title"><div style="font-size:8.5pt;color:#555;letter-spacing:2px;margin-bottom:4px">CarParts.com</div>'
+    + '<h1>Employee Warning Notice</h1><h2>' + typeLabel + '</h2></div>'
+    + '<table class="outer-table" style="margin-top:0">'
+    + '<tr><td colspan="4" class="sec-header">Employee Information</td></tr>'
+    + '<tr><td style="width:50%" class="field-cell"><div class="field-label">Employee Name :</div><div class="field-value" style="text-align:center">' + aName + '</div></td>'
+    + '<td style="width:50%" class="field-cell"><div class="field-label">Date :</div><div class="field-value" style="text-align:center">' + today + '</div></td></tr>'
+    + '<tr><td class="field-cell"><div class="field-label">Employee ID :</div><div class="field-value" style="text-align:center">' + aId + '</div></td>'
+    + '<td class="field-cell"><div class="field-label">Job Title :</div><div class="field-value" style="text-align:center">' + aRole + '</div></td></tr>'
+    + '<tr><td class="field-cell"><div class="field-label">Manager :</div><div class="field-value" style="text-align:center">Hector Marron</div></td>'
+    + '<td class="field-cell"><div class="field-label">Department :</div><div class="field-value" style="text-align:center">' + aDept + '</div></td></tr>'
+    + '<tr><td colspan="4" class="sec-header">Type of Warning</td></tr>'
+    + '<tr><td colspan="4"><table class="check-table"><tr>'
+    + _gcCheck(tier==='verbal') + '<td>Verbal Warning</td>'
+    + _gcCheck(tier==='written') + '<td>First Written Warning</td>'
+    + _gcCheck(tier==='final') + '<td>Final Warning</td>'
+    + _gcCheck(tier==='termination') + '<td>Termination</td>'
+    + '</tr></table></td></tr>'
+    + '<tr><td colspan="4" class="sec-header">Type of Offense</td></tr>'
+    + '<tr><td colspan="4"><table class="check-table">'
+    + '<tr>' + _gcCheck(typeKey==='boisterous') + '<td>Boisterous / Disruptive Activity</td>' + _gcCheck(typeKey==='dress-code') + '<td>Dress Code Violation</td>' + _gcCheck(typeKey==='insubordination') + '<td>Insubordination / Disrespectful Conduct</td></tr>'
+    + '<tr>' + _gcCheck(typeKey==='negligence') + '<td>Negligence / Property Damage</td>' + _gcCheck(typeKey==='electronic-devices') + '<td>Personal Electronic Device Violation</td>' + _gcCheck(typeKey==='weapons') + '<td>Weapons Policy Violation</td></tr>'
+    + '<tr>' + _gcCheck(typeKey==='safety') + '<td>Safety Rule Violation</td>' + _gcCheck(typeKey==='timekeeping') + '<td>Timekeeping Violation</td>' + _gcCheck(typeKey==='theft') + '<td>Theft / Improper Removal of Property</td></tr>'
+    + '</table></td></tr>'
+    + '<tr><td colspan="4" class="sec-header">Applicable Policy Reference</td></tr>'
+    + '<tr><td class="field-cell" style="width:18%;vertical-align:top"><div class="field-label">Section Code</div><div style="font-size:11pt;font-weight:700;color:#1a2744;margin-top:4px">' + sectionCode + '</div></td>'
+    + '<td colspan="3" class="field-cell" style="vertical-align:top"><div class="field-label" style="margin-bottom:3px">Policy Description</div><div style="font-size:9.5pt;line-height:1.5;color:#333">' + sectionDesc + '</div></td></tr>'
+    + '<tr><td colspan="4" class="sec-header">Details</td></tr>'
+    + '<tr><td class="field-cell" style="width:26%;vertical-align:top">'
+    + '<div class="field-label">Date of Incident :</div><div class="field-value" style="text-align:center">' + incDateFmt + '</div>'
+    + '<div style="margin-top:12px"><div class="field-label">Warning Level :</div><div style="font-size:13pt;font-weight:900;color:#1a2744;margin-top:4px;border-bottom:2px solid #1a2744;padding-bottom:4px">' + eh(tierLabel) + '</div></div>'
+    + '<div style="margin-top:10px"><div class="field-label">Corrective Issued :</div><div class="field-value">' + today + '</div></div>'
+    + '</td><td colspan="3" class="field-cell" style="vertical-align:top">'
+    + '<div class="field-label" style="font-weight:bold;color:#111;margin-bottom:4px">Description of Incident :</div>'
+    + '<div class="text-area-cell" style="padding:0;min-height:88px">' + nl(desc) + '</div>'
+    + (prior ? '<div class="field-label" style="font-weight:bold;color:#111;margin-top:8px;margin-bottom:4px">Prior History :</div><div class="text-area-cell short" style="padding:0">' + nl(prior) + '</div>' : '')
+    + '</td></tr>'
+    + '<tr><td colspan="4" class="field-cell"><div class="field-label" style="font-weight:bold;color:#111;margin-bottom:3px">Plan for Improvement :</div><div class="text-area-cell" style="padding:0">' + nl(plan) + '</div></td></tr>'
+    + '<tr><td colspan="4" class="field-cell"><div class="field-label" style="margin-bottom:2px"><strong>Action Taken :</strong></div><div class="text-area-cell short" style="padding:0">' + nl(action) + '</div></td></tr>'
+    + '<tr><td colspan="4" class="field-cell"><div class="field-label" style="margin-bottom:2px"><strong>Consequences of Further Infractions :</strong></div><div class="text-area-cell short" style="padding:0">' + eh(conseq) + '</div></td></tr>'
+    + '<tr><td colspan="4" class="sec-header">Acknowledgement of Receipt of Warning</td></tr>'
+    + '<tr><td colspan="4" style="padding:6px 8px;font-size:9.5pt;color:#444">By signing this form, you confirm that you understand the information in this warning. You also confirm that you and your manager have discussed the warning and a plan for improvement. Signing this form does not necessarily indicate that you agree with this warning.</td></tr>'
+    + '<tr><td colspan="4" style="padding:0"><table class="sig-table"><tr>'
+    + _gcSigBox('employee','Employee Signature')
+    + _gcSigBox('manager','Manager Signature')
+    + _gcSigBox('witness','Witness Signature')
+    + '</tr></table></td></tr>'
+    + '</table>'
+    + '<div id="action-bar" style="text-align:center;margin-top:20px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">'
+    + '<button onclick="window.print()" style="padding:10px 28px;background:#555;color:#fff;border:none;border-radius:6px;font-size:10.5pt;cursor:pointer;font-weight:bold">🖶️ Print Unsigned Copy</button>'
+    + '<button onclick="saveAndPrint()" style="padding:10px 28px;background:#1a2744;color:#fff;border:none;border-radius:6px;font-size:10.5pt;cursor:pointer;font-weight:bold">✍️ Save &amp; Download PDF</button>'
+    + '</div><div id="save-status" style="text-align:center;margin-top:10px;font-size:10pt;display:none"></div>'
+    + _GC_SIG_OVERLAY
+    + '<script>' + _GC_SIG_INIT + saveScript + '<\/script>'
     + '</div></body></html>';
 
   win.document.open();
