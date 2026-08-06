@@ -3532,6 +3532,8 @@ window.saveSignedWarning = async (data) => {
       associateName: d.associateName,
       tier: d.tier,
       tierLabel: d.tierLabel,
+      formType: d.formType || 'attendance',
+      formTypeLabel: d.formTypeLabel || 'Attendance Policy',
       points: d.points,
       signedAt: d.signedAt,
       savedAt: new Date().toISOString(),
@@ -4026,15 +4028,33 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 
 // ─── General Corrective Action Forms ──────────────────────────────────────
 const GENERAL_CORRECTIVE_TYPES = [
-  { key: 'boisterous',        label: 'Boisterous or Disruptive Activity in the Workplace',         short: 'Disruptive Activity',        icon: 'fa-volume-up',   color: '#dc2626', bg: '#fee2e2', offense: 'Boisterous or Disruptive Activity' },
-  { key: 'dress-code',        label: 'Dress Code Violation',                                        short: 'Dress Code',                 icon: 'fa-tshirt',      color: '#d97706', bg: '#fef3c7', offense: 'Dress Code' },
-  { key: 'insubordination',   label: 'Insubordination or Other Disrespectful Conduct',              short: 'Insubordination',            icon: 'fa-hand-paper',  color: '#7c3aed', bg: '#ede9fe', offense: 'Insubordination or Disrespectful Conduct' },
-  { key: 'negligence',        label: 'Negligence or Improper Conduct — Property Damage',            short: 'Negligence / Damage',        icon: 'fa-tools',       color: '#b45309', bg: '#fef3c7', offense: 'Negligence or Property Damage' },
-  { key: 'electronic-devices',label: 'Personal Electronic Devices in the Warehouse',               short: 'Electronic Devices',         icon: 'fa-mobile-alt',  color: '#0369a1', bg: '#e0f2fe', offense: 'Personal Electronic Device Policy' },
-  { key: 'weapons',           label: 'Possession or Use of Guns, Weapons, or Knives',              short: 'Weapons Policy',             icon: 'fa-ban',         color: '#991b1b', bg: '#fee2e2', offense: 'Weapons Policy' },
-  { key: 'safety',            label: 'Safety Violation',                                            short: 'Safety Violation',           icon: 'fa-hard-hat',    color: '#b45309', bg: '#fef9c3', offense: 'Safety Rules Violation' },
-  { key: 'timekeeping',       label: 'Timekeeping Violation',                                       short: 'Timekeeping',                icon: 'fa-clock',       color: '#0f766e', bg: '#d1fae5', offense: 'Timekeeping Policy' },
-  { key: 'theft',             label: 'Work Rules 401 — Theft or Improper Removal of Property',     short: 'Theft / Property Removal',   icon: 'fa-shield-alt',  color: '#1d4ed8', bg: '#dbeafe', offense: 'Theft / Improper Removal of Property' }
+  { key: 'boisterous',        label: 'Boisterous or Disruptive Activity in the Workplace',         short: 'Disruptive Activity',        icon: 'fa-volume-up',   color: '#dc2626', bg: '#fee2e2', offense: 'Boisterous or Disruptive Activity',
+    section: '§4.5 / §5.3',
+    sectionDesc: 'Listed as a reasonable-suspicion indicator under §4.5 (Substance Abuse — boisterous, loud, or nonsensical behavior). §5.3 (Warehouse Safety Rules) separately prohibits running or horseplay in the warehouse.' },
+  { key: 'dress-code',        label: 'Dress Code Violation',                                        short: 'Dress Code',                 icon: 'fa-tshirt',      color: '#d97706', bg: '#fef3c7', offense: 'Dress Code',
+    section: '§4.4',
+    sectionDesc: 'Dress Code and Personal Appearance Standards — covers acceptable and unacceptable attire, PPE-related footwear requirements, grooming standards, and the accommodation process for religious, disability, or ethnicity-related needs.' },
+  { key: 'insubordination',   label: 'Insubordination or Other Disrespectful Conduct',              short: 'Insubordination',            icon: 'fa-hand-paper',  color: '#7c3aed', bg: '#ede9fe', offense: 'Insubordination or Disrespectful Conduct',
+    section: '§4.1 / §3.2',
+    sectionDesc: '§4.1 (Work Rules) lists insubordinate behavior as unacceptable conduct subject to discipline. §3.2 (Unlawful Harassment) separately prohibits harassment, abuse, bullying, and disrespectful conduct toward employees.' },
+  { key: 'negligence',        label: 'Negligence or Improper Conduct — Property Damage',            short: 'Negligence / Damage',        icon: 'fa-tools',       color: '#b45309', bg: '#fef3c7', offense: 'Negligence or Property Damage',
+    section: '§4.1',
+    sectionDesc: '§4.1 (Work Rules) lists negligence or improper conduct leading to damage of Company-owned or customer-owned property as grounds for discipline up to and including termination.' },
+  { key: 'electronic-devices',label: 'Personal Electronic Devices in the Warehouse',               short: 'Electronic Devices',         icon: 'fa-mobile-alt',  color: '#0369a1', bg: '#e0f2fe', offense: 'Personal Electronic Device Policy',
+    section: '§4.3 / §5.2',
+    sectionDesc: '§4.3 governs general PED use and storage requirements company-wide. §5.2 is the warehouse-specific prohibition — no phones or PEDs inside the warehouse at all, with a supervisor-level exception for approved business use only.' },
+  { key: 'weapons',           label: 'Possession or Use of Guns, Weapons, or Knives',              short: 'Weapons Policy',             icon: 'fa-ban',         color: '#991b1b', bg: '#fee2e2', offense: 'Weapons Policy',
+    section: '§3.18.1 / §4.1',
+    sectionDesc: '§3.18.1 (Workplace Violence) prohibits bringing, possessing, or threatening to bring guns, firearms, or weapons of any kind onto Company property. §4.1 (Work Rules) separately lists possession or use of guns, weapons, or knives as unacceptable conduct.' },
+  { key: 'safety',            label: 'Safety Violation',                                            short: 'Safety Violation',           icon: 'fa-hard-hat',    color: '#b45309', bg: '#fef9c3', offense: 'Safety Rules Violation',
+    section: '§5.5',
+    sectionDesc: '§5.5 (Serious and Other Safety Violations) distinguishes "Serious" violations — eligible for immediate termination, e.g., PED use while operating powered equipment, harness removal at height — from "Other" violations subject to progressive discipline.' },
+  { key: 'timekeeping',       label: 'Timekeeping Violation',                                       short: 'Timekeeping',                icon: 'fa-clock',       color: '#0f766e', bg: '#d1fae5', offense: 'Timekeeping Policy',
+    section: '§7.2',
+    sectionDesc: '§7.2 (Timekeeping) covers clock in/out requirements, prohibition on falsifying time records or working off-the-clock, and the requirement for supervisor approval of timecards.' },
+  { key: 'theft',             label: 'Work Rules 401 — Theft or Improper Removal of Property',     short: 'Theft / Property Removal',   icon: 'fa-shield-alt',  color: '#1d4ed8', bg: '#dbeafe', offense: 'Theft / Improper Removal of Property',
+    section: '§4.1 / §3.15',
+    sectionDesc: '§4.1 (Work Rules) and §3.15 (Corrective Action) both list theft, inappropriate removal or possession of property, and misappropriation of property as conduct subject to discipline up to and including immediate termination.' }
 ];
 
 window.openCorrectivePicker = () => {
@@ -4148,16 +4168,18 @@ window.generateGeneralCorrective = () => {
     ? '<td style="width:22px;text-align:center"><span style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border:1.5px solid #222;background:#1a2744;color:#fff;font-size:11px;font-weight:bold">✓</span></td>'
     : '<td style="width:22px;text-align:center"><span style="display:inline-block;width:15px;height:15px;border:1.5px solid #555"></span></td>';
 
-  const descHtml   = escapeHtml(description).replace(/\n/g, '<br>');
-  const priorHtml  = priorHist ? escapeHtml(priorHist).replace(/\n/g, '<br>') : '';
-  const actionHtml = escapeHtml(actionTaken).replace(/\n/g, '<br>');
-  const planHtml   = escapeHtml(planImp).replace(/\n/g, '<br>');
-  const consHtml   = escapeHtml(consequences);
-  const typeLabel  = escapeHtml(type ? type.label : typeKey);
-  const assocName  = escapeHtml(assoc.name);
-  const assocId    = escapeHtml(assoc.employeeId || '');
-  const assocRole  = escapeHtml(assoc.role || '');
-  const assocDept  = escapeHtml(assoc.department || 'LAS1 Operations');
+  const descHtml    = escapeHtml(description).replace(/\n/g, '<br>');
+  const priorHtml   = priorHist ? escapeHtml(priorHist).replace(/\n/g, '<br>') : '';
+  const actionHtml  = escapeHtml(actionTaken).replace(/\n/g, '<br>');
+  const planHtml    = escapeHtml(planImp).replace(/\n/g, '<br>');
+  const consHtml    = escapeHtml(consequences);
+  const typeLabel   = escapeHtml(type ? type.label : typeKey);
+  const sectionCode = escapeHtml(type ? type.section : '');
+  const sectionDesc = escapeHtml(type ? type.sectionDesc : '');
+  const assocName   = escapeHtml(assoc.name);
+  const assocId     = escapeHtml(assoc.employeeId || '');
+  const assocRole   = escapeHtml(assoc.role || '');
+  const assocDept   = escapeHtml(assoc.department || 'LAS1 Operations');
 
   const sigScript = [
     '(function(){',
@@ -4356,6 +4378,17 @@ window.generateGeneralCorrective = () => {
     + '      ' + cb(typeKey==='theft') + '<td>Theft / Improper Removal of Property</td>\n'
     + '    </tr>\n'
     + '  </table></td></tr>\n\n'
+    + '  <tr><td colspan="4" class="sec-header">Applicable Policy Reference</td></tr>\n'
+    + '  <tr>\n'
+    + '    <td class="field-cell" style="width:18%;vertical-align:top">\n'
+    + '      <div class="field-label">Section Code</div>\n'
+    + '      <div style="font-size:11pt;font-weight:700;color:#1a2744;margin-top:4px">' + sectionCode + '</div>\n'
+    + '    </td>\n'
+    + '    <td colspan="3" class="field-cell" style="vertical-align:top">\n'
+    + '      <div class="field-label" style="margin-bottom:3px">Policy Description</div>\n'
+    + '      <div style="font-size:9.5pt;line-height:1.5;color:#333">' + sectionDesc + '</div>\n'
+    + '    </td>\n'
+    + '  </tr>\n\n'
     + '  <tr><td colspan="4" class="sec-header">Details</td></tr>\n'
     + '  <tr>\n'
     + '    <td class="field-cell" style="width:26%;vertical-align:top">\n'
@@ -5393,6 +5426,7 @@ function renderHRRecords(records) {
       <thead style="background:var(--navy);color:#fff">
         <tr>
           <th style="padding:10px 14px">Associate</th>
+          <th style="padding:10px 14px">Category</th>
           <th style="padding:10px 14px">Tier</th>
           <th style="padding:10px 14px;text-align:center">Points</th>
           <th style="padding:10px 14px">Date Signed</th>
@@ -5415,11 +5449,21 @@ function renderHRRecords(records) {
             : `<button onclick="logHRSubmission(${i})" style="display:inline-flex;align-items:center;gap:4px;background:#f0f9ff;border:1px solid #7dd3fc;border-radius:5px;padding:2px 7px;font-size:0.7rem;color:#0369a1;font-weight:600;cursor:pointer;margin-top:3px;" title="Log date submitted to HR">
                 <i class="fas fa-paper-plane"></i> Submit to HR
                </button>`;
+          // Category badge — attendance vs policy violation type
+          const isAttendance = !r.formType || r.formType === 'attendance';
+          const catType = GENERAL_CORRECTIVE_TYPES ? GENERAL_CORRECTIVE_TYPES.find(t => t.key === r.formType) : null;
+          const catLabel = isAttendance ? 'Attendance' : (catType ? catType.short : (r.formTypeLabel || r.formType || 'Policy'));
+          const catSection = catType ? catType.section : (isAttendance ? '§4.2' : '');
+          const catColor  = isAttendance ? '#0369a1' : '#7c3aed';
+          const catBg     = isAttendance ? '#e0f2fe' : '#ede9fe';
+          const catHtml   = `<div style="font-size:0.8rem;font-weight:600;color:${catColor}">${escapeHtml(catLabel)}</div>`
+            + (catSection ? `<div style="font-size:0.7rem;color:#6b7280">${escapeHtml(catSection)}</div>` : '');
           return `<tr>
             <td style="padding:10px 14px">
               <div style="font-weight:600;">${r.associateName || '—'}</div>
               ${submittedHtml}
             </td>
+            <td style="padding:10px 14px">${catHtml}</td>
             <td style="padding:10px 14px"><span style="color:${color};font-weight:600;font-size:0.82rem">${r.tierLabel || r.tier || '—'}</span></td>
             <td style="padding:10px 14px;text-align:center">${r.points ?? '—'}</td>
             <td style="padding:10px 14px;color:#555">${r.signedAt || '—'}</td>
