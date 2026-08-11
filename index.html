@@ -1425,6 +1425,8 @@ window.openProfile = async (id) => {
 
   // Reset 1:1 panel state
   oneOnOneOpen = false;
+  const oo1Assigned = document.getElementById('oneOnOneAssigned');
+  if (oo1Assigned) { oo1Assigned.innerHTML = ''; oo1Assigned.style.display = 'none'; }
   const oo1Body = document.getElementById('oneOnOneBody');
   const oo1Chev = document.getElementById('oneOnOneChevron');
   const oo1Btn  = document.getElementById('oneOnOneSchedBtn');
@@ -5689,6 +5691,35 @@ window.listenOneOnOnes = async (associateId) => {
       : '<div class="text-muted small">No 1:1 scheduled.</div>';
   }
 
+  // If this person is a leader, show 1:1s they are scheduled to conduct
+  const viewedAssoc = allAssociates.find(a => a.id === associateId);
+  const leaderPositions = new Set(['ops-manager','supervisor','lead']);
+  if (viewedAssoc && leaderPositions.has(viewedAssoc.position)) {
+    const myAssignments = allAssociates.filter(a =>
+      a.status === 'active' && a.next1on1 && a.next1on1ById === associateId
+    ).sort((a, b) => a.next1on1.localeCompare(b.next1on1));
+
+    const assignedEl = document.getElementById('oneOnOneAssigned');
+    if (assignedEl) {
+      if (myAssignments.length) {
+        assignedEl.innerHTML = '<div style="font-size:0.78rem;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Scheduled to Conduct</div>'
+          + myAssignments.map(a => {
+            const d = new Date(a.next1on1 + 'T00:00:00');
+            const diff = Math.round((d - new Date().setHours(0,0,0,0)) / (1000*60*60*24));
+            const when = diff < 0 ? '<span style="color:#dc2626">Overdue</span>' : diff === 0 ? '<span style="color:#16a34a">Today</span>' : diff === 1 ? 'Tomorrow' : 'In ' + diff + 'd';
+            return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border:1px solid #e5e7eb;border-radius:7px;margin-bottom:5px;background:#f9fafb;cursor:pointer" onclick="openProfile(\'' + a.id + '\')">'
+              + '<div><div style="font-weight:600;font-size:0.85rem">' + escapeHtml(a.name) + '</div>'
+              + '<div style="font-size:0.75rem;color:#6b7280">' + d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) + ' · ' + when + '</div></div>'
+              + '<i class="fas fa-chevron-right" style="color:#9ca3af;font-size:0.75rem"></i></div>';
+          }).join('');
+        assignedEl.style.display = '';
+      } else {
+        assignedEl.innerHTML = '';
+        assignedEl.style.display = 'none';
+      }
+    }
+  }
+
   // Load completed 1:1 log
   try {
     const snap = await getDocs(collection(db, 'oneOnOnes', associateId, 'entries'));
@@ -5733,23 +5764,34 @@ window.open1on1Modal = (mode) => {
   const scheduleFields = document.getElementById('oneOnOneScheduleFields');
   const logFields = document.getElementById('oneOnOneLogFields');
 
+  // Build leader options (OMs, supervisors, leads) sorted by tier then name
+  const posOrder = { 'ops-manager': 0, 'supervisor': 1, 'lead': 2 };
+  const leaders = allAssociates
+    .filter(a => a.status === 'active' && (a.position === 'ops-manager' || a.position === 'supervisor' || a.position === 'lead'))
+    .sort((a, b) => (posOrder[a.position] ?? 9) - (posOrder[b.position] ?? 9) || a.name.localeCompare(b.name));
+  const posLabel = { 'ops-manager': 'OM', 'supervisor': 'Supervisor', 'lead': 'Lead' };
+  const leaderOptions = '<option value="">— Select leader —</option>'
+    + leaders.map(l => '<option value="' + l.id + '">' + escapeHtml(l.name) + ' (' + (posLabel[l.position] || l.position) + ')</option>').join('');
+
+  const selSchedule = document.getElementById('1on1Conductor');
+  const selLog      = document.getElementById('1on1LogConductor');
+  selSchedule.innerHTML = leaderOptions;
+  selLog.innerHTML      = leaderOptions;
+
+  const assoc = allAssociates.find(a => a.id === currentAssociateId);
+
   if (mode === 'schedule') {
     title.textContent = 'Schedule 1:1';
     scheduleFields.classList.remove('d-none');
     logFields.classList.add('d-none');
-    // Pre-fill if already scheduled
-    const assoc = allAssociates.find(a => a.id === currentAssociateId);
     document.getElementById('1on1Date').value = assoc?.next1on1 || '';
-    document.getElementById('1on1Conductor').value = assoc?.next1on1By || '';
+    selSchedule.value = assoc?.next1on1ById || '';
   } else {
     title.textContent = 'Log Completed 1:1';
     scheduleFields.classList.add('d-none');
     logFields.classList.remove('d-none');
-    // Pre-fill date with today, conductor with scheduled conductor if available
-    const today = localToday();
-    const assoc = allAssociates.find(a => a.id === currentAssociateId);
-    document.getElementById('1on1LogDate').value = assoc?.next1on1 || today;
-    document.getElementById('1on1LogConductor').value = assoc?.next1on1By || '';
+    document.getElementById('1on1LogDate').value = assoc?.next1on1 || localToday();
+    selLog.value = assoc?.next1on1ById || '';
     document.getElementById('1on1Topics').value = '';
     document.getElementById('1on1Notes').value = '';
     document.getElementById('1on1FollowUps').value = '';
@@ -5764,26 +5806,28 @@ window.save1on1 = async () => {
 
   if (_1on1Mode === 'schedule') {
     const date = document.getElementById('1on1Date').value;
-    const conductor = document.getElementById('1on1Conductor').value.trim();
+    const conductorId = document.getElementById('1on1Conductor').value;
+    const conductorAssoc = allAssociates.find(a => a.id === conductorId);
+    const conductorName = conductorAssoc ? conductorAssoc.name : '';
     if (!date) { alert('Please select a date.'); return; }
-    await updateDoc(doc(db, 'associates', assocId), { next1on1: date, next1on1By: conductor || '' });
-    // Update local cache
+    await updateDoc(doc(db, 'associates', assocId), { next1on1: date, next1on1By: conductorName, next1on1ById: conductorId });
     const assoc = allAssociates.find(a => a.id === assocId);
-    if (assoc) { assoc.next1on1 = date; assoc.next1on1By = conductor; }
+    if (assoc) { assoc.next1on1 = date; assoc.next1on1By = conductorName; assoc.next1on1ById = conductorId; }
   } else {
     const date = document.getElementById('1on1LogDate').value;
-    const conductor = document.getElementById('1on1LogConductor').value.trim();
+    const conductorId = document.getElementById('1on1LogConductor').value;
+    const conductorAssoc = allAssociates.find(a => a.id === conductorId);
+    const conductorName = conductorAssoc ? conductorAssoc.name : '';
     const topics = document.getElementById('1on1Topics').value.trim();
     const notes = document.getElementById('1on1Notes').value.trim();
     const followUps = document.getElementById('1on1FollowUps').value.trim();
     if (!date) { alert('Please enter the meeting date.'); return; }
-    const entry = { date, conductedBy: conductor, topics, notes, followUps, createdAt: new Date().toISOString() };
+    const entry = { date, conductedBy: conductorName, conductedById: conductorId, topics, notes, followUps, createdAt: new Date().toISOString() };
     Object.keys(entry).forEach(k => { if (!entry[k]) delete entry[k]; });
     await addDoc(collection(db, 'oneOnOnes', assocId, 'entries'), entry);
-    // Clear the scheduled 1:1 from the associate doc after logging
-    await updateDoc(doc(db, 'associates', assocId), { next1on1: '', next1on1By: '' });
+    await updateDoc(doc(db, 'associates', assocId), { next1on1: '', next1on1By: '', next1on1ById: '' });
     const assoc = allAssociates.find(a => a.id === assocId);
-    if (assoc) { assoc.next1on1 = ''; assoc.next1on1By = ''; }
+    if (assoc) { assoc.next1on1 = ''; assoc.next1on1By = ''; assoc.next1on1ById = ''; }
   }
 
   bootstrap.Modal.getInstance(document.getElementById('oneOnOneModal')).hide();
@@ -8340,6 +8384,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </div>
           <div id="oneOnOneBody" class="d-none" style="padding:14px 16px 16px">
             <div id="oneOnOneScheduled" class="mb-3"></div>
+            <div id="oneOnOneAssigned" class="mb-3" style="display:none"></div>
             <div style="font-size:0.78rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">Meeting History</div>
             <div id="oneOnOneContainer"></div>
           </div>
@@ -9674,7 +9719,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </div>
           <div class="mb-2">
             <label class="form-label fw-semibold small">Conducted by</label>
-            <input type="text" class="form-control" id="1on1Conductor" placeholder="e.g. Hector Marron">
+            <select class="form-select" id="1on1Conductor">
+              <option value="">— Select leader —</option>
+            </select>
             <div class="form-text">Who will be conducting this 1:1?</div>
           </div>
         </div>
@@ -9687,7 +9734,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold small">Conducted by</label>
-            <input type="text" class="form-control" id="1on1LogConductor" placeholder="e.g. Hector Marron">
+            <select class="form-select" id="1on1LogConductor">
+              <option value="">— Select leader —</option>
+            </select>
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold small">Topics Covered</label>
