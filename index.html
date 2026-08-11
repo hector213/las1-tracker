@@ -3602,7 +3602,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
     'documented-verbal': `A Documented Verbal Warning has been issued. Associate has been informed of their current attendance point total and the consequences of further occurrences. Associate is expected to improve attendance immediately.`,
     'written-warning':   `A Written Warning has been issued. Associate has been coached on attendance expectations and the impact of continued absences. Any further attendance infractions may result in a Final Warning or termination.`,
     'final-warning':     `A Final Warning has been issued. This is the last corrective step before termination. Associate has been advised that any additional attendance violations will result in immediate termination of employment.`,
-    'termination':       `Associate has been notified of termination of employment due to continued attendance violations after all prior corrective steps were taken.`
+    'termination':       `Associate is being terminated, or will be notified of termination of employment due to continued attendance violations after all prior corrective steps were taken.`
   };
   const planMap = {
     'documented-verbal': `Associate and manager discussed the attendance policy and current point total. Associate is expected to report to work as scheduled. Any future unexcused absences, tardiness, or early departures will result in further disciplinary action.`,
@@ -4118,7 +4118,7 @@ window.gcUpdateTierDefaults = () => {
     'verbal':      'A Documented Verbal Warning has been issued. Associate has been counseled regarding the ' + offense + ' policy. Associate is expected to correct this behavior immediately.',
     'written':     'A First Written Warning has been issued. Associate has been formally warned regarding the ' + offense + ' policy. Further infractions may result in escalating disciplinary action up to and including termination.',
     'final':       'A Final Warning has been issued. This is the last corrective step before termination. Any future ' + offense + ' violations will result in immediate termination of employment.',
-    'termination': 'Associate has been notified of termination of employment due to continued or severe policy violations.'
+    'termination': 'Associate is being terminated, or will be notified of termination of employment due to continued or severe policy violations.'
   };
   const planDefaults = {
     'verbal':      'Associate and manager discussed the ' + offense + ' policy expectations. Associate is expected to demonstrate immediate and sustained compliance with all company policies.',
