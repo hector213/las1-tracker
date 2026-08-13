@@ -3352,8 +3352,7 @@ window.updateAttFilterColor = async () => {
           <i class="fas ${tier.icon}" style="color:${isActive ? tier.color : '#9ca3af'};font-size:0.8rem;width:14px;flex-shrink:0"></i>
           <span class="fw-semibold flex-grow-1" style="font-size:0.8rem;color:${isActive ? tier.color : '#6b7280'}">${tier.label} <span style="font-weight:400;color:#9ca3af">(${tier.threshold}+ pts)</span></span>
           <div class="d-flex gap-1">
-            ${isActive ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:#1a2744;color:#fff;border:none" onclick="generateCorrectiveAction('${tier.key}','${assocId}')"><i class="fas fa-print me-1"></i>Print</button>` : ''}
-            ${canLog && isActive ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:${tier.color};color:#fff;border:none" onclick="window._logWarnTeam('${assocId}','${tier.key}')"><i class="fas fa-plus me-1"></i>Log</button>` : ''}
+            ${isActive ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:#1a2744;color:#fff;border:none" onclick="generateCorrectiveAction('${tier.key}','${assocId}')"><i class="fas fa-file-signature me-1"></i>Issue</button>` : ''}
           </div>
         </div>
         ${issued.length
@@ -3561,8 +3560,7 @@ function renderWarnings(warnings) {
           <span class="badge ms-1" style="background:${isActive ? tier.color : '#9ca3af'};color:#fff;font-size:0.65rem">${tier.threshold}+ pts</span>
         </div>
         <div class="d-flex gap-1">
-          ${isActive ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.75rem;background:#1a2744;color:#fff;border:none" onclick="generateCorrectiveAction('${tier.key}')"><i class="fas fa-print me-1"></i>Print</button>` : ''}
-          ${canLog ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.75rem;background:${tier.color};color:#fff;border:none" onclick="logWarning('${tier.key}')"><i class="fas fa-plus me-1"></i>Log</button>` : ''}
+          ${isActive ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.75rem;background:#1a2744;color:#fff;border:none" onclick="generateCorrectiveAction('${tier.key}')"><i class="fas fa-file-signature me-1"></i>Issue</button>` : ''}
         </div>
       </div>
       ${issued.length ? `<div class="mt-2">` + issued.map(w => `
@@ -3587,6 +3585,7 @@ window.saveSignedWarning = async (data) => {
   try {
     // Deserialize into main-window object context (cross-window objects fail Firestore instanceof checks)
     const d = JSON.parse(JSON.stringify(data));
+    const savedAt = new Date().toISOString();
     await addDoc(collection(db, 'signedWarnings'), {
       associateId: d.associateId,
       associateName: d.associateName,
@@ -3596,10 +3595,23 @@ window.saveSignedWarning = async (data) => {
       formTypeLabel: d.formTypeLabel || 'Attendance Policy',
       points: d.points,
       signedAt: d.signedAt,
-      savedAt: new Date().toISOString(),
+      savedAt,
       signatures: d.signatures,
       documentHtml: d.documentHtml || ''
     });
+    // Auto-log the warning entry when document is issued & saved to HR records
+    if (d.tier && WARNING_TIERS.find(t => t.key === d.tier)) {
+      const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+      const issuedBy = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+      const pts = d.points || 0;
+      await addDoc(collection(db, 'warnings', d.associateId, 'entries'), {
+        type: d.tier, issuedBy, issuedByUid: currentUser.uid,
+        issuedAt: savedAt,
+        attendancePtsAtTime: pts,
+        notes: 'Auto-logged when document was issued and saved to HR records at ' + new Date(savedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+      });
+      if (d.associateId === currentAssociateId) listenWarnings(currentAssociateId);
+    }
     console.log('Signed warning saved to HR records for', data.associateName);
   } catch(e) {
     console.error('saveSignedWarning error:', e);
