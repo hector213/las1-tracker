@@ -74,7 +74,7 @@ const FLAGS  = {
   'pip':               { label: 'PIP Track',         cls: 'bg-danger' },
   'low-uph':           { label: 'Low UPH',           cls: 'bg-flag-orange' }
 };
-const NOTE_TYPES = ['All','General','Coaching','Recognition','Performance'];
+const NOTE_TYPES = ['All','General','Coaching','Recognition','Performance','Behavioral'];
 // Use local calendar date (not UTC) to avoid midnight timezone flip
 function localToday() {
   const d = new Date();
@@ -8303,6 +8303,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <button class="note-filter-btn" data-type="Coaching" onclick="setNoteFilter('Coaching')">Coaching</button>
             <button class="note-filter-btn" data-type="Recognition" onclick="setNoteFilter('Recognition')">Recognition</button>
             <button class="note-filter-btn" data-type="Performance" onclick="setNoteFilter('Performance')">Performance</button>
+            <button class="note-filter-btn" data-type="Behavioral" onclick="setNoteFilter('Behavioral')">Behavioral</button>
             <button class="note-filter-btn" data-type="General" onclick="setNoteFilter('General')">General</button>
           </div>
         </div>
@@ -9582,6 +9583,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <option>Coaching</option>
             <option>Recognition</option>
             <option>Performance</option>
+            <option>Behavioral</option>
           </select>
         </div>
         <div class="mb-3">
