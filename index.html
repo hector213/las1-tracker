@@ -65,15 +65,27 @@ const CERTS = [
 ];
 const FLAGS  = {
   '':                  { label: 'No Flag',          cls: 'bg-secondary' },
-  'high-potential':    { label: 'High Potential',   cls: 'bg-success' },
-  'needs-support':     { label: 'Needs Support',    cls: 'bg-warning text-dark' },
-  'attendance-issue':  { label: 'Attendance Issue', cls: 'bg-danger' },
-  'leadership-track':  { label: 'Leadership Track', cls: 'bg-info text-dark' },
-  'transitioning':     { label: 'Transitioning',    cls: 'bg-secondary' },
-  'watch':             { label: 'Watch',             cls: 'bg-warning text-dark' },
-  'pip':               { label: 'PIP Track',         cls: 'bg-danger' },
-  'low-uph':           { label: 'Low UPH',           cls: 'bg-flag-orange' }
+  'high-potential':    { label: 'High Potential',   cls: 'bg-success',              icon: '⭐' },
+  'needs-support':     { label: 'Needs Support',    cls: 'bg-warning text-dark',    icon: '🤝' },
+  'attendance-issue':  { label: 'Attendance Issue', cls: 'bg-danger',               icon: '🚨' },
+  'leadership-track':  { label: 'Leadership Track', cls: 'bg-info text-dark',       icon: '🔵' },
+  'transitioning':     { label: 'Transitioning',    cls: 'bg-secondary',            icon: '🔄' },
+  'watch':             { label: 'Watch',             cls: 'bg-warning text-dark',    icon: '👁' },
+  'pip':               { label: 'PIP Track',         cls: 'bg-danger',               icon: '⚠️' },
+  'low-uph':           { label: 'Low UPH',           cls: 'bg-flag-orange',          icon: '📉' },
+  'up-and-coming':     { label: 'Up & Coming',       cls: 'bg-success',              icon: '🚀' },
+  'great-attitude':    { label: 'Great Attitude',    cls: 'bg-info text-dark',       icon: '😊' },
+  'wants-to-learn':    { label: 'Wants to Learn',   cls: 'bg-primary',              icon: '📚' }
 };
+// Normalize flags — handles legacy single-string `flag` field and new array `flags` field
+function getFlags(a) {
+  if (Array.isArray(a.flags) && a.flags.length) return a.flags.filter(f => FLAGS[f]);
+  if (a.flag && a.flag !== '') return [a.flag];
+  return [];
+}
+function flagBadgesHtml(a) {
+  return getFlags(a).map(f => `<span class="badge ${FLAGS[f].cls}" style="font-size:0.65rem;margin-right:2px">${FLAGS[f].icon || ''} ${FLAGS[f].label}</span>`).join('');
+}
 const NOTE_TYPES = ['All','General','Coaching','Recognition','Performance','Behavioral'];
 // Use local calendar date (not UTC) to avoid midnight timezone flip
 function localToday() {
@@ -961,7 +973,7 @@ function renderDashboard() {
     (!search          || a.name.toLowerCase().includes(search) || (a.employeeId || '').toLowerCase().includes(search)) &&
     (!shift           || a.shift === shift) &&
     (!status          || a.status === status) &&
-    (!flagFilter      || a.flag === flagFilter) &&
+    (!flagFilter      || getFlags(a).includes(flagFilter)) &&
     (!certFilter      || (allCertsMap[a.id] && allCertsMap[a.id].has(certFilter))) &&
     (!reportsToFilter || a.reportsTo === reportsToFilter)
   );
@@ -976,7 +988,7 @@ function renderDashboard() {
   document.getElementById('statDirects').textContent    = activeDirects.length;
   document.getElementById('statTemps').textContent      = activeTemps.length;
   document.getElementById('statActive').textContent     = activeAll.length;
-  document.getElementById('statFlagged').textContent    = allAssociates.filter(a => a.flag && a.flag !== '').length;
+  document.getElementById('statFlagged').textContent    = allAssociates.filter(a => getFlags(a).length > 0).length;
   // Leadership section
   const posOrder = { 'ops-manager': 0, 'supervisor': 1, 'lead': 2 };
   allLeaders = allAssociates
@@ -1022,9 +1034,7 @@ function renderDashboard() {
     grid.innerHTML = associates.map(a => {
       const initials    = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
       const statusColor = a.status === 'active' ? 'bg-success' : a.status === 'terminated' ? 'bg-danger' : a.status === 'resigned' ? 'bg-secondary' : 'bg-warning text-dark';
-      const flagInfo    = FLAGS[a.flag || ''];
-      const flagBadge   = (a.flag && a.flag !== '')
-        ? `<span class="badge ${flagInfo.cls} mt-1" style="font-size:0.65rem">${flagInfo.label}</span>` : '';
+      const flagBadge   = flagBadgesHtml(a);
       const isTemp      = a.employmentType === 'temp';
       const tempBadge   = isTemp ? `<span class="badge mt-1" style="font-size:0.65rem;background:#7c3aed;color:#fff">TEMP</span>` : '';
       const isNewHire   = (() => { if (!a.hireDate) return false; const h = new Date(a.hireDate + 'T00:00:00'); const diff = (new Date() - h) / (1000*60*60*24); return diff >= 0 && diff < 90; })();
@@ -1378,8 +1388,7 @@ window.openProfile = async (id) => {
 
   // Flag display
   const flagEl = document.getElementById('profileFlag');
-  flagEl.innerHTML = (a.flag && a.flag !== '')
-    ? `<span class="badge ${FLAGS[a.flag].cls}">${FLAGS[a.flag].label}</span>` : '';
+  flagEl.innerHTML = flagBadgesHtml(a);
 
   const canEdit = roleAtLeast('lead');
   document.getElementById('profileEditBtn').classList.toggle('d-none', !canEdit);
@@ -1473,7 +1482,7 @@ window.exportToClaude = async () => {
   out += `Role: ${assoc.role || 'N/A'} | Department: ${assoc.department || 'N/A'} | Shift: ${assoc.shift || 'N/A'}\n`;
   out += `Position: ${assoc.position || 'Associate'} | Status: ${capitalize(assoc.status || 'active')}\n`;
   if (assoc.hireDate) out += `Hire Date: ${new Date(assoc.hireDate).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}\n`;
-  if (assoc.flag) out += `Flag: ${assoc.flag}\n`;
+  const _pFlags = getFlags(assoc); if (_pFlags.length) out += `Flags: ${_pFlags.map(f => FLAGS[f]?.label || f).join(', ')}\n`;
   if (assoc.opsManager) out += `Ops Manager: ${assoc.opsManager}\n`;
 
   out += `\n=== ENGAGEMENT POINTS ===\n`;
@@ -1595,17 +1604,18 @@ window.exportToClaude = async () => {
 
 window.openFlagModal = () => {
   const assoc = allAssociates.find(a => a.id === currentAssociateId);
-  document.getElementById('flagSelect').value = assoc?.flag || '';
+  const active = getFlags(assoc);
+  document.querySelectorAll('#flagCheckGrid input[type=checkbox]').forEach(cb => {
+    cb.checked = active.includes(cb.value);
+  });
   bootstrap.Modal.getOrCreateInstance(document.getElementById('flagModal')).show();
 };
 window.saveFlag = async () => {
-  const flag = document.getElementById('flagSelect').value;
-  await updateDoc(doc(db, 'associates', currentAssociateId), { flag });
+  const selected = [...document.querySelectorAll('#flagCheckGrid input[type=checkbox]:checked')].map(cb => cb.value);
+  await updateDoc(doc(db, 'associates', currentAssociateId), { flags: selected, flag: selected[0] || '' });
   const a = allAssociates.find(x => x.id === currentAssociateId);
-  if (a) a.flag = flag;
-  const flagEl = document.getElementById('profileFlag');
-  flagEl.innerHTML = (flag && flag !== '')
-    ? `<span class="badge ${FLAGS[flag].cls}">${FLAGS[flag].label}</span>` : '';
+  if (a) { a.flags = selected; a.flag = selected[0] || ''; }
+  document.getElementById('profileFlag').innerHTML = flagBadgesHtml(a);
   bootstrap.Modal.getInstance(document.getElementById('flagModal')).hide();
 };
 
@@ -3057,7 +3067,7 @@ window.exportForClaude = async () => {
       out += `ASSOCIATE: ${a.name}\n`;
       out += `  Employee ID: ${a.employeeId || 'N/A'}  |  Role: ${a.role || 'N/A'}  |  Shift: ${a.shift || 'N/A'}\n`;
       out += `  Status: ${a.status || 'N/A'}`;
-      if (a.flag && a.flag !== '') out += `  |  FLAG: ${FLAGS[a.flag]?.label || a.flag}`;
+      const _aFlags = getFlags(a); if (_aFlags.length) out += `  |  FLAGS: ${_aFlags.map(f => FLAGS[f]?.label || f).join(', ')}`;
       out += '\n\n';
 
       const badgeSnap = await getDocs(collection(db, 'badges', id, 'entries'));
@@ -9481,28 +9491,42 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
 <!-- Set Flag -->
 <div class="modal fade" id="flagModal" tabindex="-1">
-  <div class="modal-dialog modal-sm"><div class="modal-content">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
     <div class="modal-header border-0 pb-0">
-      <h5 class="modal-title fw-bold"><i class="fas fa-flag me-2"></i>Set Flag</h5>
+      <h5 class="modal-title fw-bold"><i class="fas fa-flag me-2" style="color:var(--orange)"></i>Set Flags</h5>
       <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
     </div>
-    <div class="modal-body">
-      <label class="form-label small fw-semibold">Flag Status</label>
-      <select class="form-select" id="flagSelect">
-        <option value="">No Flag</option>
-        <option value="high-potential">⭐ High Potential</option>
-        <option value="needs-support">🤝 Needs Support</option>
-        <option value="attendance-issue">🚨 Attendance Issue</option>
-        <option value="leadership-track">🔵 Leadership Track</option>
-        <option value="transitioning">🔄 Transitioning</option>
-        <option value="watch">👁 Watch</option>
-        <option value="pip">⚠️ PIP Track</option>
-        <option value="low-uph">📉 Low UPH</option>
-      </select>
+    <div class="modal-body pb-2">
+      <p class="text-muted small mb-3">Select all that apply — multiple flags can be set.</p>
+      <div id="flagCheckGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
+          <input type="checkbox" value="high-potential" style="width:16px;height:16px;accent-color:#198754"> ⭐ High Potential</label>
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
+          <input type="checkbox" value="up-and-coming" style="width:16px;height:16px;accent-color:#198754"> 🚀 Up &amp; Coming</label>
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
+          <input type="checkbox" value="leadership-track" style="width:16px;height:16px;accent-color:#0dcaf0"> 🔵 Leadership Track</label>
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
+          <input type="checkbox" value="great-attitude" style="width:16px;height:16px;accent-color:#0dcaf0"> 😊 Great Attitude</label>
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
+          <input type="checkbox" value="wants-to-learn" style="width:16px;height:16px;accent-color:#0d6efd"> 📚 Wants to Learn</label>
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
+          <input type="checkbox" value="needs-support" style="width:16px;height:16px;accent-color:#ffc107"> 🤝 Needs Support</label>
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
+          <input type="checkbox" value="watch" style="width:16px;height:16px;accent-color:#ffc107"> 👁 Watch</label>
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
+          <input type="checkbox" value="attendance-issue" style="width:16px;height:16px;accent-color:#dc3545"> 🚨 Attendance Issue</label>
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
+          <input type="checkbox" value="pip" style="width:16px;height:16px;accent-color:#dc3545"> ⚠️ PIP Track</label>
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
+          <input type="checkbox" value="low-uph" style="width:16px;height:16px;accent-color:#e07030"> 📉 Low UPH</label>
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
+          <input type="checkbox" value="transitioning" style="width:16px;height:16px;accent-color:#6c757d"> 🔄 Transitioning</label>
+      </div>
     </div>
-    <div class="modal-footer border-0 pt-0">
+    <div class="modal-footer border-0 pt-2">
       <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-      <button class="btn btn-orange" onclick="saveFlag()">Save Flag</button>
+      <button class="btn btn-sm btn-outline-danger me-auto" onclick="document.querySelectorAll('#flagCheckGrid input').forEach(c=>c.checked=false)" style="font-size:0.8rem">Clear All</button>
+      <button class="btn btn-orange" onclick="saveFlag()">Save</button>
     </div>
   </div></div>
 </div>
