@@ -5674,6 +5674,7 @@ window.listenOneOnOnes = async (associateId) => {
     const when = diff < 0 ? `<span style="color:#dc2626">Overdue by ${Math.abs(diff)}d</span>` : diff === 0 ? `<span style="color:#16a34a">Today!</span>` : diff === 1 ? 'Tomorrow' : `In ${diff}d`;
     const conductorName = assoc.next1on1By || '';
     const purpose = assoc.next1on1Purpose || 'General';
+    const scheduledBy = assoc.next1on1ScheduledBy || '';
     const purposeColors = { 'Career Path':'#0369a1', 'Progress':'#15803d', 'Follow Up':'#b45309', 'General':'#6366f1' };
     const purposeColor = purposeColors[purpose] || '#6366f1';
     const summaryLine = conductorName
@@ -5688,6 +5689,7 @@ window.listenOneOnOnes = async (associateId) => {
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <span style="font-size:0.8rem;color:#374151"><i class="fas fa-calendar me-1" style="color:#9ca3af"></i>${d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})} · ${when}</span>
               <span style="font-size:0.75rem;font-weight:600;padding:2px 8px;border-radius:10px;background:${purposeColor}18;color:${purposeColor};border:1px solid ${purposeColor}40">${escapeHtml(purpose)}</span>
+              ${scheduledBy ? `<span style="font-size:0.75rem;color:#9ca3af"><i class="fas fa-user-edit me-1"></i>Scheduled by ${escapeHtml(scheduledBy)}</span>` : ''}
             </div>
           </div>
           <div class="d-flex gap-2 flex-wrap" style="flex-shrink:0">
@@ -5773,6 +5775,7 @@ function render1on1Log(entries) {
             ${pur ? `<span style="font-size:0.72rem;font-weight:600;padding:2px 7px;border-radius:8px;background:${purColor}18;color:${purColor};border:1px solid ${purColor}40">${escapeHtml(pur)}</span>` : ''}
           </div>
           ${e.conductedBy ? `<div class="text-muted" style="font-size:0.78rem;margin-top:2px"><i class="fas fa-user me-1"></i>Conducted by: ${escapeHtml(e.conductedBy)}</div>` : ''}
+          ${e.scheduledBy ? `<div class="text-muted" style="font-size:0.78rem;margin-top:1px"><i class="fas fa-user-edit me-1"></i>Scheduled by: ${escapeHtml(e.scheduledBy)}</div>` : ''}
         </div>
         ${roleAtLeast('admin') ? `<button class="btn btn-sm btn-outline-danger py-0 px-2" style="font-size:0.72rem" onclick="delete1on1('${e.id}')"><i class="fas fa-trash"></i></button>` : ''}
       </div>
@@ -5838,10 +5841,11 @@ window.save1on1 = async () => {
     const purpose = document.getElementById('1on1Purpose').value || 'General';
     const conductorAssoc = allAssociates.find(a => a.id === conductorId);
     const conductorName = conductorAssoc ? conductorAssoc.name : '';
+    const scheduledBy = document.getElementById('currentUserName')?.textContent?.trim() || '';
     if (!date) { alert('Please select a date.'); return; }
-    await updateDoc(doc(db, 'associates', assocId), { next1on1: date, next1on1By: conductorName, next1on1ById: conductorId, next1on1Purpose: purpose });
+    await updateDoc(doc(db, 'associates', assocId), { next1on1: date, next1on1By: conductorName, next1on1ById: conductorId, next1on1Purpose: purpose, next1on1ScheduledBy: scheduledBy });
     const assoc = allAssociates.find(a => a.id === assocId);
-    if (assoc) { assoc.next1on1 = date; assoc.next1on1By = conductorName; assoc.next1on1ById = conductorId; assoc.next1on1Purpose = purpose; }
+    if (assoc) { assoc.next1on1 = date; assoc.next1on1By = conductorName; assoc.next1on1ById = conductorId; assoc.next1on1Purpose = purpose; assoc.next1on1ScheduledBy = scheduledBy; }
   } else {
     const date = document.getElementById('1on1LogDate').value;
     const conductorId = document.getElementById('1on1LogConductor').value;
@@ -5852,12 +5856,13 @@ window.save1on1 = async () => {
     const notes = document.getElementById('1on1Notes').value.trim();
     const followUps = document.getElementById('1on1FollowUps').value.trim();
     if (!date) { alert('Please enter the meeting date.'); return; }
-    const entry = { date, conductedBy: conductorName, conductedById: conductorId, purpose, topics, notes, followUps, createdAt: new Date().toISOString() };
+    const scheduledBy = allAssociates.find(a => a.id === assocId)?.next1on1ScheduledBy || '';
+    const entry = { date, conductedBy: conductorName, conductedById: conductorId, purpose, scheduledBy, topics, notes, followUps, createdAt: new Date().toISOString() };
     Object.keys(entry).forEach(k => { if (!entry[k]) delete entry[k]; });
     await addDoc(collection(db, 'oneOnOnes', assocId, 'entries'), entry);
-    await updateDoc(doc(db, 'associates', assocId), { next1on1: '', next1on1By: '', next1on1ById: '', next1on1Purpose: '' });
+    await updateDoc(doc(db, 'associates', assocId), { next1on1: '', next1on1By: '', next1on1ById: '', next1on1Purpose: '', next1on1ScheduledBy: '' });
     const assoc = allAssociates.find(a => a.id === assocId);
-    if (assoc) { assoc.next1on1 = ''; assoc.next1on1By = ''; assoc.next1on1ById = ''; assoc.next1on1Purpose = ''; }
+    if (assoc) { assoc.next1on1 = ''; assoc.next1on1By = ''; assoc.next1on1ById = ''; assoc.next1on1Purpose = ''; assoc.next1on1ScheduledBy = ''; }
   }
 
   bootstrap.Modal.getInstance(document.getElementById('oneOnOneModal')).hide();
