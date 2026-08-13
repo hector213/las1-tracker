@@ -1367,6 +1367,9 @@ window.openProfile = async (id) => {
     }
   }
 
+  // Threshold alert notifications
+  renderThresholdAlerts(id, a, attPts);
+
   const omEl = document.getElementById('profileOpsManager');
   if (a.opsManager) { omEl.textContent = ''; omEl.innerHTML = `<i class="fas fa-user-tie me-1" style="color:var(--orange)"></i>Ops Manager: <strong>${escapeHtml(a.opsManager)}</strong>`; omEl.classList.remove('d-none'); }
   else { omEl.classList.add('d-none'); }
@@ -3483,6 +3486,51 @@ const WARNING_TIERS = [
 ];
 
 let lastWarnings = [];
+
+// ─── Threshold Alert Notifications ────────────────────────────────────────────
+function _taLsKey(uid, assocId, tierKey) { return `ta_${uid}_${assocId}_${tierKey}`; }
+
+function renderThresholdAlerts(viewedAssocId, viewedAssoc, attPts) {
+  const container = document.getElementById('thresholdAlertsContainer');
+  if (!container || !roleAtLeast('lead')) { if (container) container.innerHTML = ''; return; }
+  const uid = currentUser?.uid || 'anon';
+  let html = '';
+
+  // Alerts on the viewed associate's profile
+  WARNING_TIERS.slice().reverse().forEach(tier => {
+    if (attPts >= tier.threshold && !localStorage.getItem(_taLsKey(uid, viewedAssocId, tier.key))) {
+      html += `<div class="d-flex align-items-center justify-content-between px-3 py-2 mb-2 rounded" style="background:${tier.bg};border-left:4px solid ${tier.color}">
+        <span style="color:${tier.color};font-size:0.88rem;font-weight:600"><i class="fas fa-${tier.icon} me-2"></i><strong>${escapeHtml(viewedAssoc.name)}</strong> has reached the <strong>${tier.label}</strong> threshold (${attPts} attendance pt${attPts !== 1 ? 's' : ''})</span>
+        <button style="background:none;border:none;font-size:1.3rem;line-height:1;padding:0 0 0 12px;color:${tier.color};cursor:pointer;opacity:0.7" onclick="dismissThresholdAlert(${JSON.stringify(uid)},${JSON.stringify(viewedAssocId)},${JSON.stringify(tier.key)})" title="Dismiss">&times;</button>
+      </div>`;
+    }
+  });
+
+  // Supervisor view: alerts for direct reports when viewing own profile
+  if (viewedAssocId === currentUserAssocId) {
+    const directReports = allAssociates.filter(a => a.reportsTo === viewedAssocId && a.status === 'active');
+    directReports.forEach(dr => {
+      const drPts = dr.attendancePoints || 0;
+      WARNING_TIERS.slice().reverse().forEach(tier => {
+        const alertId = `dr_${dr.id}_${tier.key}`;
+        if (drPts >= tier.threshold && !localStorage.getItem(_taLsKey(uid, viewedAssocId, alertId))) {
+          html += `<div class="d-flex align-items-center justify-content-between px-3 py-2 mb-2 rounded" style="background:${tier.bg};border-left:4px solid ${tier.color}">
+            <span style="color:${tier.color};font-size:0.88rem;font-weight:600"><i class="fas fa-${tier.icon} me-2"></i>Direct report <strong>${escapeHtml(dr.name)}</strong> has reached the <strong>${tier.label}</strong> threshold (${drPts} attendance pt${drPts !== 1 ? 's' : ''})</span>
+            <button style="background:none;border:none;font-size:1.3rem;line-height:1;padding:0 0 0 12px;color:${tier.color};cursor:pointer;opacity:0.7" onclick="dismissThresholdAlert(${JSON.stringify(uid)},${JSON.stringify(viewedAssocId)},${JSON.stringify(alertId)})" title="Dismiss">&times;</button>
+          </div>`;
+        }
+      });
+    });
+  }
+
+  container.innerHTML = html;
+}
+
+window.dismissThresholdAlert = (uid, assocId, tierKey) => {
+  localStorage.setItem(_taLsKey(uid, assocId, tierKey), '1');
+  const a = allAssociates.find(x => x.id === currentAssociateId);
+  if (a) renderThresholdAlerts(currentAssociateId, a, a.attendancePoints || 0);
+};
 
 function listenWarnings(associateId) {
   getDocs(collection(db, 'warnings', associateId, 'entries')).then(snap => {
@@ -5758,7 +5806,8 @@ window.listenOneOnOnes = async (associateId) => {
     render1on1Log(entries);
     const badge = document.getElementById('oneOnOneCountBadge');
     const hasScheduled = !!(allAssociates.find(a => a.id === associateId)?.next1on1);
-    if (badge) badge.textContent = entries.length + (hasScheduled ? 1 : 0);
+    const conductingCount = allAssociates.filter(a => a.status === 'active' && a.next1on1 && a.next1on1ById === associateId).length;
+    if (badge) badge.textContent = entries.length + (hasScheduled ? 1 : 0) + conductingCount;
   } catch(e) {
     container.innerHTML = '<div class="text-muted small py-2">No meetings logged yet.</div>';
     window._1on1Entries = [];
@@ -8300,6 +8349,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </button>
         </div>
       </div>
+
+      <!-- Threshold Alert Notifications -->
+      <div id="thresholdAlertsContainer"></div>
 
       <!-- Badges section -->
       <div class="chips-section">
