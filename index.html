@@ -109,7 +109,9 @@ const ATTENDANCE_TYPES = [
   { key: 'call-out',            label: 'Call Out',                                    points: 1.0, icon: 'fa-phone-slash',   color: '#dc2626' },
   { key: 'call-out-sick-half',  label: 'Call Out — Sick Time (covers ≥ half shift)',  points: 0.5, icon: 'fa-notes-medical', color: '#d97706' },
   { key: 'call-out-sick-no',    label: 'Call Out — Sick Time (not enough for half)',  points: 1.0, icon: 'fa-notes-medical', color: '#dc2626' },
-  { key: 'call-out-sick-full',  label: 'Call Out — Sick Time Used (no point)',        points: 0,   icon: 'fa-notes-medical', color: '#059669' },
+  { key: 'call-out-sick-full',  label: 'Call Out — Sick Time Used (no point)',                    points: 0,   icon: 'fa-notes-medical',  color: '#059669' },
+  { key: 'call-out-vac-half',   label: 'Vacation Time (not enough to cover half shift)',           points: 1.0, icon: 'fa-umbrella-beach', color: '#dc2626' },
+  { key: 'call-out-vac-full',   label: 'Vacation Time (not enough to cover full shift)',           points: 0.5, icon: 'fa-umbrella-beach', color: '#d97706' },
   { key: 'late-arrival',        label: 'Late Arrival',                                points: 0.5, icon: 'fa-clock',         color: '#d97706' },
   { key: 'late-arrival-half',   label: 'Late Arrival (after half shift)',              points: 1.0, icon: 'fa-clock',         color: '#dc2626' },
   { key: 'left-early-before',   label: 'Left Early (before half shift)',               points: 1.0, icon: 'fa-sign-out-alt',  color: '#dc2626' },
@@ -3353,6 +3355,7 @@ window.updateAttFilterColor = async () => {
           <span class="fw-semibold flex-grow-1" style="font-size:0.8rem;color:${isActive ? tier.color : '#6b7280'}">${tier.label} <span style="font-weight:400;color:#9ca3af">(${tier.threshold}+ pts)</span></span>
           <div class="d-flex gap-1">
             ${isActive ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:#1a2744;color:#fff;border:none" onclick="generateCorrectiveAction('${tier.key}','${assocId}')"><i class="fas fa-file-signature me-1"></i>Issue</button>` : ''}
+            ${isActive && roleAtLeast('admin') ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:#6b7280;color:#fff;border:none" onclick="markWarningPreExisting('${tier.key}','${assocId}')" title="Mark as already issued (no timestamp)"><i class="fas fa-check me-1"></i>Already Issued</button>` : ''}
           </div>
         </div>
         ${issued.length
@@ -3561,16 +3564,20 @@ function renderWarnings(warnings) {
         </div>
         <div class="d-flex gap-1">
           ${isActive ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.75rem;background:#1a2744;color:#fff;border:none" onclick="generateCorrectiveAction('${tier.key}')"><i class="fas fa-file-signature me-1"></i>Issue</button>` : ''}
+          ${isActive && roleAtLeast('admin') ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.75rem;background:#6b7280;color:#fff;border:none" onclick="markWarningPreExisting('${tier.key}')" title="Mark as already issued (no timestamp)"><i class="fas fa-check me-1"></i>Already Issued</button>` : ''}
         </div>
       </div>
       ${issued.length ? `<div class="mt-2">` + issued.map(w => `
         <div class="d-flex align-items-center gap-2 mt-1" style="font-size:0.75rem">
           <i class="fas fa-check-circle" style="color:${tier.color}"></i>
-          <span style="color:#374151">Issued ${new Date(w.issuedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} at ${new Date(w.issuedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</span>
+          ${w.preExisting
+            ? `<span style="color:#6b7280;font-style:italic">Issued prior to dashboard</span>`
+            : `<span style="color:#374151">Issued ${new Date(w.issuedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} at ${new Date(w.issuedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</span>`
+          }
           <span class="text-muted">· by ${escapeHtml(w.issuedBy || '—')}</span>
-          ${w.notes ? `<span class="text-muted fst-italic">· "${escapeHtml(w.notes)}"</span>` : ''}
+          ${w.notes && !w.preExisting ? `<span class="text-muted fst-italic">· "${escapeHtml(w.notes)}"</span>` : ''}
           ${roleAtLeast('supervisor') ? `<button class="btn btn-link text-danger p-0 ms-auto" style="font-size:0.7rem" onclick="deleteWarning('${w.id}')"><i class="fas fa-times"></i></button>` : ''}
-        </div>`).join('') + `</div>` : (isActive ? `<div class="mt-1" style="font-size:0.73rem;color:${tier.color}"><i class="fas fa-exclamation-circle me-1"></i>Not yet issued — use Log button to record.</div>` : '')}
+        </div>`).join('') + `</div>` : (isActive ? `<div class="mt-1" style="font-size:0.73rem;color:${tier.color}"><i class="fas fa-exclamation-circle me-1"></i>Not yet issued.</div>` : '')}
     </div>`;
   }).join('');
 }
@@ -4890,6 +4897,25 @@ async function loadTodayTimeOff() {
     setCache('todayTimeOff', _todayTimeOffMap);
   } catch(e) {}
 }
+
+window.markWarningPreExisting = async (type, overrideAssocId) => {
+  const assocId = overrideAssocId || currentAssociateId;
+  const tier = WARNING_TIERS.find(t => t.key === type);
+  if (!tier) return;
+  if (!confirm(`Mark a pre-existing ${tier.label} as already issued for this associate?\n\nNo date or time will be recorded.`)) return;
+  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+  const issuedBy = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  const assoc = allAssociates.find(a => a.id === assocId);
+  const pts = assoc?.attendancePoints || 0;
+  await addDoc(collection(db, 'warnings', assocId, 'entries'), {
+    type, issuedBy, issuedByUid: currentUser.uid,
+    issuedAt: '',
+    preExisting: true,
+    attendancePtsAtTime: pts,
+    notes: 'Issued prior to dashboard implementation'
+  });
+  if (assocId === currentAssociateId) listenWarnings(currentAssociateId);
+};
 
 window.logWarning = async (type) => {
   const tier = WARNING_TIERS.find(t => t.key === type);
