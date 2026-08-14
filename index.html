@@ -139,10 +139,16 @@ function pointsColor(pts) {
   if (pts < 0)  return '#dc2626';
   return '#6b7280';
 }
+async function _getActorName() {
+  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+  const stored = userSnap.exists() ? userSnap.data().displayName : '';
+  if (stored && !stored.includes('@')) return stored;
+  return currentUser.displayName || currentUser.email;
+}
+
 async function logPoints(associateId, type, reason, pts) {
   const assoc = allAssociates.find(a => a.id === associateId);
-  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-  const actor = userSnap.exists() ? userSnap.data().displayName : currentUser?.email;
+  const actor = await _getActorName();
   await addDoc(collection(db, 'pointslog', associateId, 'entries'), {
     associateId,
     associateName: assoc?.name || '',
@@ -354,17 +360,25 @@ onAuthStateChanged(auth, async (user) => {
     if (snap.exists()) {
       const data = snap.data();
       currentUserRole = data.role || 'viewer';
-      document.getElementById('currentUserName').textContent = data.displayName || user.email;
+      // If stored displayName looks like an email, prefer Firebase Auth displayName
+      let resolvedName = data.displayName || '';
+      if ((!resolvedName || resolvedName.includes('@')) && user.displayName) {
+        resolvedName = user.displayName;
+        await updateDoc(doc(db, 'users', user.uid), { displayName: resolvedName });
+      }
+      if (!resolvedName) resolvedName = user.email;
+      document.getElementById('currentUserName').textContent = resolvedName;
       document.getElementById('currentUserRole').textContent = capitalize(currentUserRole);
     } else {
       const allUsers = await getDocs(collection(db, 'users'));
       if (allUsers.empty) {
         currentUserRole = 'admin';
+        const resolvedName = user.displayName || user.email;
         await setDoc(doc(db, 'users', user.uid), {
-          email: user.email, displayName: user.email, role: 'admin',
+          email: user.email, displayName: resolvedName, role: 'admin',
           createdAt: new Date().toISOString()
         });
-        document.getElementById('currentUserName').textContent = user.email;
+        document.getElementById('currentUserName').textContent = resolvedName;
         document.getElementById('currentUserRole').textContent = 'Admin';
       }
     }
@@ -1816,8 +1830,7 @@ window.saveNote = async () => {
       btn.textContent = 'Saving…';
     }
 
-    const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-    const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+    const displayName = await _getActorName();
     const noteData = {
       text, type,
       author: displayName, authorUid: currentUser.uid,
@@ -1962,8 +1975,7 @@ window.saveCred = async () => {
   const btn = document.getElementById('saveCredBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-    const addedBy  = userSnap.exists() ? (userSnap.data().displayName || currentUser.email) : currentUser.email;
+    const addedBy  = await _getActorName();
     await addDoc(collection(db, 'credentials', currentAssociateId, 'entries'), {
       system, username, password, notes, addedBy,
       createdAt: new Date().toISOString()
@@ -2043,8 +2055,7 @@ window.saveWatchNote = async () => {
   const btn = document.getElementById('saveWatchNoteBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-    const displayName = userSnap.exists() ? (userSnap.data().displayName || currentUser.email) : currentUser.email;
+    const displayName = await _getActorName();
     await addDoc(collection(db, 'watchnotes', currentAssociateId, 'entries'), {
       category, text,
       author: displayName, authorUid: currentUser.uid,
@@ -2556,8 +2567,7 @@ window.saveBadgeNomination = async () => {
     alert(`A nomination for ${badge} is already pending approval.`);
     return;
   }
-  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-  const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  const displayName = await _getActorName();
   const assoc    = allAssociates.find(a => a.id === currentAssociateId);
   await addDoc(collection(db, 'badges', currentAssociateId, 'entries'), {
     badge, reason, status: 'pending',
@@ -2580,8 +2590,7 @@ window.approveBadge = async (associateId, badgeId) => {
     alert(`${badgeLabel} has already been awarded. Delete the duplicate nomination instead.`);
     return;
   }
-  const userSnap  = await getDoc(doc(db, 'users', currentUser.uid));
-  const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  const displayName = await _getActorName();
   await updateDoc(doc(db, 'badges', associateId, 'entries', badgeId), {
     status: 'approved', approvedBy: displayName, approvedAt: new Date().toISOString()
   });
@@ -2689,8 +2698,7 @@ window.setCertStatus = async (newStatus) => {
   const _basePoints = Number(allAssociates.find(a => a.id === currentAssociateId)?.points) || 0;
 
   const certRef = doc(db, 'certs', currentAssociateId);
-  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-  const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  const displayName = await _getActorName();
   const oldStatus = _certModalExisting?.[_certModalKey]?.status || null;
 
   // Determine points delta up front so we can update UI locally without relying on read-back
@@ -3382,8 +3390,7 @@ window._logWarnTeam = async (assocId, type) => {
   if (!tier) return;
   const notes = prompt(`Log ${tier.label} for this associate\n\nOptional notes:`);
   if (notes === null) return;
-  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-  const issuedBy = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  const issuedBy = await _getActorName();
   const assoc    = allAssociates.find(a => a.id === assocId);
   await addDoc(collection(db, 'warnings', assocId, 'entries'), {
     type, issuedBy, issuedByUid: currentUser.uid,
@@ -3608,8 +3615,7 @@ window.saveSignedWarning = async (data) => {
     });
     // Auto-log the warning entry when document is issued & saved to HR records
     if (d.tier && WARNING_TIERS.find(t => t.key === d.tier)) {
-      const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-      const issuedBy = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+      const issuedBy = await _getActorName();
       const pts = d.points || 0;
       await addDoc(collection(db, 'warnings', d.associateId, 'entries'), {
         type: d.tier, issuedBy, issuedByUid: currentUser.uid,
@@ -4724,8 +4730,7 @@ window.saveTimeOff = async () => {
   const note    = document.getElementById('toNote').value.trim();
   if (!assocId || !start || !end) { alert('Associate, start, and end date are required.'); return; }
   if (end < start) { alert('End date must be on or after start date.'); return; }
-  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-  const addedBy  = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  const addedBy  = await _getActorName();
   await addDoc(collection(db, 'timeOff', assocId, 'entries'), { type, startDate: start, endDate: end, note, addedBy, addedByUid: currentUser.uid, createdAt: new Date().toISOString() });
   clearCache('timeoff');
   clearCache('todayTimeOff');
@@ -4903,8 +4908,7 @@ window.markWarningPreExisting = async (type, overrideAssocId) => {
   const tier = WARNING_TIERS.find(t => t.key === type);
   if (!tier) return;
   if (!confirm(`Mark a pre-existing ${tier.label} as already issued for this associate?\n\nNo date or time will be recorded.`)) return;
-  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-  const issuedBy = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  const issuedBy = await _getActorName();
   const assoc = allAssociates.find(a => a.id === assocId);
   const pts = assoc?.attendancePoints || 0;
   await addDoc(collection(db, 'warnings', assocId, 'entries'), {
@@ -4922,8 +4926,7 @@ window.logWarning = async (type) => {
   if (!tier) return;
   const notes = prompt(`Log ${tier.label}\n\nOptional notes (leave blank to skip):`);
   if (notes === null) return; // cancelled
-  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-  const issuedBy = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  const issuedBy = await _getActorName();
   const pts = lastAttendance.reduce((s, e) => s + (e.points || 0), 0);
   await addDoc(collection(db, 'warnings', currentAssociateId, 'entries'), {
     type, issuedBy, issuedByUid: currentUser.uid,
@@ -4946,8 +4949,7 @@ window.saveAttendance = async () => {
   const note = document.getElementById('attNote').value.trim();
   if (!type || !date) { alert('Please select a type and date.'); return; }
   const info = attTypeInfo(type);
-  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-  const addedBy = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  const addedBy = await _getActorName();
   await addDoc(collection(db, 'attendance', currentAssociateId, 'entries'), {
     type, date, note, points: info.points, addedBy, createdAt: new Date().toISOString()
   });
@@ -6881,8 +6883,7 @@ window.submitAttImport = async () => {
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Importing…';
   try {
-    const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-    const author   = userSnap.exists() ? (userSnap.data().displayName || currentUser.email) : currentUser.email;
+    const author   = await _getActorName();
     const now      = new Date().toISOString();
     const writes   = [];
     const ptsMap   = {};
@@ -7032,8 +7033,7 @@ window.parsePastedSnapshot = async () => {
     statusEl.textContent = `No associate found with ID "${empId}". Add them first.`;
     statusEl.style.color = 'orange'; return;
   }
-  const userSnap    = await getDoc(doc(db, 'users', currentUser.uid));
-  const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  const displayName = await _getActorName();
   await addDoc(collection(db, 'snapshots', matchId, 'entries'), {
     date: isoDate, uph: avgUph, unitsCompleted: units,
     role, uphTarget: uphTarget || null, variance: variance || null, onPace: onPace || null,
@@ -7067,8 +7067,7 @@ window.saveManualEntry = async () => {
   if (!matchId) {
     statusEl.textContent = `No associate found with ID "${empId}".`; statusEl.style.color = 'orange'; return;
   }
-  const userSnap    = await getDoc(doc(db, 'users', currentUser.uid));
-  const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  const displayName = await _getActorName();
   await addDoc(collection(db, 'snapshots', matchId, 'entries'), {
     date, uph, unitsCompleted: units,
     role: role || null, uphTarget: null, variance: null, onPace: onPace || null,
@@ -7163,8 +7162,7 @@ window.confirmOcrImport = async (encoded) => {
   const rows      = JSON.parse(decodeURIComponent(encoded));
   const assocSnap = await getDocs(collection(db, 'associates'));
   const associates = !assocSnap.empty ? Object.fromEntries(assocSnap.docs.map(d => [d.id, d.data()])) : {};
-  const userSnap    = await getDoc(doc(db, 'users', currentUser.uid));
-  const displayName = userSnap.exists() ? userSnap.data().displayName : currentUser.email;
+  const displayName = await _getActorName();
   let matched = 0, skipped = 0;
   for (const row of rows) {
     const matchId = Object.keys(associates).find(id =>
