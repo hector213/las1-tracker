@@ -3553,7 +3553,8 @@ function listenWarnings(associateId) {
 function renderWarnings(warnings) {
   const container = document.getElementById('warningsContainer');
   if (!container) return;
-  const pts     = lastAttendance.reduce((s, e) => s + (e.points || 0), 0);
+  // Use the stored attendancePoints (expiry-adjusted) rather than summing lastAttendance (which includes expired entries)
+  const pts     = allAssociates.find(a => a.id === currentAssociateId)?.attendancePoints ?? lastAttendance.reduce((s, e) => s + (e.expired ? 0 : (e.points || 0)), 0);
   const canEdit = roleAtLeast('lead');
 
   container.innerHTML = WARNING_TIERS.map(tier => {
