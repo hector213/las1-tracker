@@ -4631,7 +4631,7 @@ function renderTimeOff() {
     const t     = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['out'];
     const start = new Date(e.startDate + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
     const end   = new Date(e.endDate   + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
-    const days  = Math.round((new Date(e.endDate) - new Date(e.startDate)) / 86400000) + 1;
+    const days  = Math.round((new Date(e.endDate + 'T00:00:00') - new Date(e.startDate + 'T00:00:00')) / 86400000) + 1;
     return `<tr>
       <td class="fw-semibold" style="cursor:pointer;color:var(--navy)" onclick="openProfile('${e.assocId}')">${escapeHtml(e.assocName)}</td>
       <td><span class="badge" style="background:${t.bg};color:${t.text};border:1px solid ${t.color}">${t.label}</span></td>
@@ -4661,7 +4661,7 @@ function renderToCalendar() {
     let cur = new Date(Math.max(new Date(e.startDate + 'T00:00:00'), new Date(mStart + 'T00:00:00')));
     const stop = new Date(Math.min(new Date(e.endDate + 'T00:00:00'), new Date(mEnd + 'T00:00:00')));
     while (cur <= stop) {
-      const key = cur.toISOString().split('T')[0];
+      const key = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
       if (!dayMap[key]) dayMap[key] = [];
       dayMap[key].push(e);
       cur.setDate(cur.getDate() + 1);
