@@ -4631,7 +4631,7 @@ function renderTimeOff() {
   }
 
   tbody.innerHTML = rows.map(e => {
-    const t     = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['out'];
+    const t     = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['vacation'];
     const start = new Date(e.startDate + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
     const end   = new Date(e.endDate   + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
     const days  = Math.round((new Date(e.endDate + 'T00:00:00') - new Date(e.startDate + 'T00:00:00')) / 86400000) + 1;
@@ -4898,7 +4898,7 @@ async function loadTodayTimeOff() {
       entriesSnap.docs.forEach(d => {
         const e = d.data();
         if (e.startDate <= today && e.endDate >= today) {
-          _todayTimeOffMap[assocId] = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['out'];
+          _todayTimeOffMap[assocId] = TIME_OFF_TYPES[e.type] || TIME_OFF_TYPES['vacation'];
         }
       });
     }));
