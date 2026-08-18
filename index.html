@@ -4558,6 +4558,9 @@ const TO_MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','
 window.loadTimeOff = () => {
   showView('timeoff');
   detachAll();
+  // Always reset to current month/year when navigating to this view
+  _toMonth = new Date().getMonth();
+  _toYear  = new Date().getFullYear();
 
   const cached = getCached('timeoff');
   if (cached) { allAssociates = cached.associates; _allTimeOff = cached.entries; renderTimeOff(); return; }
@@ -4602,7 +4605,7 @@ function renderTimeOff() {
     const isActive   = i === _toMonth;
     const monthStr   = `${_toYear}-${String(i+1).padStart(2,'0')}`;
     const mStart     = `${monthStr}-01`;
-    const mEnd       = `${monthStr}-31`;
+    const mEnd       = `${monthStr}-${String(new Date(_toYear, i+1, 0).getDate()).padStart(2,'0')}`;
     const hasEntries = _allTimeOff.some(e => e.startDate <= mEnd && e.endDate >= mStart);
     return `<button class="btn btn-sm ${isActive ? 'btn-orange' : 'btn-outline-secondary'}" onclick="toSelectMonth(${i})" style="${hasEntries && !isActive ? 'border-color:var(--orange);color:var(--orange)' : ''}">${m}</button>`;
   }).join('');
