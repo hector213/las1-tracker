@@ -3052,7 +3052,7 @@ window.exportProfilePDF = async () => {
   ${attEntries.length ? attEntries.map(e => {
     const info = ATTENDANCE_TYPES.find(t => t.key === e.type) || { label: e.type };
     const ptsStr = (e.points || 0) === 0 ? '<span class="att-pts-zero">0 pts</span>' : `<span class="att-pts-pos">+${e.points} pts</span>`;
-    return `<div class="att-row"><span>${new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} — ${info.label}${e.note ? ' <em style="color:#9ca3af">(' + e.note + ')</em>' : ''}</span>${ptsStr}</div>`;
+    return `<div class="att-row"><span>${new Date(e.date.length===10?e.date+'T00:00:00':e.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} — ${info.label}${e.note ? ' <em style="color:#9ca3af">(' + e.note + ')</em>' : ''}</span>${ptsStr}</div>`;
   }).join('') : '<div style="color:#9ca3af;font-size:0.85rem">No attendance events recorded.</div>'}
   <div style="margin-top:32px;font-size:0.72rem;color:#9ca3af">Exported ${new Date().toLocaleString()} · Operational Health Tracker</div>
   </body></html>`;
