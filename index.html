@@ -112,6 +112,8 @@ const ATTENDANCE_TYPES = [
   { key: 'call-out-sick-full',  label: 'Call Out — Sick Time Used (no point)',                    points: 0,   icon: 'fa-notes-medical',  color: '#059669' },
   { key: 'call-out-vac-half',   label: 'Vacation Time (not enough to cover half shift)',           points: 1.0, icon: 'fa-umbrella-beach', color: '#dc2626' },
   { key: 'call-out-vac-full',   label: 'Vacation Time (not enough to cover full shift)',           points: 0.5, icon: 'fa-umbrella-beach', color: '#d97706' },
+  { key: 'call-out-pending',    label: 'Call Out — Pending (awaiting documentation)',              points: 0,   icon: 'fa-hourglass-half', color: '#d97706' },
+  { key: 'call-out-excused',    label: 'Call Out — Excused (documentation provided)',              points: 0,   icon: 'fa-file-medical',   color: '#059669' },
   { key: 'late-arrival',        label: 'Late Arrival',                                points: 0.5, icon: 'fa-clock',         color: '#d97706' },
   { key: 'late-arrival-half',   label: 'Late Arrival (after half shift)',              points: 1.0, icon: 'fa-clock',         color: '#dc2626' },
   { key: 'left-early-before',   label: 'Left Early (before half shift)',               points: 1.0, icon: 'fa-sign-out-alt',  color: '#dc2626' },
@@ -3449,18 +3451,30 @@ function renderAttendanceLog() {
   container.innerHTML = lastAttendance.map(e => {
     const info   = attTypeInfo(e.type);
     const isExp  = e.expired === true;
-    const iconBg = (isExp ? '#9ca3af' : info.color) + '20';
-    const iconColor = isExp ? '#9ca3af' : info.color;
+    const isPending = e.pending === true;
+    const iconBg = (isExp ? '#9ca3af' : isPending ? '#f59e0b' : info.color) + '20';
+    const iconColor = isExp ? '#9ca3af' : isPending ? '#d97706' : info.color;
     const storedPts = e.points ?? info.points; // use stored value; fall back to type default
-    const ptsDisplay = isExp
-      ? `<span style="color:#9ca3af;text-decoration:line-through">+${storedPts % 1 === 0 ? storedPts : Number(storedPts).toFixed(1)}</span><span style="color:#9ca3af;font-size:0.75rem;margin-left:4px">(expired)</span>`
-      : `<span style="color:${info.color}">+${storedPts % 1 === 0 ? storedPts : Number(storedPts).toFixed(1)}</span>`;
-    return `<div class="att-entry-card" style="${isExp ? 'opacity:0.55' : ''}">
-      <div class="att-entry-icon" style="background:${iconBg};color:${iconColor}"><i class="fas ${info.icon}"></i></div>
-      <div class="att-entry-body">
-        <div class="att-entry-type" style="${isExp ? 'text-decoration:line-through;color:#9ca3af' : ''}">${info.label}</div>
+    let ptsDisplay;
+    if (isPending) {
+      ptsDisplay = `<span style="background:#fef3c7;color:#b45309;font-size:0.72rem;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid #fcd34d;white-space:nowrap">Pending</span>`;
+    } else if (isExp) {
+      ptsDisplay = `<span style="color:#9ca3af;text-decoration:line-through">+${storedPts % 1 === 0 ? storedPts : Number(storedPts).toFixed(1)}</span><span style="color:#9ca3af;font-size:0.75rem;margin-left:4px">(expired)</span>`;
+    } else {
+      ptsDisplay = `<span style="color:${info.color}">+${storedPts % 1 === 0 ? storedPts : Number(storedPts).toFixed(1)}</span>`;
+    }
+    const pendingActions = isPending && canEdit ? `
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <button onclick="applyAttendancePoint('${e.id}')" style="font-size:0.75rem;padding:3px 10px;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600"><i class="fas fa-plus-circle me-1"></i>Apply Point</button>
+        <button onclick="excuseAttendance('${e.id}')" style="font-size:0.75rem;padding:3px 10px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600"><i class="fas fa-check-circle me-1"></i>Excuse</button>
+      </div>` : '';
+    return `<div class="att-entry-card" style="${isExp ? 'opacity:0.55' : ''}${isPending ? ';border-left:3px solid #f59e0b;' : ''}">
+      <div class="att-entry-icon" style="background:${iconBg};color:${iconColor}"><i class="fas ${isPending ? 'fa-hourglass-half' : info.icon}"></i></div>
+      <div class="att-entry-body" style="flex:1">
+        <div class="att-entry-type" style="${isExp ? 'text-decoration:line-through;color:#9ca3af' : isPending ? 'color:#b45309;font-weight:600' : ''}">${info.label}</div>
         <div class="att-entry-meta">${formatDate(e.date)} · Logged by ${escapeHtml(e.addedBy || '?')}</div>
         ${e.note ? `<div class="att-entry-note">"${escapeHtml(e.note)}"</div>` : ''}
+        ${pendingActions}
       </div>
       <div class="att-entry-pts">${ptsDisplay}</div>
       ${canEdit ? `<button class="btn btn-sm btn-link text-danger p-0 ms-1" onclick="deleteAttendance('${e.id}','${e.type}',${storedPts})"><i class="fas fa-times"></i></button>` : ''}
@@ -4988,10 +5002,13 @@ window.saveAttendance = async () => {
   if (!type || !date) { alert('Please select a type and date.'); return; }
   const info = attTypeInfo(type);
   const addedBy = await _getActorName();
-  await addDoc(collection(db, 'attendance', currentAssociateId, 'entries'), {
-    type, date, note, points: info.points, addedBy, createdAt: new Date().toISOString()
-  });
-  await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(info.points) });
+  const isPending = type === 'call-out-pending';
+  const entry = { type, date, note, points: info.points, addedBy, createdAt: new Date().toISOString() };
+  if (isPending) entry.pending = true;
+  await addDoc(collection(db, 'attendance', currentAssociateId, 'entries'), entry);
+  if (info.points !== 0) {
+    await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(info.points) });
+  }
   clearCache('attendance');
   clearCache('milestones_firestore');
   clearCache('todayAttStats'); // force re-read on next dashboard render
@@ -5022,6 +5039,37 @@ window.deleteAttendance = async (entryId, type, pts) => {
     const activeAssoc = activeAll.filter(a => a.position !== 'supervisor' && a.position !== 'ops-manager' && a.position !== 'lead');
     applyAttendanceStats(activeAll, activeAssoc);
   });
+};
+
+window.applyAttendancePoint = async (entryId) => {
+  if (!roleAtLeast('lead')) return;
+  if (!confirm('Apply 1 attendance point for this call out? This cannot be undone.')) return;
+  const resolvedBy = await _getActorName();
+  await updateDoc(doc(db, 'attendance', currentAssociateId, 'entries', entryId), {
+    type: 'call-out', points: 1, pending: false,
+    resolvedBy, resolvedAt: new Date().toISOString()
+  });
+  await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(1) });
+  clearCache('attendance');
+  clearCache('milestones_firestore');
+  clearCache('todayAttStats');
+  recalcAttExpiry(currentAssociateId);
+  listenAttendance(currentAssociateId);
+};
+
+window.excuseAttendance = async (entryId) => {
+  if (!roleAtLeast('lead')) return;
+  if (!confirm('Mark this call out as excused? No point will be applied.')) return;
+  const resolvedBy = await _getActorName();
+  await updateDoc(doc(db, 'attendance', currentAssociateId, 'entries', entryId), {
+    type: 'call-out-excused', points: 0, pending: false,
+    resolvedBy, resolvedAt: new Date().toISOString()
+  });
+  // attendancePoints unchanged — was pending (0 pts)
+  clearCache('attendance');
+  clearCache('milestones_firestore');
+  clearCache('todayAttStats');
+  listenAttendance(currentAssociateId);
 };
 
 // Team-wide attendance view
@@ -8647,6 +8695,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <option value="call-out-sick-half">Call Out — Sick Time (covers &ge; half shift)</option>
               <option value="call-out-sick-no">Call Out — Sick Time (not enough for half)</option>
               <option value="call-out-sick-full">Call Out — Sick Time Used (no point)</option>
+              <option value="call-out-pending">Call Out — Pending (awaiting documentation)</option>
+              <option value="call-out-excused">Call Out — Excused (documentation provided)</option>
               <option value="late-arrival">Late Arrival</option>
               <option value="late-arrival-half">Late Arrival (after half shift)</option>
               <option value="left-early-before">Left Early (before half shift)</option>
@@ -9704,6 +9754,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <option value="call-out-sick-full">Call Out — Sick Time Used (no point)</option>
           <option value="call-out-vac-half">Vacation Time (not enough to cover half shift) (+1.0 pt)</option>
           <option value="call-out-vac-full">Vacation Time (not enough to cover full shift) (+0.5 pt)</option>
+          <option value="call-out-pending">Call Out — Pending (awaiting documentation)</option>
           <option value="late-arrival">Late Arrival (+0.5 pt)</option>
           <option value="late-arrival-half">Late Arrival (after half shift) (+1.0 pt)</option>
           <option value="left-early-before">Left Early (before half shift) (+1.0 pt)</option>
