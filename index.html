@@ -38,19 +38,19 @@ const BADGES = [
   { key: 'always-helpful',      label: 'Always Helpful',            emoji: '🙌', tier: 'standard' },
   { key: 'leadership-list',     label: 'Leadership List',           emoji: '⭐', tier: 'elite'    },
   { key: 'employee-of-month',   label: 'Employee of the Month',     emoji: '🏅', tier: 'elite-plus' },
-  // Cert milestone badges — auto-awarded, not available for manual nomination
-  // Productivity milestone badges — 20 pts per 100 units
-  { key: 'large-pack-300',  label: 'Large Pack — 300 Units',   emoji: '📦', tier: 'productivity', points:  60 },
-  { key: 'large-pack-400',  label: 'Large Pack — 400 Units',   emoji: '📦', tier: 'productivity', points:  80 },
-  { key: 'large-pack-500',  label: 'Large Pack — 500 Units',   emoji: '📦', tier: 'productivity', points: 100 },
-  { key: 'small-pack-600',  label: 'Small Pack — 600 Units',   emoji: '📬', tier: 'productivity', points: 120 },
-  { key: 'small-pack-700',  label: 'Small Pack — 700 Units',   emoji: '📬', tier: 'productivity', points: 140 },
-  { key: 'small-pack-800',  label: 'Small Pack — 800 Units',   emoji: '📬', tier: 'productivity', points: 160 },
-  { key: 'small-pack-900',  label: 'Small Pack — 900 Units',   emoji: '📬', tier: 'productivity', points: 180 },
-  { key: 'small-pack-1000', label: 'Small Pack — 1000 Units',  emoji: '📬', tier: 'productivity', points: 200 },
-  { key: 'replen-pick-1000',label: 'Replen Pick — 1000 Units', emoji: '🔄', tier: 'productivity', points: 200 },
-  { key: 'op-pick-600',     label: 'OP Pick — 600 Units',      emoji: '🎯', tier: 'productivity', points: 120 },
-  // Cert milestone badges — auto-awarded, not available for manual nomination
+  // Cert milestone badges - auto-awarded, not available for manual nomination
+  // Productivity milestone badges - 20 pts per 100 units
+  { key: 'large-pack-300',  label: 'Large Pack - 300 Units',   emoji: '📦', tier: 'productivity', points:  60 },
+  { key: 'large-pack-400',  label: 'Large Pack - 400 Units',   emoji: '📦', tier: 'productivity', points:  80 },
+  { key: 'large-pack-500',  label: 'Large Pack - 500 Units',   emoji: '📦', tier: 'productivity', points: 100 },
+  { key: 'small-pack-600',  label: 'Small Pack - 600 Units',   emoji: '📬', tier: 'productivity', points: 120 },
+  { key: 'small-pack-700',  label: 'Small Pack - 700 Units',   emoji: '📬', tier: 'productivity', points: 140 },
+  { key: 'small-pack-800',  label: 'Small Pack - 800 Units',   emoji: '📬', tier: 'productivity', points: 160 },
+  { key: 'small-pack-900',  label: 'Small Pack - 900 Units',   emoji: '📬', tier: 'productivity', points: 180 },
+  { key: 'small-pack-1000', label: 'Small Pack - 1000 Units',  emoji: '📬', tier: 'productivity', points: 200 },
+  { key: 'replen-pick-1000',label: 'Replen Pick - 1000 Units', emoji: '🔄', tier: 'productivity', points: 200 },
+  { key: 'op-pick-600',     label: 'OP Pick - 600 Units',      emoji: '🎯', tier: 'productivity', points: 120 },
+  // Cert milestone badges - auto-awarded, not available for manual nomination
   { key: 'cert-25',  label: '25% Foundations Badge',  aliases: ['Training Starter','Foundations Badge'],  emoji: '📗', tier: 'milestone', autoOnly: true },
   { key: 'cert-50',  label: '50% Core Practitioner', aliases: ['Half Trained','Core Practitioner'],      emoji: '📘', tier: 'milestone', autoOnly: true },
   { key: 'cert-75',  label: '75% Advanced Operator', aliases: ['Well Trained','Advanced Operator'],      emoji: '📙', tier: 'milestone', autoOnly: true },
@@ -77,7 +77,7 @@ const FLAGS  = {
   'great-attitude':    { label: 'Great Attitude',    cls: 'bg-info text-dark',       icon: '😊' },
   'wants-to-learn':    { label: 'Wants to Learn',   cls: 'bg-primary',              icon: '📚' }
 };
-// Normalize flags — handles legacy single-string `flag` field and new array `flags` field
+// Normalize flags - handles legacy single-string `flag` field and new array `flags` field
 function getFlags(a) {
   if (Array.isArray(a.flags) && a.flags.length) return a.flags.filter(f => FLAGS[f]);
   if (a.flag && a.flag !== '') return [a.flag];
@@ -107,22 +107,22 @@ function shiftDate() {
 const ATTENDANCE_TYPES = [
   { key: 'ncns',                label: 'NCNS (No Call No Show)',                       points: 2.0, icon: 'fa-ban',           color: '#7c0000' },
   { key: 'call-out',            label: 'Call Out',                                    points: 1.0, icon: 'fa-phone-slash',   color: '#dc2626' },
-  { key: 'call-out-sick-half',  label: 'Call Out — Sick Time (covers ≥ half shift)',  points: 0.5, icon: 'fa-notes-medical', color: '#d97706' },
-  { key: 'call-out-sick-no',    label: 'Call Out — Sick Time (not enough for half)',  points: 1.0, icon: 'fa-notes-medical', color: '#dc2626' },
-  { key: 'call-out-sick-full',  label: 'Call Out — Sick Time Used (no point)',                    points: 0,   icon: 'fa-notes-medical',  color: '#059669' },
+  { key: 'call-out-sick-half',  label: 'Call Out - Sick Time (covers ≥ half shift)',  points: 0.5, icon: 'fa-notes-medical', color: '#d97706' },
+  { key: 'call-out-sick-no',    label: 'Call Out - Sick Time (not enough for half)',  points: 1.0, icon: 'fa-notes-medical', color: '#dc2626' },
+  { key: 'call-out-sick-full',  label: 'Call Out - Sick Time Used (no point)',                    points: 0,   icon: 'fa-notes-medical',  color: '#059669' },
   { key: 'call-out-vac-half',   label: 'Vacation Time (not enough to cover half shift)',           points: 1.0, icon: 'fa-umbrella-beach', color: '#dc2626' },
   { key: 'call-out-vac-full',   label: 'Vacation Time (not enough to cover full shift)',           points: 0.5, icon: 'fa-umbrella-beach', color: '#d97706' },
-  { key: 'call-out-pending',    label: 'Call Out — Pending (awaiting documentation)',              points: 0,   icon: 'fa-hourglass-half', color: '#d97706' },
-  { key: 'call-out-excused',    label: 'Call Out — Excused (documentation provided)',              points: 0,   icon: 'fa-file-medical',   color: '#059669' },
+  { key: 'call-out-pending',    label: 'Call Out - Pending (awaiting documentation)',              points: 0,   icon: 'fa-hourglass-half', color: '#d97706' },
+  { key: 'call-out-excused',    label: 'Call Out - Excused (documentation provided)',              points: 0,   icon: 'fa-file-medical',   color: '#059669' },
   { key: 'late-arrival',        label: 'Late Arrival',                                points: 0.5, icon: 'fa-clock',         color: '#d97706' },
   { key: 'late-arrival-half',   label: 'Late Arrival (after half shift)',              points: 1.0, icon: 'fa-clock',         color: '#dc2626' },
   { key: 'left-early-before',   label: 'Left Early (before half shift)',               points: 1.0, icon: 'fa-sign-out-alt',  color: '#dc2626' },
   { key: 'left-early-after',    label: 'Left Early (after half shift)',                points: 0.5, icon: 'fa-sign-out-alt',  color: '#d97706' },
-  { key: 'left-early-sick',     label: 'Early Out — Sick Time Used (no point)',        points: 0,   icon: 'fa-sign-out-alt',  color: '#059669' },
+  { key: 'left-early-sick',     label: 'Early Out - Sick Time Used (no point)',        points: 0,   icon: 'fa-sign-out-alt',  color: '#059669' },
   { key: 'fmla-pending',        label: 'Pending FMLA',                                 points: 0,   icon: 'fa-file-medical',   color: '#7c3aed' },
   { key: 'fmla-approved',       label: 'Approved FMLA',                                points: 0,   icon: 'fa-file-medical',   color: '#2563eb' },
   { key: 'bereavement',         label: 'Bereavement',                                  points: 0,   icon: 'fa-heart',          color: '#64748b' },
-  { key: 'doctors-note',        label: "Called Out — Doctor's Note",                   points: 0,   icon: 'fa-file-medical',   color: '#0891b2' },
+  { key: 'doctors-note',        label: "Called Out - Doctor's Note",                   points: 0,   icon: 'fa-file-medical',   color: '#0891b2' },
 ];
 const POINT_VALUES = {
   badge:  { standard: 25, productivity: 50, elite: 200, 'elite-plus': 300 },
@@ -326,7 +326,7 @@ let currentUser = null;
 let currentUserRole = 'viewer';
 let currentUserAssocId = null; // associate record ID matching the logged-in user
 
-// Role hierarchy helper — viewer < lead < supervisor < om < admin
+// Role hierarchy helper - viewer < lead < supervisor < om < admin
 const ROLE_TIERS = { viewer: 0, lead: 1, supervisor: 2, om: 3, admin: 4 };
 function roleAtLeast(minRole) {
   return (ROLE_TIERS[currentUserRole] ?? 0) >= (ROLE_TIERS[minRole] ?? 99);
@@ -348,7 +348,7 @@ onAuthStateChanged(auth, async (user) => {
   if (user) {
     currentUser = user;
 
-    // Check if this UID belongs to an associate (portal user) — force server read for fresh points
+    // Check if this UID belongs to an associate (portal user) - force server read for fresh points
     const assocQ = query(collection(db, 'associates'), where('viewerUid', '==', user.uid));
     const assocSnap = await getDocsFromServer(assocQ);
     if (!assocSnap.empty) {
@@ -545,7 +545,7 @@ window.loadAssociatePortal = async (assocId, assocData) => {
     badgesEl.innerHTML = approvedBadges.map(b => `<div class="ap-badge-chip">${BADGE_ICONS[b.badge]||'🏅'} ${b.badge}</div>`).join('');
   }
 
-  // Certs — stored as a single doc with cert names as keys
+  // Certs - stored as a single doc with cert names as keys
   const certsData = certsDoc.exists() ? certsDoc.data() : {};
   const certedList = CERTS.filter(c => {
     const key = c.replace(/\s+/g, '_');
@@ -573,7 +573,7 @@ window.loadAssociatePortal = async (assocId, assocData) => {
     .sort((a, b) => b.date?.localeCompare(a.date));
   renderApOneOnOnes(freshData);
 
-  // Time off — sort by startDate
+  // Time off - sort by startDate
   const timeOff = timeOffSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
   const toEl = document.getElementById('apTimeOff');
@@ -603,7 +603,7 @@ window.loadAssociatePortal = async (assocId, assocData) => {
     const anniv = new Date(start); anniv.setFullYear(now.getFullYear());
     if (anniv < now) anniv.setFullYear(now.getFullYear() + 1);
     const daysToAnniv = Math.ceil((anniv - now) / (1000*60*60*24));
-    if (daysToAnniv <= 90) upcomingItems.push({ icon:'🎂', label:'Work Anniversary', sub:`${anniv.toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${daysToAnniv} days away` });
+    if (daysToAnniv <= 90) upcomingItems.push({ icon:'🎂', label:'Work Anniversary', sub:`${anniv.toLocaleDateString('en-US',{month:'short',day:'numeric'})} - ${daysToAnniv} days away` });
   }
   // Add upcoming time off (next 90 days)
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate() + 90);
@@ -672,7 +672,7 @@ window.renderApAttendance = () => {
           <div style="width:6px;height:32px;border-radius:3px;background:${typeInfo?.color || '#64748b'};flex-shrink:0;"></div>
           <div style="flex:1;min-width:0;">
             <div style="font-size:0.82rem;font-weight:600;color:#1a2744;${expired ? 'text-decoration:line-through;' : ''}">${label}</div>
-            <div style="font-size:0.7rem;color:#94a3b8;">${a.date || ''}${a.note ? ' — ' + escapeHtml(a.note) : ''}</div>
+            <div style="font-size:0.7rem;color:#94a3b8;">${a.date || ''}${a.note ? ' - ' + escapeHtml(a.note) : ''}</div>
           </div>
           ${ptsStr}
         </div>`;
@@ -748,7 +748,7 @@ window.renderApOneOnOnes = (assocData) => {
     histEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">No completed meetings on record.</span>';
   } else {
     histEl.innerHTML = history.map(m => {
-      const d = m.date ? new Date(m.date + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+      const d = m.date ? new Date(m.date + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '-';
       return `<div style="padding:10px 0;border-bottom:1px solid #f1f5f9;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <span style="font-weight:600;font-size:0.82rem;color:#1a2744;">${d}</span>
@@ -790,7 +790,7 @@ window.submitAccessRequest = async () => {
     document.getElementById('reqEmail').value = '';
     document.getElementById('reqSuccess').classList.remove('d-none');
   } catch(e) {
-    alert('Could not submit — please contact your manager directly.');
+    alert('Could not submit - please contact your manager directly.');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Send Request'; }
   }
@@ -828,7 +828,7 @@ async function checkPendingNotifications() {
       : `${nameList[0]} and ${nameList.length - 1} others`;
 
     document.getElementById('notifText').textContent =
-      `${preview} requested a 1:1 meeting — ${count} pending request${count > 1 ? 's' : ''}`;
+      `${preview} requested a 1:1 meeting - ${count} pending request${count > 1 ? 's' : ''}`;
     document.getElementById('notifBanner').classList.remove('d-none');
   } catch(e) { /* non-critical */ }
 }
@@ -863,7 +863,7 @@ window.openRequestsInbox = async () => {
 
   el.innerHTML = requests.map(r => {
     const name = assocMap[r.associateId] || 'Unknown';
-    const date = r.requestedDate ? new Date(r.requestedDate).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) : '—';
+    const date = r.requestedDate ? new Date(r.requestedDate).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) : '-';
     const submitted = r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
     return `<div class="d-flex align-items-start gap-3 p-3 rounded mb-2" style="background:#fff8f1;border:1px solid #fed7aa;" id="inbox-${r.id}">
       <div style="flex:1;">
@@ -926,7 +926,7 @@ function loadDashboard() {
   showView('dashboard');
   detachAll();
   let _dashFirstLoad = true;
-  // Always default to Active-only view — inactive associates are hidden unless explicitly filtered
+  // Always default to Active-only view - inactive associates are hidden unless explicitly filtered
   const _fs = document.getElementById('filterStatus');
   if (_fs && !_fs.value) _fs.value = 'active';
 
@@ -939,7 +939,7 @@ function loadDashboard() {
       renderDashboard();
       if (_dashFirstLoad) {
         _dashFirstLoad = false;
-        renderMilestones(); // only on initial load — expensive subcollection reads
+        renderMilestones(); // only on initial load - expensive subcollection reads
         loadKanbanCounts(); // load once per dashboard visit; applyKanbanCounts() restores after redraws
       }
     });
@@ -1025,7 +1025,7 @@ function renderDashboard() {
 
   renderLeaderboard();
   // renderMilestones is called once on dashboard load, not on every snapshot re-fire
-  // (it has its own cache and is expensive — see loadDashboard)
+  // (it has its own cache and is expensive - see loadDashboard)
 
   const grid = document.getElementById('associateGrid');
   const leaderPositions = new Set(['ops-manager', 'supervisor', 'lead']);
@@ -1046,7 +1046,7 @@ function renderDashboard() {
     return '';
   };
 
-  // Card grid renderer — called once immediately, then again after attendance data loads
+  // Card grid renderer - called once immediately, then again after attendance data loads
   const renderCards = () => {
     if (!associates.length) return;
     grid.innerHTML = associates.map(a => {
@@ -1080,7 +1080,7 @@ function renderDashboard() {
                   <div class="assoc-name">${escapeHtml(a.name)}</div>
                   ${positionBadge(a.position)}
                 </div>
-                <div class="assoc-sub">${escapeHtml(a.role || '—')} · ${escapeHtml(a.shift || '—')}</div>
+                <div class="assoc-sub">${escapeHtml(a.role || '-')} · ${escapeHtml(a.shift || '-')}</div>
                 <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
                   <span class="badge ${statusColor}" style="font-size:0.65rem">${capitalize(a.status || 'active')}</span>
                   ${flagBadge}
@@ -1095,7 +1095,7 @@ function renderDashboard() {
             </div>
           </div>
           ${banner ? `<div style="background:${banner.bg};color:${banner.color};font-size:0.7rem;font-weight:700;text-align:center;padding:3px 0;${(a.position==='supervisor'||a.position==='lead'||a.position==='ops-manager')?'':'border-radius:0 0 10px 10px;'}letter-spacing:0.5px">${banner.label}</div>` : ''}
-          ${(a.position==='supervisor'||a.position==='lead'||a.position==='ops-manager') ? `<button class="kanban-btn" onclick="event.stopPropagation();openKanban('${a.id}','${escapeHtml(a.name)}')"><i class="fas fa-columns" style="font-size:0.7rem"></i>Daily Board<span class="kb-count" id="kb-count-${a.id}">—</span></button>` : ''}
+          ${(a.position==='supervisor'||a.position==='lead'||a.position==='ops-manager') ? `<button class="kanban-btn" onclick="event.stopPropagation();openKanban('${a.id}','${escapeHtml(a.name)}')"><i class="fas fa-columns" style="font-size:0.7rem"></i>Daily Board<span class="kb-count" id="kb-count-${a.id}">-</span></button>` : ''}
         </div>
       </div>`;
     }).join('');
@@ -1104,7 +1104,7 @@ function renderDashboard() {
   renderCards(); // Initial render
   applyKanbanCounts(); // restore cached counts immediately (zero reads)
 
-  // Load today's attendance stats (cached — only hits Firestore when stale or after att change)
+  // Load today's attendance stats (cached - only hits Firestore when stale or after att change)
   loadTodayAttendanceStats().then(() => applyAttendanceStats(activeAll, activeAssoc));
 }
 window.renderDashboard = renderDashboard;
@@ -1189,7 +1189,7 @@ async function renderMilestones() {
     }
   });
 
-  // ── Point expirations — all upcoming dates from associate doc (free, in memory) ──
+  // ── Point expirations - all upcoming dates from associate doc (free, in memory) ──
   allAssociates.filter(a => a.status === 'active').forEach(a => {
     const dates = a.ptExpiryDates?.length ? a.ptExpiryDates : (a.nextPointExpiry ? [a.nextPointExpiry] : []);
     dates.forEach(dateStr => {
@@ -1204,7 +1204,7 @@ async function renderMilestones() {
     });
   });
 
-  // ── Attendance point expirations — all upcoming dates from associate doc (free, in memory) ──
+  // ── Attendance point expirations - all upcoming dates from associate doc (free, in memory) ──
   allAssociates.filter(a => a.status === 'active').forEach(a => {
     const dates = a.attExpiryDates?.length ? a.attExpiryDates : (a.nextAttExpiry ? [a.nextAttExpiry] : []);
     dates.forEach(dateStr => {
@@ -1219,7 +1219,7 @@ async function renderMilestones() {
     });
   });
 
-  // ── Time Off — still Firestore but cached ────────────────────────────
+  // ── Time Off - still Firestore but cached ────────────────────────────
   let fsEvents = getCached('milestones_firestore');
   if (!fsEvents) {
     fsEvents = [];
@@ -1302,8 +1302,8 @@ function renderLeaders() {
       <div class="leader-avatar ${avatarCls}">${initials}</div>
       <div class="leader-name">${escapeHtml(a.name)}</div>
       <div class="leader-pos"><i class="fas ${icon} me-1"></i>${label}</div>
-      <div class="leader-shift">${escapeHtml(a.shift || '—')} Shift</div>
-      ${(currentUserRole === 'admin' || a.id === currentUserAssocId) ? `<button class="kanban-btn" onclick="event.stopPropagation();openKanban('${a.id}','${escapeHtml(a.name)}')"><i class="fas fa-columns" style="font-size:0.65rem"></i>Board<span class="kb-count" id="kb-count-${a.id}">—</span></button>` : ''}
+      <div class="leader-shift">${escapeHtml(a.shift || '-')} Shift</div>
+      ${(currentUserRole === 'admin' || a.id === currentUserAssocId) ? `<button class="kanban-btn" onclick="event.stopPropagation();openKanban('${a.id}','${escapeHtml(a.name)}')"><i class="fas fa-columns" style="font-size:0.65rem"></i>Board<span class="kb-count" id="kb-count-${a.id}">-</span></button>` : ''}
       ${banner ? `<div style="display:inline-block;background:${banner.color};color:#fff;font-size:0.65rem;font-weight:700;padding:2px 10px;border-radius:20px;letter-spacing:0.4px;margin-top:6px;">${banner.label}</div>` : ''}
     </div>`;
   }).join('');
@@ -1416,12 +1416,12 @@ window.openProfile = async (id) => {
 
   document.getElementById('profileEditBtn').onclick = () => openEditAssociate(id, a);
   document.getElementById('profileFlagBtn').classList.toggle('d-none', !canEdit);
-  // Board button — show for leadership positions
+  // Board button - show for leadership positions
   const isLeadership = a.position === 'supervisor' || a.position === 'lead' || a.position === 'ops-manager';
   const canSeeBoard = isLeadership && (currentUserRole === 'admin' || id === currentUserAssocId);
   const boardBtn = document.getElementById('profileBoardBtn');
   boardBtn.classList.toggle('d-none', !canSeeBoard);
-  // Corrective button — show for supervisors and above
+  // Corrective button - show for supervisors and above
   const correctiveBtn = document.getElementById('profileCorrectiveBtn');
   if (correctiveBtn) correctiveBtn.classList.toggle('d-none', !roleAtLeast('supervisor'));
   if (isLeadership) {
@@ -1510,12 +1510,12 @@ window.exportToClaude = async () => {
   out += `Total: ${engPts > 0 ? '+' : ''}${engPts} points\n`;
 
   out += `\n=== ATTENDANCE ===\n`;
-  out += `Attendance Points: ${attPts} — Policy Status: ${policy}\n`;
+  out += `Attendance Points: ${attPts} - Policy Status: ${policy}\n`;
   if (lastAttendance && lastAttendance.length) {
     out += `Events (${lastAttendance.length} total):\n`;
     [...lastAttendance].sort((a,b) => new Date(b.date)-new Date(a.date)).forEach(e => {
       const info = attTypeInfo(e.type);
-      out += `  • ${e.date} — ${info.label} (+${e.points} pts)${e.expired ? ' [expired]' : ''}${e.note ? ` — "${e.note}"` : ''}\n`;
+      out += `  • ${e.date} - ${info.label} (+${e.points} pts)${e.expired ? ' [expired]' : ''}${e.note ? ` - "${e.note}"` : ''}\n`;
     });
   } else { out += `No attendance events on record.\n`; }
 
@@ -1533,7 +1533,7 @@ window.exportToClaude = async () => {
   out += `\n=== ACHIEVEMENT BADGES ===\n`;
   const approved = lastBadges.filter(b => b.status === 'approved');
   if (approved.length) {
-    approved.forEach(b => { const dateField = b.approvedAt || b.awardedAt; out += `  • ${b.badge}${b.reason ? ` — "${b.reason}"` : ''}${dateField ? ` (approved ${new Date(dateField).toLocaleDateString()})` : ''}${b.approvedBy ? ` by ${b.approvedBy}` : ''}\n`; });
+    approved.forEach(b => { const dateField = b.approvedAt || b.awardedAt; out += `  • ${b.badge}${b.reason ? ` - "${b.reason}"` : ''}${dateField ? ` (approved ${new Date(dateField).toLocaleDateString()})` : ''}${b.approvedBy ? ` by ${b.approvedBy}` : ''}\n`; });
   } else { out += `No approved badges.\n`; }
   const pending = lastBadges.filter(b => b.status === 'pending');
   if (pending.length) out += `Pending approval: ${pending.map(b=>b.badge).join(', ')}\n`;
@@ -1544,7 +1544,7 @@ window.exportToClaude = async () => {
     if (!notesSnap.empty) {
       const notes = notesSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
       notes.forEach(n => {
-        out += `  [${n.type}] ${n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''} — by ${n.author||'Unknown'}:\n`;
+        out += `  [${n.type}] ${n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''} - by ${n.author||'Unknown'}:\n`;
         out += `    "${n.text}"${n.link ? ` (${n.link})` : ''}\n`;
       });
     } else { out += `No manager notes.\n`; }
@@ -1556,7 +1556,7 @@ window.exportToClaude = async () => {
     if (!snapSnap.empty) {
       const snaps = snapSnap.docs.map(d=>d.data()).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,10);
       snaps.forEach(s => {
-        out += `  ${s.date} — UPH: ${s.uph}${s.unitsCompleted!=null?`, Units: ${s.unitsCompleted}`:''}${s.role?`, Role: ${s.role}`:''}${s.onPace?`, On Pace: ${s.onPace}`:''}\n`;
+        out += `  ${s.date} - UPH: ${s.uph}${s.unitsCompleted!=null?`, Units: ${s.unitsCompleted}`:''}${s.role?`, Role: ${s.role}`:''}${s.onPace?`, On Pace: ${s.onPace}`:''}\n`;
       });
     } else { out += `No shift snapshots.\n`; }
   } catch(e) { out += `(Snapshots unavailable)\n`; }
@@ -1567,7 +1567,7 @@ window.exportToClaude = async () => {
       const wSnap = await getDocs(collection(db, 'watchnotes', currentAssociateId, 'entries'));
       if (!wSnap.empty) {
         const notes = Object.values(wSnap.data()).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-        notes.forEach(n => out += `  [${n.category||'General'}] ${n.createdAt?new Date(n.createdAt).toLocaleDateString():''} — ${n.author||'Unknown'}: "${n.text}"\n`);
+        notes.forEach(n => out += `  [${n.category||'General'}] ${n.createdAt?new Date(n.createdAt).toLocaleDateString():''} - ${n.author||'Unknown'}: "${n.text}"\n`);
       } else { out += `No watch notes.\n`; }
     } catch(e) { out += `(Watch notes unavailable)\n`; }
   }
@@ -1805,7 +1805,7 @@ window.saveNote = async () => {
   const text = document.getElementById('noteText').value.trim();
   const type = document.getElementById('noteType').value;
   if (!text) { alert('Note text is required'); return; }
-  // Capture baseline points NOW — before any awaits
+  // Capture baseline points NOW - before any awaits
   const _basePoints = Number(allAssociates.find(a => a.id === currentAssociateId)?.points) || 0;
 
   const btn = document.getElementById('saveNoteBtn');
@@ -1815,7 +1815,7 @@ window.saveNote = async () => {
     let screenshotData = null;
     if (type === 'Performance' && window._pendingScreenshotData) {
       btn.textContent = 'Compressing…';
-      // _pendingScreenshotData is already a data URL — compress via canvas
+      // _pendingScreenshotData is already a data URL - compress via canvas
       screenshotData = await new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
@@ -1845,7 +1845,7 @@ window.saveNote = async () => {
     if (pts !== 0) {
       await updateDoc(doc(db, 'associates', currentAssociateId), { points: increment(pts) });
       await logPoints(currentAssociateId, 'Note', `${type} note added`, pts);
-      // Update points UI immediately — immune to onSnapshot race
+      // Update points UI immediately - immune to onSnapshot race
       const newPts = _basePoints + pts;
       const ptsStat = document.getElementById('statPoints');
       if (ptsStat) { ptsStat.textContent = (newPts > 0 ? '+' : '') + newPts; ptsStat.style.color = pointsColor(newPts); }
@@ -1922,7 +1922,7 @@ function renderCreds(creds) {
         <button class="btn btn-sm btn-link p-0 ms-1" style="font-size:0.75rem;color:#6366f1" onclick="copyToClipboard('${escapeHtml(c.password)}',this)" title="Copy"><i class="fas fa-copy"></i></button>
       </div>` : ''}
       ${c.notes ? `<div class="cred-row"><span class="cred-label">Notes</span><span class="text-muted">${escapeHtml(c.notes)}</span></div>` : ''}
-      <div class="cred-meta">Added by ${escapeHtml(c.addedBy || '—')} · ${formatDate(c.createdAt)}</div>
+      <div class="cred-meta">Added by ${escapeHtml(c.addedBy || '-')} · ${formatDate(c.createdAt)}</div>
     </div>`).join('');
 
   // OM and Admin can delete credentials
@@ -1965,7 +1965,7 @@ window.copyToClipboard = async (text, btn) => {
     const orig = btn.innerHTML;
     btn.innerHTML = '<i class="fas fa-check" style="color:#16a34a"></i>';
     setTimeout(() => { btn.innerHTML = orig; }, 1500);
-  } catch { alert('Copy failed — please copy manually.'); }
+  } catch { alert('Copy failed - please copy manually.'); }
 };
 
 window.saveCred = async () => {
@@ -2028,7 +2028,7 @@ function renderWatchNotes(notes) {
       <span class="watch-category-badge"><i class="fas fa-tag me-1"></i>${escapeHtml(n.category || 'General')}</span>
       <div class="watch-note-text">${escapeHtml(n.text)}</div>
       <div class="d-flex justify-content-between align-items-center">
-        <div class="watch-note-meta"><i class="fas fa-user-shield me-1"></i>${escapeHtml(n.author || '—')} · ${formatDate(n.createdAt)}</div>
+        <div class="watch-note-meta"><i class="fas fa-user-shield me-1"></i>${escapeHtml(n.author || '-')} · ${formatDate(n.createdAt)}</div>
         ${roleAtLeast('admin') ? `<button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deleteWatchNote('${n.id}')"><i class="fas fa-trash-alt"></i></button>` : ''}
       </div>
     </div>`).join('');
@@ -2101,10 +2101,10 @@ function renderProgressNotes(notes, goalId, canManage) {
     const d = n.date ? new Date(n.date) : null;
     const dateStr = d
       ? d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) + ' ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})
-      : '—';
+      : '-';
     return '<div class="progress-note-entry">' +
       '<div class="d-flex justify-content-between align-items-center">' +
-        '<div class="progress-note-date">' + dateStr + ' · ' + escapeHtml(n.addedBy||'—') + '</div>' +
+        '<div class="progress-note-date">' + dateStr + ' · ' + escapeHtml(n.addedBy||'-') + '</div>' +
         (roleAtLeast('admin') ? '<button class="btn btn-link p-0 text-danger" style="font-size:0.65rem;line-height:1" onclick="deleteProgressNote(\'' + goalId + '\',\'' + n.id + '\')">remove</button>' : '') +
       '</div>' +
       '<div class="progress-note-text">' + escapeHtml(n.text) + '</div>' +
@@ -2168,7 +2168,7 @@ function renderGoals(goals) {
       '<div class="goal-title mt-1">' + escapeHtml(g.title) + '</div>' +
       dueLine +
       notesLine +
-      '<div class="goal-meta mt-1"><i class="fas fa-user me-1"></i>Set by ' + escapeHtml(g.createdBy||'—') + ' · ' + formatDate(g.createdAt) + '</div>' +
+      '<div class="goal-meta mt-1"><i class="fas fa-user me-1"></i>Set by ' + escapeHtml(g.createdBy||'-') + ' · ' + formatDate(g.createdAt) + '</div>' +
       '<div class="mt-2 pt-1" style="border-top:1px solid #e2e8f0">' +
         '<button class="btn btn-link p-0" style="font-size:0.72rem;color:#64748b;text-decoration:none" onclick="toggleGoalProgress(\'' + g.id + '\')">' +
           '<i class="fas fa-history me-1"></i>' + pNotes.length + ' progress note' + (pNotes.length !== 1 ? 's' : '') +
@@ -2195,7 +2195,7 @@ window.addProgressNote = async (goalId) => {
     id: Date.now().toString(),
     text,
     date: new Date().toISOString(),
-    addedBy: currentUser?.email || '—'
+    addedBy: currentUser?.email || '-'
   };
   try {
     const goalRef = doc(db, 'goals', currentAssociateId, 'entries', goalId);
@@ -2213,7 +2213,7 @@ window.addProgressNote = async (goalId) => {
     // update toggle button count
     const toggleBtn = document.querySelector('[onclick="toggleGoalProgress(\'' + goalId + '\')"]');
     if (toggleBtn) toggleBtn.innerHTML = '<i class="fas fa-history me-1"></i>' + updated.length + ' progress note' + (updated.length !== 1 ? 's' : '');
-  } catch(e) { alert('Could not save note — ' + e.message); }
+  } catch(e) { alert('Could not save note - ' + e.message); }
 };
 
 window.deleteProgressNote = async (goalId, noteId) => {
@@ -2232,7 +2232,7 @@ window.deleteProgressNote = async (goalId, noteId) => {
     if (logEl) logEl.innerHTML = renderProgressNotes(updated, goalId, canManage);
     const toggleBtn = document.querySelector('[onclick="toggleGoalProgress(\'' + goalId + '\')"]');
     if (toggleBtn) toggleBtn.innerHTML = '<i class="fas fa-history me-1"></i>' + updated.length + ' progress note' + (updated.length !== 1 ? 's' : '');
-  } catch(e) { alert('Could not remove note — ' + e.message); }
+  } catch(e) { alert('Could not remove note - ' + e.message); }
 };
 
 window.toggleGoalsPanel = () => {
@@ -2263,13 +2263,13 @@ window.saveGoal = async () => {
     status:   'Active',
     progressNotes: [],
     createdAt: new Date().toISOString(),
-    createdBy: currentUser?.email || '—'
+    createdBy: currentUser?.email || '-'
   };
   try {
     await addDoc(collection(db, 'goals', currentAssociateId, 'entries'), data);
     bootstrap.Modal.getInstance(document.getElementById('goalModal')).hide();
     listenGoals(currentAssociateId);
-  } catch(e) { alert('Could not save — ' + e.message); }
+  } catch(e) { alert('Could not save - ' + e.message); }
   finally    { btn.disabled = false; }
 };
 
@@ -2305,7 +2305,7 @@ window.confirmExit = async () => {
     _pendingAssocSave = null;
     const fs = document.getElementById('filterStatus');
     if (fs && fs.value !== 'active') { fs.value = 'active'; renderDashboard(); }
-  } catch(e) { alert('Could not save — ' + e.message); }
+  } catch(e) { alert('Could not save - ' + e.message); }
   finally    { btn.disabled = false; }
 };
 
@@ -2335,7 +2335,7 @@ window.saveEditSeparation = async () => {
     if (a) Object.assign(a, data);
     bootstrap.Modal.getInstance(document.getElementById('editSeparationModal')).hide();
     renderTurnoverView();
-  } catch(e) { alert('Could not save — ' + e.message); }
+  } catch(e) { alert('Could not save - ' + e.message); }
   finally    { btn.disabled = false; }
 };
 
@@ -2395,7 +2395,7 @@ function renderTurnoverView() {
       </div>
       <div class="col-6 col-md-3">
         <div class="admin-card text-center py-3">
-          <div style="font-size:2rem;font-weight:800;color:#d97706">${avgTenure !== null ? avgTenure + ' mo' : '—'}</div>
+          <div style="font-size:2rem;font-weight:800;color:#d97706">${avgTenure !== null ? avgTenure + ' mo' : '-'}</div>
           <div class="small text-muted fw-semibold">Avg Tenure</div>
         </div>
       </div>
@@ -2416,15 +2416,15 @@ function renderTurnoverView() {
               const t = tenureMonths(a);
               const reason = a.exitReason || (a.status === 'resigned' ? 'Resigned' : 'Terminated');
               const isRes  = reason === 'Resigned';
-              const lastDay = a.exitLastDay ? new Date(a.exitLastDay+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+              const lastDay = a.exitLastDay ? new Date(a.exitLastDay+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '-';
               return '<tr>' +
                 '<td class="fw-semibold">' + escapeHtml(a.name) + '</td>' +
                 '<td><span class="badge" style="background:' + (isRes?'#dbeafe':'#fee2e2') + ';color:' + (isRes?'#1d4ed8':'#b91c1c') + '">' + escapeHtml(reason) + '</span></td>' +
                 '<td>' + lastDay + '</td>' +
-                '<td class="text-muted">' + escapeHtml(a.department||'—') + '</td>' +
-                '<td class="text-muted">' + escapeHtml(a.shift||'—') + '</td>' +
-                '<td class="text-muted">' + (t !== null ? t+' mo' : '—') + '</td>' +
-                '<td class="text-muted" style="max-width:180px;white-space:normal">' + escapeHtml(a.exitNotes||'—') + '</td>' +
+                '<td class="text-muted">' + escapeHtml(a.department||'-') + '</td>' +
+                '<td class="text-muted">' + escapeHtml(a.shift||'-') + '</td>' +
+                '<td class="text-muted">' + (t !== null ? t+' mo' : '-') + '</td>' +
+                '<td class="text-muted" style="max-width:180px;white-space:normal">' + escapeHtml(a.exitNotes||'-') + '</td>' +
                 (roleAtLeast('admin') ? '<td><button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:0.72rem" onclick="openEditSeparation(\'' + a.id + '\')"><i class="fas fa-pencil-alt me-1"></i>Edit</button></td>' : '<td></td>') +
                 '</tr>';
             }).join('')}
@@ -2515,7 +2515,7 @@ function renderBadges(badges) {
           <div class="badge-date">${formatDate(b.approvedAt)}</div>
         </div>`;
       } else {
-        const tooltip = [`Pending — nominated by ${b.nominatedBy||'?'}`, b.reason ? `\n"${b.reason}"` : ''].join('');
+        const tooltip = [`Pending - nominated by ${b.nominatedBy||'?'}`, b.reason ? `\n"${b.reason}"` : ''].join('');
         return `<div class="badge-card badge-card-pending-view" title="${escapeHtml(tooltip)}">
           <div class="badge-emoji">${def.emoji}</div>
           <div class="badge-label" style="color:#6b7280">${escapeHtml(def.label)}</div>
@@ -2579,7 +2579,7 @@ window.saveBadgeNomination = async () => {
   });
   bootstrap.Modal.getInstance(document.getElementById('badgeModal')).hide();
   listenBadges(currentAssociateId);
-  alert(`"${badge}" nomination submitted — an admin will review it.`);
+  alert(`"${badge}" nomination submitted - an admin will review it.`);
 };
 window.approveBadge = async (associateId, badgeId) => {
   const badgeSnap = await getDoc(doc(db, 'badges', associateId, 'entries', badgeId));
@@ -2600,7 +2600,7 @@ window.approveBadge = async (associateId, badgeId) => {
   await updateDoc(doc(db, 'associates', associateId), { points: increment(pts) });
   await logPoints(associateId, 'Badge', `Badge approved: ${badgeLabel}`, pts);
 
-  // Read the true post-write value directly from Firestore — avoids all stale cache / onSnapshot races
+  // Read the true post-write value directly from Firestore - avoids all stale cache / onSnapshot races
   const freshSnap = await getDoc(doc(db, 'associates', associateId));
   const truePts = freshSnap.exists() ? (Number(freshSnap.data().points) || 0) : 0;
   const cachedAssoc = allAssociates.find(a => a.id === associateId);
@@ -2660,8 +2660,8 @@ function renderCerts(certs) {
     const tip      = isCertified
       ? `Certified ${formatDate(held.certifiedAt)} by ${escapeHtml(held.certifiedBy || '?')}`
       : isTraining
-        ? `In Training — added ${formatDate(held.certifiedAt)} by ${escapeHtml(held.certifiedBy || '?')}`
-        : 'Not certified — click to update';
+        ? `In Training - added ${formatDate(held.certifiedAt)} by ${escapeHtml(held.certifiedBy || '?')}`
+        : 'Not certified - click to update';
     return `<span class="chip ${chipCls}"
       title="${tip}"
       ${canEdit ? `onclick="openCertModal('${key}', '${cert.replace(/'/g,"\\'")}')"` : ''}
@@ -2681,7 +2681,7 @@ window.openCertModal = async (key, label) => {
   const snap = await getDoc(doc(db, 'certs', currentAssociateId));
   _certModalExisting = snap.exists() ? snap.data() : null;
 
-  // _certModalExisting is the whole cert doc — the specific cert is nested under its key
+  // _certModalExisting is the whole cert doc - the specific cert is nested under its key
   const thisCert = _certModalExisting?.[key] || null;
   const status = thisCert ? (thisCert.status || 'certified') : null;
   document.getElementById('certModalTitle').textContent = label;
@@ -2695,7 +2695,7 @@ window.openCertModal = async (key, label) => {
 window.setCertStatus = async (newStatus) => {
   bootstrap.Modal.getInstance(document.getElementById('certModal'))?.hide();
 
-  // Capture current points NOW — before any awaits, before any onSnapshot can fire and
+  // Capture current points NOW - before any awaits, before any onSnapshot can fire and
   // rebuild allAssociates with stale Firestore cache data (which lacks the incremented value).
   const _basePoints = Number(allAssociates.find(a => a.id === currentAssociateId)?.points) || 0;
 
@@ -2726,7 +2726,7 @@ window.setCertStatus = async (newStatus) => {
     }
   }
 
-  // Update points UI using captured baseline + delta — immune to onSnapshot rebuilds
+  // Update points UI using captured baseline + delta - immune to onSnapshot rebuilds
   if (pointsDelta !== 0) {
     const newPts = _basePoints + pointsDelta;
     const ptsStat = document.getElementById('statPoints');
@@ -2742,7 +2742,7 @@ window.setCertStatus = async (newStatus) => {
   const certCountEl = document.getElementById('statCertCount');
   if (certCountEl) certCountEl.textContent = Object.keys(updatedCertData).length;
 
-  // Check cert milestone badges — wrapped in try-catch so any error never blocks the UI
+  // Check cert milestone badges - wrapped in try-catch so any error never blocks the UI
   if (newStatus !== 'remove') {
     try {
       await checkCertMilestones(currentAssociateId, displayName);
@@ -2755,7 +2755,7 @@ const CERT_MILESTONES = [
   { pct: 25,  key: 'cert-25',  label: '25% Foundations Badge',  emoji: '📗', pts: 0,   desc: '25% of certifications earned' },
   { pct: 50,  key: 'cert-50',  label: '50% Core Practitioner', emoji: '📘', pts: 0,   desc: '50% of certifications earned' },
   { pct: 75,  key: 'cert-75',  label: '75% Advanced Operator', emoji: '📙', pts: 0,   desc: '75% of certifications earned' },
-  { pct: 100, key: 'cert-100', label: '100% Master Certified', emoji: '🏆', pts: 500, desc: '100% of certifications earned — Master Certified!' },
+  { pct: 100, key: 'cert-100', label: '100% Master Certified', emoji: '🏆', pts: 500, desc: '100% of certifications earned - Master Certified!' },
 ];
 
 async function checkCertMilestones(assocId, awardedBy) {
@@ -2785,7 +2785,7 @@ async function checkCertMilestones(assocId, awardedBy) {
       });
       if (m.pts > 0) {
         await updateDoc(doc(db, 'associates', assocId), { points: increment(m.pts) });
-        await logPoints(assocId, 'Milestone', `${m.emoji} ${m.label} — ${m.desc}`, m.pts);
+        await logPoints(assocId, 'Milestone', `${m.emoji} ${m.label} - ${m.desc}`, m.pts);
       }
       // Toast notification
       showCertMilestoneToast(m);
@@ -2808,7 +2808,7 @@ function showCertMilestoneToast(m) {
 function populateReportsTo(selectedId) {
   const sel = document.getElementById('assocReportsTo');
   if (!sel) return;
-  sel.innerHTML = '<option value="">— Select Supervisor / Lead —</option>';
+  sel.innerHTML = '<option value="">- Select Supervisor / Lead -</option>';
   const leaders = allAssociates
     .filter(a => (a.position === 'supervisor' || a.position === 'lead' || a.position === 'ops-manager') && a.status === 'active')
     .sort((a, b) => {
@@ -2836,7 +2836,7 @@ window.openAddAssociate = () => {
 window.openEditAssociate = (id, data) => {
   document.getElementById('assocModalTitle').textContent = 'Edit Associate';
   document.getElementById('assocId').value = id;
-  // Show Delete button for admins only — always reset its state first
+  // Show Delete button for admins only - always reset its state first
   const delBtn = document.getElementById('deleteAssocBtn');
   delBtn.disabled = false;
   delBtn.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Delete';
@@ -2952,7 +2952,7 @@ window.exportProfilePDF = async () => {
   notesSnap.forEach(d => notes.push(d.data()));
   notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-  // Gather badges — support both status:'approved' (new) and approved:true (old milestone format)
+  // Gather badges - support both status:'approved' (new) and approved:true (old milestone format)
   const badgesSnap = await getDocs(collection(db, 'badges', currentAssociateId, 'entries'));
   const badges = [];
   badgesSnap.forEach(d => {
@@ -2993,7 +2993,7 @@ window.exportProfilePDF = async () => {
   const expiringTotal = expiringEntries.reduce((s, e) => s + (e.pts || 0), 0);
 
   const pts = assoc.points || 0;
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${assoc.name} — Profile</title>
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${assoc.name} - Profile</title>
   <style>
     body { font-family: Arial, sans-serif; color: #1f2937; padding: 32px; max-width: 800px; margin: 0 auto; }
     h1 { color: #1a2744; border-bottom: 3px solid #f97316; padding-bottom: 8px; }
@@ -3028,7 +3028,7 @@ window.exportProfilePDF = async () => {
   <div class="expiry-box">
     <h3>⚠ Points Expiring in the Next 30 Days</h3>
     ${expiringEntries.map(e => `<div class="expiry-row">
-      <span>${e.reason || e.type || '—'}</span>
+      <span>${e.reason || e.type || '-'}</span>
       <span style="display:flex;gap:16px">
         <span style="color:#6b7280">Expires ${e.expiryDate.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>
         <span style="color:#c2410c;font-weight:600">−${e.pts} pts</span>
@@ -3040,9 +3040,9 @@ window.exportProfilePDF = async () => {
   ${badges.length ? '<h2>Achievement Badges</h2>' + badges.map(b => {
     const allDefs = [...BADGES, ...CERT_MILESTONES.map(m => ({ key: m.key, label: m.label, emoji: m.emoji }))];
     const def = allDefs.find(d => d.key === b.badge || d.label === b.badge);
-    const label = def ? (def.emoji + ' ' + def.label) : (b.badge || '—');
-    const dateStr = b._displayDate ? new Date(b._displayDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-    return '<span class="badge-item">' + label + ' — ' + dateStr + '</span>';
+    const label = def ? (def.emoji + ' ' + def.label) : (b.badge || '-');
+    const dateStr = b._displayDate ? new Date(b._displayDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-';
+    return '<span class="badge-item">' + label + ' - ' + dateStr + '</span>';
   }).join('<br>') : ''}
   ${notes.length ? `<h2>Manager Notes (${notes.length})</h2>${notes.map(n => `<div class="note"><div class="note-type">${n.type || 'General'}</div><div>${n.text}</div><div class="note-meta">${n.author} · ${new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div></div>`).join('')}` : ''}
   <h2>Attendance Log (${attEntries.length} event${attEntries.length !== 1 ? 's' : ''})</h2>
@@ -3054,7 +3054,7 @@ window.exportProfilePDF = async () => {
   ${attEntries.length ? attEntries.map(e => {
     const info = ATTENDANCE_TYPES.find(t => t.key === e.type) || { label: e.type };
     const ptsStr = (e.points || 0) === 0 ? '<span class="att-pts-zero">0 pts</span>' : `<span class="att-pts-pos">+${e.points} pts</span>`;
-    return `<div class="att-row"><span>${new Date(e.date.length===10?e.date+'T00:00:00':e.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} — ${info.label}${e.note ? ' <em style="color:#9ca3af">(' + e.note + ')</em>' : ''}</span>${ptsStr}</div>`;
+    return `<div class="att-row"><span>${new Date(e.date.length===10?e.date+'T00:00:00':e.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} - ${info.label}${e.note ? ' <em style="color:#9ca3af">(' + e.note + ')</em>' : ''}</span>${ptsStr}</div>`;
   }).join('') : '<div style="color:#9ca3af;font-size:0.85rem">No attendance events recorded.</div>'}
   <div style="margin-top:32px;font-size:0.72rem;color:#9ca3af">Exported ${new Date().toLocaleString()} · Operational Health Tracker</div>
   </body></html>`;
@@ -3102,7 +3102,7 @@ window.exportForClaude = async () => {
         const snaps = snapSnap.docs.map(d=>d.data()).sort((a, b) => new Date(b.date) - new Date(a.date));
         out += `\n  SHIFT SNAPSHOTS (${snaps.length} total):\n`;
         snaps.slice(0, 10).forEach(s => {
-          out += `    ${s.date}: UPH ${s.uph ?? '—'}, Units ${s.unitsCompleted ?? '—'}, Role ${s.role || '—'}, On Pace: ${s.onPace || '—'}\n`;
+          out += `    ${s.date}: UPH ${s.uph ?? '-'}, Units ${s.unitsCompleted ?? '-'}, Role ${s.role || '-'}, On Pace: ${s.onPace || '-'}\n`;
         });
       }
 
@@ -3111,7 +3111,7 @@ window.exportForClaude = async () => {
         const notes = notesSnap.docs.map(d=>d.data()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         out += `\n  MANAGER NOTES (${notes.length} total):\n`;
         notes.forEach(n => {
-          out += `    [${n.type}] ${formatDateTime(n.createdAt)} — ${n.author || 'Unknown'}\n`;
+          out += `    [${n.type}] ${formatDateTime(n.createdAt)} - ${n.author || 'Unknown'}\n`;
           out += `    "${n.text}"\n`;
           if (n.attachmentUrl) out += `    Attachment: ${n.attachmentUrl}\n`;
           out += '\n';
@@ -3231,8 +3231,8 @@ function renderMatrix() {
     recs += `<div class="rec-card rec-critical">
       <div class="rec-icon">🚨</div>
       <div class="rec-body">
-        <div class="rec-title">Critical gaps — immediate training needed</div>
-        <div class="rec-detail">${names} — fewer than 20% of your team is certified. A single call-out creates a coverage risk.</div>
+        <div class="rec-title">Critical gaps - immediate training needed</div>
+        <div class="rec-detail">${names} - fewer than 20% of your team is certified. A single call-out creates a coverage risk.</div>
       </div>
     </div>`;
   }
@@ -3241,8 +3241,8 @@ function renderMatrix() {
     recs += `<div class="rec-card rec-warning">
       <div class="rec-icon">⚠️</div>
       <div class="rec-body">
-        <div class="rec-title">Low coverage — plan cross-training soon</div>
-        <div class="rec-detail">${names} — 20–40% coverage. Prioritize these in your next training cycle.</div>
+        <div class="rec-title">Low coverage - plan cross-training soon</div>
+        <div class="rec-detail">${names} - 20–40% coverage. Prioritize these in your next training cycle.</div>
       </div>
     </div>`;
   }
@@ -3252,7 +3252,7 @@ function renderMatrix() {
       <div class="rec-icon">✅</div>
       <div class="rec-body">
         <div class="rec-title">Well covered</div>
-        <div class="rec-detail">${names} — 75%+ of the team is certified. Maintain and consider mentorship opportunities.</div>
+        <div class="rec-detail">${names} - 75%+ of the team is certified. Maintain and consider mentorship opportunities.</div>
       </div>
     </div>`;
   }
@@ -3373,7 +3373,7 @@ window.updateAttFilterColor = async () => {
           ? `<div class="mt-1">` + issued.map(w => `
             <div class="d-flex align-items-center gap-2 mt-1" style="font-size:0.72rem;color:#374151">
               <i class="fas fa-check-circle" style="color:${tier.color}"></i>
-              <span>${new Date(w.issuedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} ${new Date(w.issuedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})} · ${escapeHtml(w.issuedBy||'—')}${w.notes?` · "${escapeHtml(w.notes)}"`:''}</span>
+              <span>${new Date(w.issuedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} ${new Date(w.issuedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})} · ${escapeHtml(w.issuedBy||'-')}${w.notes?` · "${escapeHtml(w.notes)}"`:''}</span>
               ${canDelete ? `<button class="btn btn-link text-danger p-0 ms-auto" style="font-size:0.7rem" onclick="window._delWarnTeam('${assocId}','${w.id}')"><i class="fas fa-times"></i></button>` : ''}
             </div>`).join('') + `</div>`
           : isActive ? `<div style="font-size:0.72rem;color:${tier.color};margin-top:4px"><i class="fas fa-exclamation-circle me-1"></i>Not yet issued</div>` : ''}
@@ -3598,7 +3598,7 @@ function renderWarnings(warnings) {
             ? `<span style="color:#6b7280;font-style:italic">Issued prior to dashboard</span>`
             : `<span style="color:#374151">Issued ${new Date(w.issuedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} at ${new Date(w.issuedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</span>`
           }
-          <span class="text-muted">· by ${escapeHtml(w.issuedBy || '—')}</span>
+          <span class="text-muted">· by ${escapeHtml(w.issuedBy || '-')}</span>
           ${w.notes && !w.preExisting ? `<span class="text-muted fst-italic">· "${escapeHtml(w.notes)}"</span>` : ''}
           ${roleAtLeast('supervisor') ? `<button class="btn btn-link text-danger p-0 ms-auto" style="font-size:0.7rem" onclick="deleteWarning('${w.id}')"><i class="fas fa-times"></i></button>` : ''}
         </div>`).join('') + `</div>` : (isActive ? `<div class="mt-1" style="font-size:0.73rem;color:${tier.color}"><i class="fas fa-exclamation-circle me-1"></i>Not yet issued.</div>` : '')}
@@ -3683,7 +3683,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
     return d;
   })();
   const issuedDate = _docDate.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
-  const schedule  = SHIFT_SCHEDULES[assoc.shift] || assoc.shift || '—';
+  const schedule  = SHIFT_SCHEDULES[assoc.shift] || assoc.shift || '-';
 
   const managerName = 'Hector Marron';
 
@@ -3710,7 +3710,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
     'documented-verbal': `Associate and manager discussed the attendance policy and current point total. Associate is expected to report to work as scheduled. Any future unexcused absences, tardiness, or early departures will result in further disciplinary action.`,
     'written-warning':   `Associate has previously received coaching regarding attendance. Associate must demonstrate immediate and sustained improvement. Failure to do so will result in a Final Warning or termination.`,
     'final-warning':     `Associate has received prior corrective action for attendance. This is the final opportunity to correct attendance behavior. Associate must have zero unexcused occurrences going forward to remain employed.`,
-    'termination':       `N/A — Employment has been terminated.`
+    'termination':       `N/A - Employment has been terminated.`
   };
 
   const cb = (checked) => checked
@@ -3722,7 +3722,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Employee Warning Notice — ${assoc.name}</title>
+<title>Employee Warning Notice - ${assoc.name}</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
   #page-wrap { max-width: 960px; margin: 0 auto; padding: 48px 72px; background:#fff; }
@@ -3958,7 +3958,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 (function(){
   // ── Expand overlay logic ──────────────────────────────────────────────
   var _currentSigRole = null;
-  // Full-resolution signature store — keyed by role, set on Done, cleared on Clear
+  // Full-resolution signature store - keyed by role, set on Done, cleared on Clear
   var _sigDataURLs = {};
 
   var expandCanvas = document.getElementById('sigExpandCanvas');
@@ -4017,7 +4017,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 
   window.doneExpandSig = function() {
     if (!_currentSigRole) return;
-    // Store full-resolution dataURL — this is what gets saved and printed
+    // Store full-resolution dataURL - this is what gets saved and printed
     _sigDataURLs[_currentSigRole] = expandCanvas.toDataURL('image/png');
     // Draw a downscaled thumbnail on the small preview canvas only
     var smallCanvas = document.getElementById('sig-' + _currentSigRole);
@@ -4132,34 +4132,34 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
 const GENERAL_CORRECTIVE_TYPES = [
   { key: 'boisterous',        label: 'Boisterous or Disruptive Activity in the Workplace',         short: 'Disruptive Activity',        icon: 'fa-volume-up',   color: '#dc2626', bg: '#fee2e2', offense: 'Boisterous or Disruptive Activity',
     section: '§4.5 / §5.3',
-    sectionDesc: 'Listed as a reasonable-suspicion indicator under §4.5 (Substance Abuse — boisterous, loud, or nonsensical behavior). §5.3 (Warehouse Safety Rules) separately prohibits running or horseplay in the warehouse.' },
+    sectionDesc: 'Listed as a reasonable-suspicion indicator under §4.5 (Substance Abuse - boisterous, loud, or nonsensical behavior). §5.3 (Warehouse Safety Rules) separately prohibits running or horseplay in the warehouse.' },
   { key: 'dress-code',        label: 'Dress Code Violation',                                        short: 'Dress Code',                 icon: 'fa-tshirt',      color: '#d97706', bg: '#fef3c7', offense: 'Dress Code',
     section: '§4.4',
-    sectionDesc: 'Dress Code and Personal Appearance Standards — covers acceptable and unacceptable attire, PPE-related footwear requirements, grooming standards, and the accommodation process for religious, disability, or ethnicity-related needs.' },
+    sectionDesc: 'Dress Code and Personal Appearance Standards - covers acceptable and unacceptable attire, PPE-related footwear requirements, grooming standards, and the accommodation process for religious, disability, or ethnicity-related needs.' },
   { key: 'insubordination',   label: 'Insubordination or Other Disrespectful Conduct',              short: 'Insubordination',            icon: 'fa-hand-paper',  color: '#7c3aed', bg: '#ede9fe', offense: 'Insubordination or Disrespectful Conduct',
     section: '§4.1 / §3.2',
     sectionDesc: '§4.1 (Work Rules) lists insubordinate behavior as unacceptable conduct subject to discipline. §3.2 (Unlawful Harassment) separately prohibits harassment, abuse, bullying, and disrespectful conduct toward employees.' },
-  { key: 'negligence',        label: 'Negligence or Improper Conduct — Property Damage',            short: 'Negligence / Damage',        icon: 'fa-tools',       color: '#b45309', bg: '#fef3c7', offense: 'Negligence or Property Damage',
+  { key: 'negligence',        label: 'Negligence or Improper Conduct - Property Damage',            short: 'Negligence / Damage',        icon: 'fa-tools',       color: '#b45309', bg: '#fef3c7', offense: 'Negligence or Property Damage',
     section: '§4.1',
     sectionDesc: '§4.1 (Work Rules) lists negligence or improper conduct leading to damage of Company-owned or customer-owned property as grounds for discipline up to and including termination.' },
   { key: 'electronic-devices',label: 'Personal Electronic Devices in the Warehouse',               short: 'Electronic Devices',         icon: 'fa-mobile-alt',  color: '#0369a1', bg: '#e0f2fe', offense: 'Personal Electronic Device Policy',
     section: '§4.3 / §5.2',
-    sectionDesc: '§4.3 governs general PED use and storage requirements company-wide. §5.2 is the warehouse-specific prohibition — no phones or PEDs inside the warehouse at all, with a supervisor-level exception for approved business use only.' },
+    sectionDesc: '§4.3 governs general PED use and storage requirements company-wide. §5.2 is the warehouse-specific prohibition - no phones or PEDs inside the warehouse at all, with a supervisor-level exception for approved business use only.' },
   { key: 'weapons',           label: 'Possession or Use of Guns, Weapons, or Knives',              short: 'Weapons Policy',             icon: 'fa-ban',         color: '#991b1b', bg: '#fee2e2', offense: 'Weapons Policy',
     section: '§3.18.1 / §4.1',
     sectionDesc: '§3.18.1 (Workplace Violence) prohibits bringing, possessing, or threatening to bring guns, firearms, or weapons of any kind onto Company property. §4.1 (Work Rules) separately lists possession or use of guns, weapons, or knives as unacceptable conduct.' },
   { key: 'safety',            label: 'Safety Violation',                                            short: 'Safety Violation',           icon: 'fa-hard-hat',    color: '#b45309', bg: '#fef9c3', offense: 'Safety Rules Violation',
     section: '§5.5',
-    sectionDesc: '§5.5 (Serious and Other Safety Violations) distinguishes "Serious" violations — eligible for immediate termination, e.g., PED use while operating powered equipment, harness removal at height — from "Other" violations subject to progressive discipline.' },
+    sectionDesc: '§5.5 (Serious and Other Safety Violations) distinguishes "Serious" violations - eligible for immediate termination, e.g., PED use while operating powered equipment, harness removal at height - from "Other" violations subject to progressive discipline.' },
   { key: 'timekeeping',       label: 'Timekeeping Violation',                                       short: 'Timekeeping',                icon: 'fa-clock',       color: '#0f766e', bg: '#d1fae5', offense: 'Timekeeping Policy',
     section: '§7.2',
     sectionDesc: '§7.2 (Timekeeping) covers clock in/out requirements, prohibition on falsifying time records or working off-the-clock, and the requirement for supervisor approval of timecards.' },
-  { key: 'theft',             label: 'Work Rules 401 — Theft or Improper Removal of Property',     short: 'Theft / Property Removal',   icon: 'fa-shield-alt',  color: '#1d4ed8', bg: '#dbeafe', offense: 'Theft / Improper Removal of Property',
+  { key: 'theft',             label: 'Work Rules 401 - Theft or Improper Removal of Property',     short: 'Theft / Property Removal',   icon: 'fa-shield-alt',  color: '#1d4ed8', bg: '#dbeafe', offense: 'Theft / Improper Removal of Property',
     section: '§4.1 / §3.15',
     sectionDesc: '§4.1 (Work Rules) and §3.15 (Corrective Action) both list theft, inappropriate removal or possession of property, and misappropriation of property as conduct subject to discipline up to and including immediate termination.' },
-  { key: 'performance',       label: 'Performance — Failure to Meet Job Expectations',              short: 'Performance',                icon: 'fa-chart-line',  color: '#374151', bg: '#f3f4f6', offense: 'Failure to Meet Job Expectations',
+  { key: 'performance',       label: 'Performance - Failure to Meet Job Expectations',              short: 'Performance',                icon: 'fa-chart-line',  color: '#374151', bg: '#f3f4f6', offense: 'Failure to Meet Job Expectations',
     section: '§4.1 / §3.16',
-    sectionDesc: '§4.1 (Work Rules) lists unsatisfactory work performance as unacceptable conduct subject to discipline up to and including termination: "Employees who deviate from these rules and standards will be subject to discipline, up to and including termination of employment." §3.16 (Progressive Discipline) establishes the correction structure — Coaching & Counseling → Written Warning → Final Warning → Termination.' }
+    sectionDesc: '§4.1 (Work Rules) lists unsatisfactory work performance as unacceptable conduct subject to discipline up to and including termination: "Employees who deviate from these rules and standards will be subject to discipline, up to and including termination of employment." §3.16 (Progressive Discipline) establishes the correction structure - Coaching & Counseling → Written Warning → Final Warning → Termination.' }
 ];
 
 window.openCorrectivePicker = () => {
@@ -4226,7 +4226,7 @@ window.gcUpdateTierDefaults = () => {
     'verbal':      'Associate and manager discussed the ' + offense + ' policy expectations. Associate is expected to demonstrate immediate and sustained compliance with all company policies.',
     'written':     'Associate has previously received coaching regarding this policy. Associate must demonstrate immediate improvement and full compliance going forward. Failure to do so will result in further disciplinary action.',
     'final':       'This is the final opportunity to correct the behavior in question. Associate must be fully compliant with all company policies. Zero future violations will be tolerated.',
-    'termination': 'N/A — Employment has been terminated.'
+    'termination': 'N/A - Employment has been terminated.'
   };
 
   const actionEl = document.getElementById('gcActionTaken');
@@ -4284,7 +4284,7 @@ window.generateGeneralCorrective = () => {
 
   const TIER_LABELS = { verbal:'Verbal Warning', written:'First Written Warning', final:'Final Warning', termination:'Termination' };
   const tierLabel  = TIER_LABELS[tier] || tier;
-  const incDateFmt = incDate ? new Date(incDate + 'T00:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '—';
+  const incDateFmt = incDate ? new Date(incDate + 'T00:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '-';
   const today      = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
   const resolvedId = currentAssociateId;
   const conseq     = tier === 'termination' ? 'Employment is being terminated.' : 'Any further violations of this or any other company policy may result in further disciplinary action up to and including termination of employment.';
@@ -4323,7 +4323,7 @@ window.generateGeneralCorrective = () => {
     + '}catch(err){st.style.color="#dc2626";st.textContent="✗ Save failed: "+err.message;}};})();';
 
   const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
-    + '<title>Employee Warning Notice — ' + aName + '</title>'
+    + '<title>Employee Warning Notice - ' + aName + '</title>'
     + _GC_CSS + '</head>'
     + '<body style="font-family:Arial,sans-serif;font-size:10.5pt;color:#111;background:#fff;">'
     + '<div id="page-wrap">'
@@ -4349,7 +4349,7 @@ window.generateGeneralCorrective = () => {
     + '<tr>' + _gcCheck(typeKey==='boisterous') + '<td>Boisterous / Disruptive Activity</td>' + _gcCheck(typeKey==='dress-code') + '<td>Dress Code Violation</td>' + _gcCheck(typeKey==='insubordination') + '<td>Insubordination / Disrespectful Conduct</td></tr>'
     + '<tr>' + _gcCheck(typeKey==='negligence') + '<td>Negligence / Property Damage</td>' + _gcCheck(typeKey==='electronic-devices') + '<td>Personal Electronic Device Violation</td>' + _gcCheck(typeKey==='weapons') + '<td>Weapons Policy Violation</td></tr>'
     + '<tr>' + _gcCheck(typeKey==='safety') + '<td>Safety Rule Violation</td>' + _gcCheck(typeKey==='timekeeping') + '<td>Timekeeping Violation</td>' + _gcCheck(typeKey==='theft') + '<td>Theft / Improper Removal of Property</td></tr>'
-    + '<tr>' + _gcCheck(typeKey==='performance') + '<td>Performance — Failure to Meet Job Expectations</td><td></td><td></td></tr>'
+    + '<tr>' + _gcCheck(typeKey==='performance') + '<td>Performance - Failure to Meet Job Expectations</td><td></td><td></td></tr>'
     + '</table></td></tr>'
     + '<tr><td colspan="4" class="sec-header">Applicable Policy Reference</td></tr>'
     + '<tr><td class="field-cell" style="width:18%;vertical-align:top"><div class="field-label">Section Code</div><div style="font-size:11pt;font-weight:700;color:#1a2744;margin-top:4px">' + sectionCode + '</div></td>'
@@ -4416,7 +4416,7 @@ window.generateJobAbandonmentDoc = () => {
 
   if (!consecRun) {
     const totalNcns = sorted.filter(e => e.type === 'ncns').length;
-    alert('No sequence of 3 consecutive NCNS found.\n\nThis associate has ' + totalNcns + ' total NCNS on record, but they were not sequential — an attendance entry exists between them, breaking the streak.');
+    alert('No sequence of 3 consecutive NCNS found.\n\nThis associate has ' + totalNcns + ' total NCNS on record, but they were not sequential - an attendance entry exists between them, breaking the streak.');
     return;
   }
   const fmtDate    = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
@@ -4439,7 +4439,7 @@ window.generateJobAbandonmentDoc = () => {
     const isHit   = consecDates.has(e.date) && e.type === 'ncns';
     const rowBg   = isHit ? '#fff1f2' : (i % 2 === 0 ? '#fff' : '#fafafa');
     const border  = isHit ? '1px solid #fca5a5' : '1px solid #e5e7eb';
-    const typeLabel = ATYPE_LABELS[e.type] || e.type || '—';
+    const typeLabel = ATYPE_LABELS[e.type] || e.type || '-';
     const pts = (e.points || 0) % 1 === 0 ? (e.points || 0) : Number(e.points || 0).toFixed(1);
     const badge = isHit
       ? '<span style="display:inline-block;background:#7c0000;color:#fff;font-size:7.5pt;font-weight:700;padding:2px 7px;border-radius:10px;margin-left:6px;vertical-align:middle">★ CONSECUTIVE</span>'
@@ -4475,19 +4475,19 @@ window.generateJobAbandonmentDoc = () => {
     + 'var dh="<!DOCTYPE html>"+document.documentElement.outerHTML;'
     + 'ab.style.display="";st.style.display="block";'
     + 'try{if(window.opener&&window.opener.saveSignedWarning){'
-    + 'await window.opener.saveSignedWarning({associateId:"' + resolvedId + '",associateName:"' + assoc.name.replace(/"/g,'\\"') + '",tier:"termination",tierLabel:"Job Abandonment",formType:"job-abandonment",formTypeLabel:"Job Abandonment — 3 Consecutive NCNS",points:0,signedAt:ts,signatures:sigs,documentHtml:dh});'
+    + 'await window.opener.saveSignedWarning({associateId:"' + resolvedId + '",associateName:"' + assoc.name.replace(/"/g,'\\"') + '",tier:"termination",tierLabel:"Job Abandonment",formType:"job-abandonment",formTypeLabel:"Job Abandonment - 3 Consecutive NCNS",points:0,signedAt:ts,signatures:sigs,documentHtml:dh});'
     + 'st.style.color="#16a34a";st.innerHTML="✓ Saved to HR records.&nbsp;<button onclick=\\"window.print()\\" style=\\"padding:6px 18px;background:#1a2744;color:#fff;border:none;border-radius:4px;cursor:pointer\\">🖶️ Print</button>";'
     + '}else{st.style.color="#d97706";st.innerHTML="⚠ Could not reach main app.&nbsp;<button onclick=\\"window.print()\\" style=\\"padding:6px 18px;background:#555;color:#fff;border:none;border-radius:4px;cursor:pointer\\">🖶️ Print</button>";}'
     + '}catch(err){st.style.color="#dc2626";st.textContent="✗ Save failed: "+err.message;}};})();';
 
   const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
-    + '<title>Job Abandonment — ' + aName + '</title>'
+    + '<title>Job Abandonment - ' + aName + '</title>'
     + _GC_CSS + '</head>'
     + '<body style="font-family:Arial,sans-serif;font-size:10.5pt;color:#111;background:#fff;">'
     + '<div id="page-wrap">'
     + '<div class="doc-title"><div style="font-size:8.5pt;color:#555;letter-spacing:2px;margin-bottom:4px">CarParts.com</div>'
     + '<h1>Job Abandonment Notice</h1>'
-    + '<h2>3 Consecutive No Call / No Show — Employment Separation</h2></div>'
+    + '<h2>3 Consecutive No Call / No Show - Employment Separation</h2></div>'
     + '<table class="outer-table" style="margin-top:0">'
     + '<tr><td colspan="4" class="sec-header">Employee Information</td></tr>'
     + '<tr><td style="width:50%" class="field-cell"><div class="field-label">Employee Name :</div><div class="field-value" style="text-align:center">' + aName + '</div></td>'
@@ -4500,7 +4500,7 @@ window.generateJobAbandonmentDoc = () => {
     + '<tr><td class="field-cell" style="width:18%;vertical-align:top"><div class="field-label">Section Code</div><div style="font-size:11pt;font-weight:700;color:#1a2744;margin-top:4px">§4.2 / §3.16</div></td>'
     + '<td colspan="3" class="field-cell" style="vertical-align:top"><div class="field-label" style="margin-bottom:3px">Policy Description</div>'
     + '<div style="font-size:9.5pt;line-height:1.5;color:#333">§4.2 (Attendance Policy) states that an associate who fails to report to work for three (3) consecutive scheduled days without notifying management will be considered to have voluntarily abandoned their position and will be subject to immediate separation. §3.16 (Progressive Discipline) identifies job abandonment as a terminal event that bypasses the progressive discipline structure.</div></td></tr>'
-    + '<tr><td colspan="4" class="sec-header">Full Attendance Record — Consecutive NCNS Highlighted</td></tr>'
+    + '<tr><td colspan="4" class="sec-header">Full Attendance Record - Consecutive NCNS Highlighted</td></tr>'
     + '<tr><td colspan="4" style="padding:0">'
     + '<div style="padding:7px 12px;background:#fff1f2;border-bottom:1px solid #fca5a5;font-size:8.5pt;color:#7c0000;font-weight:600">'
     + '★ Consecutive NCNS sequence (' + consecRun.length + ' days): ' + eh(runDates) + '</div>'
@@ -4656,7 +4656,7 @@ function renderTimeOff() {
       <td class="fw-semibold" style="cursor:pointer;color:var(--navy)" onclick="openProfile('${e.assocId}')">${escapeHtml(e.assocName)}</td>
       <td><span class="badge" style="background:${t.bg};color:${t.text};border:1px solid ${t.color}">${t.label}</span></td>
       <td>${start}</td><td>${end}</td><td>${days}d</td>
-      <td class="text-muted small">${escapeHtml(e.note || '—')}</td>
+      <td class="text-muted small">${escapeHtml(e.note || '-')}</td>
       <td>${canEdit ? `<button class="btn btn-link text-danger p-0" style="font-size:0.8rem" onclick="deleteTimeOff('${e.assocId}','${e.id}')"><i class="fas fa-times"></i></button>` : ''}</td>
     </tr>`;
   }).join('');
@@ -4777,7 +4777,7 @@ window.deleteTimeOff = async (assocId, entryId) => {
 // Cache is invalidated by saveAttendance / deleteAttendance.
 async function loadTodayAttendanceStats() {
   const cached = getCached('todayAttStats');
-  if (cached) return; // still fresh — applyAttendanceStats() uses _todayAttMap
+  if (cached) return; // still fresh - applyAttendanceStats() uses _todayAttMap
 
   const today = shiftDate(); // overnight shift: before 4:30 AM, still counts as previous day
   const callOutTypes  = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('call-out') || t.key === 'ncns').map(t => t.key));
@@ -4790,7 +4790,7 @@ async function loadTodayAttendanceStats() {
   try {
     const activeIds = allAssociates.filter(a => a.status === 'active').map(a => a.id);
     await Promise.all(activeIds.map(async assocId => {
-      // `where('date','==',today)` pulls only today's docs — drastically cuts reads
+      // `where('date','==',today)` pulls only today's docs - drastically cuts reads
       const q = query(collection(db, 'attendance', assocId, 'entries'), where('date', '==', today));
       const snap = await getDocs(q);
       snap.docs.forEach(d => {
@@ -4828,7 +4828,7 @@ function applyAttendanceStats(activeAll, activeAssoc) {
   document.getElementById('statTimeOff').textContent     = timeOffCount;
   document.getElementById('statInBuilding').textContent  = Math.max(0, activeAll.length - outOfBuilding);
   renderCards();
-  applyKanbanCounts(); // restore cached counts from memory — no Firestore reads
+  applyKanbanCounts(); // restore cached counts from memory - no Firestore reads
 }
 
 window.downloadActiveCSV = () => {
@@ -4891,8 +4891,8 @@ window.openInBuildingList = () => {
     <tr style="${rowBg}">
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5pt">${i + 1}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10.5pt;${nameBold}">${escapeHtml(a.name)}${leaderTag}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10pt;color:#6b7280">${escapeHtml(a.role || '—')}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10pt;color:#6b7280">${escapeHtml(a.shift || '—')}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10pt;color:#6b7280">${escapeHtml(a.role || '-')}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:10pt;color:#6b7280">${escapeHtml(a.shift || '-')}</td>
       <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;width:80px">
         <div style="width:70px;height:22px;border:1.5px solid #9ca3af;border-radius:4px"></div>
       </td>
@@ -4934,14 +4934,14 @@ window.openInBuildingList = () => {
 };
 
 async function loadTodayTimeOff() {
-  // Cache for 10 minutes — called on every associates snapshot fire so must be cheap
+  // Cache for 10 minutes - called on every associates snapshot fire so must be cheap
   const cached = getCached('todayTimeOff');
   if (cached) { _todayTimeOffMap = cached; return; }
 
   const today = shiftDate(); // overnight shift: before 4:30 AM, still counts as previous day
   _todayTimeOffMap = {};
   try {
-    // Iterate allAssociates — timeOff parent docs are phantom in Firestore
+    // Iterate allAssociates - timeOff parent docs are phantom in Firestore
     if (!allAssociates.length) { setCache('todayTimeOff', {}); return; }
     await Promise.all(allAssociates.filter(a => a.status === 'active').map(async assoc => {
       const assocId = assoc.id;
@@ -5067,7 +5067,7 @@ window.excuseAttendance = async (entryId) => {
     type: 'call-out-excused', points: 0, pending: false,
     resolvedBy, resolvedAt: new Date().toISOString()
   });
-  // attendancePoints unchanged — was pending (0 pts)
+  // attendancePoints unchanged - was pending (0 pts)
   clearCache('attendance');
   clearCache('milestones_firestore');
   clearCache('todayAttStats');
@@ -5091,7 +5091,7 @@ window.renderRiskPanel = () => {
       if (f === 'orange') return d.total >= 6 && d.total < 9;
       if (f === 'yellow') return d.total >= 3 && d.total < 6;
       if (f === 'green')  return d.total > 0  && d.total < 3;
-      return d.total > 0; // 'all' — hide 0-point associates
+      return d.total > 0; // 'all' - hide 0-point associates
     });
   if (!sorted.length) {
     riskEl.innerHTML = '<div class="text-muted small py-2">No associates match this filter for the selected period.</div>';
@@ -5117,7 +5117,7 @@ window.setAttPeriod = (period, btn) => {
   _attActivePeriod = period;
   document.querySelectorAll('.att-period-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  renderAttTrends(); // trends only — table is not affected
+  renderAttTrends(); // trends only - table is not affected
 };
 
 function _trendMetrics(entries) {
@@ -5209,7 +5209,7 @@ function renderAttTrends() {
       return `<div class="mb-3">
         <div class="d-flex justify-content-between align-items-center mb-1">
           <span class="small fw-semibold" style="color:${m.color}"><i class="fas ${m.icon} me-1"></i>${m.label}</span>
-          <span class="small" style="color:#9ca3af">Change: </span><span class="small fw-bold" style="color:${dc}">${noChange ? '—' : ds+' '+(bad?'↑':'↓')}</span>
+          <span class="small" style="color:#9ca3af">Change: </span><span class="small fw-bold" style="color:${dc}">${noChange ? '-' : ds+' '+(bad?'↑':'↓')}</span>
         </div>
         <div class="d-flex align-items-center gap-2 mb-1">
           <span style="font-size:0.68rem;color:#6b7280;min-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${range.currLabel}</span>
@@ -5268,7 +5268,7 @@ window.loadAttendance = () => {
 };
 
 function renderTeamAttendance(entries) {
-  // At-risk panel — all-time running totals only
+  // At-risk panel - all-time running totals only
   window._riskByAssoc = {};
   allAssociates.filter(a => a.status === 'active').forEach(a => {
     if ((a.attendancePoints || 0) > 0)
@@ -5279,7 +5279,7 @@ function renderTeamAttendance(entries) {
   // Render trends (uses _attActivePeriod, independent of table)
   renderAttTrends();
 
-  // Table — uses only its own filter controls, completely independent of period
+  // Table - uses only its own filter controls, completely independent of period
   const shiftF  = document.getElementById('attFilterShift')?.value  || '';
   const typeF   = document.getElementById('attFilterType')?.value   || '';
   const assocF  = document.getElementById('attFilterAssoc')?.value  || '';
@@ -5311,7 +5311,7 @@ function renderTeamAttendance(entries) {
       <td>${formatDate(e.date)}</td>
       <td><span class="fw-semibold px-2 py-1 rounded" style="background:${nc.bg};color:${nc.text};border:1px solid ${nc.border}">${escapeHtml(e.assocName)}</span></td>
       <td><span style="color:${isExp?'#9ca3af':info.color}"><i class="fas ${info.icon} me-1"></i>${info.label}</span></td>
-      <td class="text-muted small">${escapeHtml(e.note || '—')}</td>
+      <td class="text-muted small">${escapeHtml(e.note || '-')}</td>
       <td class="fw-bold text-end" style="color:${isExp?'#9ca3af':info.color}">${ptsDisplay}</td>
     </tr>`;
   }).join('');
@@ -5414,7 +5414,7 @@ function renderAttCalendar() {
   }
   body.innerHTML = cells.join('');
 
-  // Legend — unique types seen this month
+  // Legend - unique types seen this month
   const typesInMonth = new Set();
   Object.entries(dateMap).forEach(([date, evts]) => {
     if (date.startsWith(`${_attCalYear}-${String(_attCalMonth+1).padStart(2,'0')}`)) {
@@ -5441,7 +5441,7 @@ window.loadPointsLog = () => {
     [...allAssociates].sort((a,b) => a.name.localeCompare(b.name))
       .map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
 
-  // Read entries from each associate's subcollection directly —
+  // Read entries from each associate's subcollection directly -
   // pointslog parent docs are phantom so getDocs(collection(db,'pointslog')) returns nothing useful
   const container = document.getElementById('plTbody');
   if (container) container.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin me-2"></i>Loading…</td></tr>';
@@ -5493,10 +5493,10 @@ window.renderPointsLog = () => {
     const ptsColor = isExp ? '#9ca3af' : (pos ? '#16a34a' : neg ? '#dc2626' : '#6b7280');
     return `<tr style="${isExp ? 'opacity:0.55' : ''}">
       <td class="text-muted">${formatDateTime(e.createdAt)}</td>
-      <td class="fw-semibold" style="cursor:pointer;color:var(--navy)" onclick="openProfile('${e.associateId}')">${escapeHtml(e.associateName || '—')}</td>
-      <td><span class="badge ${e.type==='Badge'?'bg-warning text-dark':e.type==='Note'?'bg-primary':e.type==='Certification'?'bg-info text-dark':e.type==='Milestone'?'bg-purple text-white':'bg-success'}">${escapeHtml(e.type||'—')}</span></td>
-      <td>${escapeHtml(e.reason || '—')}</td>
-      <td class="text-muted small">${escapeHtml(e.addedBy || '—')}</td>
+      <td class="fw-semibold" style="cursor:pointer;color:var(--navy)" onclick="openProfile('${e.associateId}')">${escapeHtml(e.associateName || '-')}</td>
+      <td><span class="badge ${e.type==='Badge'?'bg-warning text-dark':e.type==='Note'?'bg-primary':e.type==='Certification'?'bg-info text-dark':e.type==='Milestone'?'bg-purple text-white':'bg-success'}">${escapeHtml(e.type||'-')}</span></td>
+      <td>${escapeHtml(e.reason || '-')}</td>
+      <td class="text-muted small">${escapeHtml(e.addedBy || '-')}</td>
       <td class="text-end fw-bold" style="color:${ptsColor}">${ptsDisplay}</td>
     </tr>`;
   }).join('');
@@ -5585,7 +5585,7 @@ function renderHRRecords(records) {
             : `<button onclick="logHRSubmission(${i})" style="display:inline-flex;align-items:center;gap:4px;background:#f0f9ff;border:1px solid #7dd3fc;border-radius:5px;padding:2px 7px;font-size:0.7rem;color:#0369a1;font-weight:600;cursor:pointer;margin-top:3px;" title="Log date submitted to HR">
                 <i class="fas fa-paper-plane"></i> Submit to HR
                </button>`;
-          // Category badge — attendance vs policy violation type
+          // Category badge - attendance vs policy violation type
           const isAttendance  = !r.formType || r.formType === 'attendance';
           const isAbandonment = r.formType === 'job-abandonment';
           const catType = GENERAL_CORRECTIVE_TYPES ? GENERAL_CORRECTIVE_TYPES.find(t => t.key === r.formType) : null;
@@ -5597,13 +5597,13 @@ function renderHRRecords(records) {
             + (catSection ? `<div style="font-size:0.7rem;color:#6b7280">${escapeHtml(catSection)}</div>` : '');
           return `<tr>
             <td style="padding:10px 14px">
-              <div style="font-weight:600;">${r.associateName || '—'}</div>
+              <div style="font-weight:600;">${r.associateName || '-'}</div>
               ${submittedHtml}
             </td>
             <td style="padding:10px 14px">${catHtml}</td>
-            <td style="padding:10px 14px"><span style="color:${color};font-weight:600;font-size:0.82rem">${r.tierLabel || r.tier || '—'}</span></td>
-            <td style="padding:10px 14px;text-align:center">${r.points ?? '—'}</td>
-            <td style="padding:10px 14px;color:#555">${r.signedAt || '—'}</td>
+            <td style="padding:10px 14px"><span style="color:${color};font-weight:600;font-size:0.82rem">${r.tierLabel || r.tier || '-'}</span></td>
+            <td style="padding:10px 14px;text-align:center">${r.points ?? '-'}</td>
+            <td style="padding:10px 14px;color:#555">${r.signedAt || '-'}</td>
             <td style="padding:10px 14px">${sigBadges || '<span class="text-muted" style="font-size:0.8rem">none</span>'}</td>
             <td style="padding:10px 14px;text-align:right">
               <button class="btn btn-sm btn-orange" onclick="viewHRRecord(${i})"><i class="fas fa-eye me-1"></i>View</button>
@@ -5630,7 +5630,7 @@ window.logHRSubmission = async (idx) => {
     records[idx].submittedToHR = now;
     renderHRRecords(records);
   } catch(e) {
-    alert('Could not save — ' + e.message);
+    alert('Could not save - ' + e.message);
   }
 };
 
@@ -5664,7 +5664,7 @@ window.downloadHRRecord = async (idx) => {
 
     // Render document in a hidden iframe (same-origin via srcdoc)
     const iframe = document.createElement('iframe');
-    // Off-screen but fully laid out — opacity:0 keeps it in layout flow
+    // Off-screen but fully laid out - opacity:0 keeps it in layout flow
     iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:850px;height:1100px;border:none;opacity:0;pointer-events:none;';
     // sandbox prevents scripts from re-running (which would duplicate already-rendered table rows)
     // allow-same-origin keeps html2canvas able to read the DOM
@@ -5732,7 +5732,7 @@ window.downloadHRRecord = async (idx) => {
 
     document.body.removeChild(iframe);
 
-    // Build PDF — single page sized to fit full document content (no splitting)
+    // Build PDF - single page sized to fit full document content (no splitting)
     const { jsPDF } = window.jspdf;
     const pageW = 612; // standard letter width in points (8.5in)
     const pxPerPt = canvas.width / pageW;
@@ -5796,7 +5796,7 @@ window.viewHRRecord = (idx) => {
 
   const win = window.open('', '_blank', 'width=860,height=700,scrollbars=yes,resizable=yes');
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <title>Signed Warning — ${r.associateName}</title>
+  <title>Signed Warning - ${r.associateName}</title>
   <style>
     body { font-family:Arial,sans-serif;font-size:10.5pt;color:#111;padding:40px 60px;background:#fff; }
     h1 { font-size:15pt;text-align:center;margin:6px 0 2px; }
@@ -5816,15 +5816,15 @@ window.viewHRRecord = (idx) => {
   </div>
   <table class="info">
     <tr>
-      <td><div class="label">Associate Name</div><div class="val">${r.associateName || '—'}</div></td>
-      <td><div class="label">Date Signed</div><div class="val">${r.signedAt || '—'}</div></td>
+      <td><div class="label">Associate Name</div><div class="val">${r.associateName || '-'}</div></td>
+      <td><div class="label">Date Signed</div><div class="val">${r.signedAt || '-'}</div></td>
     </tr>
     <tr>
-      <td><div class="label">Disciplinary Tier</div><div class="val" style="color:${({'written-warning':'#f59e0b','final-warning':'#ef4444','termination':'#111','documented-verbal':'#6366f1'}[r.tier]||'#333')}">${r.tierLabel || r.tier || '—'}</div></td>
-      <td><div class="label">Attendance Points at Time of Warning</div><div class="val">${r.points ?? '—'}</div></td>
+      <td><div class="label">Disciplinary Tier</div><div class="val" style="color:${({'written-warning':'#f59e0b','final-warning':'#ef4444','termination':'#111','documented-verbal':'#6366f1'}[r.tier]||'#333')}">${r.tierLabel || r.tier || '-'}</div></td>
+      <td><div class="label">Attendance Points at Time of Warning</div><div class="val">${r.points ?? '-'}</div></td>
     </tr>
     <tr>
-      <td colspan="2"><div class="label">Saved to HR</div><div class="val">${r.savedAt ? new Date(r.savedAt).toLocaleString() : '—'}</div></td>
+      <td colspan="2"><div class="label">Saved to HR</div><div class="val">${r.savedAt ? new Date(r.savedAt).toLocaleString() : '-'}</div></td>
     </tr>
   </table>
   <div class="sig-row">
@@ -5986,7 +5986,7 @@ window.open1on1Modal = (mode) => {
     .filter(a => a.status === 'active' && (a.position === 'ops-manager' || a.position === 'supervisor' || a.position === 'lead'))
     .sort((a, b) => (posOrder[a.position] ?? 9) - (posOrder[b.position] ?? 9) || a.name.localeCompare(b.name));
   const posLabel = { 'ops-manager': 'OM', 'supervisor': 'Supervisor', 'lead': 'Lead' };
-  const leaderOptions = '<option value="">— Select leader —</option>'
+  const leaderOptions = '<option value="">- Select leader -</option>'
     + leaders.map(l => '<option value="' + l.id + '">' + escapeHtml(l.name) + ' (' + (posLabel[l.position] || l.position) + ')</option>').join('');
 
   const selSchedule = document.getElementById('1on1Conductor');
@@ -6099,8 +6099,8 @@ window.loadAdminPanel = () => {
     if (snap.empty) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No users</td></tr>'; return; }
     const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
     tbody.innerHTML = users.map(u => `<tr>
-      <td class="fw-semibold">${escapeHtml(u.displayName || '—')}</td>
-      <td class="text-muted small">${escapeHtml(u.email || '—')}</td>
+      <td class="fw-semibold">${escapeHtml(u.displayName || '-')}</td>
+      <td class="text-muted small">${escapeHtml(u.email || '-')}</td>
       <td><span class="badge ${u.role === 'admin' ? 'bg-danger' : u.role === 'om' ? 'bg-warning text-dark' : u.role === 'supervisor' ? 'bg-primary' : u.role === 'lead' ? 'bg-success' : 'bg-secondary'}">${u.role === 'om' ? 'OM' : capitalize(u.role || 'viewer')}</span></td>
       <td>
         <div class="d-flex align-items-center gap-1">
@@ -6188,7 +6188,7 @@ async function loadLoginLog() {
     container.innerHTML = snap.docs.map(d => {
       const e = d.data();
       const dt = e.loginAt ? new Date(e.loginAt) : null;
-      const dateStr = dt ? dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+      const dateStr = dt ? dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '-';
       const timeStr = dt ? dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : '';
       const color = roleColor[e.role] || '#6b7280';
       return `<div class="d-flex align-items-center justify-content-between py-2" style="border-bottom:1px solid #f1f5f9">
@@ -6197,7 +6197,7 @@ async function loadLoginLog() {
             <i class="fas fa-user" style="font-size:0.72rem;color:${color}"></i>
           </div>
           <div>
-            <div class="fw-semibold small">${escapeHtml(e.displayName || e.email || '—')}</div>
+            <div class="fw-semibold small">${escapeHtml(e.displayName || e.email || '-')}</div>
             <div style="font-size:0.72rem;color:#6b7280">${escapeHtml(e.email || '')}</div>
           </div>
         </div>
@@ -6217,7 +6217,7 @@ async function loadPendingBadges() {
   const container = document.getElementById('pendingBadgesContainer');
   const pending   = [];
   // Iterate allAssociates (in memory) rather than listing collection(db,'badges')
-  // — parent docs are phantom/empty in Firestore so getDocs on the collection returns nothing
+  // - parent docs are phantom/empty in Firestore so getDocs on the collection returns nothing
   if (allAssociates.length) {
     await Promise.all(allAssociates.map(async assoc => {
       const assocId = assoc.id;
@@ -6250,7 +6250,7 @@ async function loadPendingBadges() {
         </div>
       </div>
       ${p.reason ? `<div class="pending-badge-reason">"${escapeHtml(p.reason)}"</div>` : ''}
-      <div class="text-muted small mt-1">Nominated by ${escapeHtml(p.nominatedBy || '—')} · ${formatDate(p.nominatedAt)}</div>
+      <div class="text-muted small mt-1">Nominated by ${escapeHtml(p.nominatedBy || '-')} · ${formatDate(p.nominatedAt)}</div>
     </div>`).join('');
 }
 window.loadPendingBadges = loadPendingBadges;
@@ -6273,7 +6273,7 @@ window.runExpiryMigration = async () => {
     try {
       const updates = {};
 
-      // ptExpiryDates — all future engagement point expiry dates
+      // ptExpiryDates - all future engagement point expiry dates
       const plSnap = await getDocs(collection(db, 'pointslog', a.id, 'entries'));
       const ptUniqueDates = [...new Set(
         plSnap.docs.map(d => d.data())
@@ -6286,7 +6286,7 @@ window.runExpiryMigration = async () => {
       updates.ptExpiryDates = ptUniqueDates;
       updates.nextPointExpiry = ptUniqueDates[0] || '';
 
-      // attExpiryDates — all future attendance point expiry dates
+      // attExpiryDates - all future attendance point expiry dates
       const attSnap = await getDocs(collection(db, 'attendance', a.id, 'entries'));
       const attUniqueDates = [...new Set(
         attSnap.docs.map(d => d.data())
@@ -6316,7 +6316,7 @@ window.runExpiryMigration = async () => {
   btn.disabled = false;
   btn.innerHTML = '<i class="fas fa-check me-1"></i>Done';
   btn.style.background = '#16a34a';
-  status.innerHTML = `<span style="color:#16a34a"><i class="fas fa-check-circle me-1"></i>Complete — ${done} associates updated${errors ? `, ${errors} errors` : ''}. Upcoming Events will now show expiry alerts from memory.</span>`;
+  status.innerHTML = `<span style="color:#16a34a"><i class="fas fa-check-circle me-1"></i>Complete - ${done} associates updated${errors ? `, ${errors} errors` : ''}. Upcoming Events will now show expiry alerts from memory.</span>`;
   clearCache('milestones_firestore');
   if (typeof renderMilestones === 'function') renderMilestones();
 };
@@ -6363,16 +6363,16 @@ window.showExpiryDiagnostics = async () => {
               return '<tr style="border-top:1px solid #f1f5f9;background:' + (!attOk||!ptsOk ? '#fff7ed' : '') + '">'
                 + '<td style="padding:3px 8px;font-weight:600">' + escapeHtml(r.name) + '</td>'
                 + '<td style="padding:3px 8px;text-align:center">' + r.attCount + '</td>'
-                + '<td style="padding:3px 8px;color:' + (attOk?'#16a34a':'#dc2626') + '">' + (r.storedAtt||'—') + '</td>'
-                + '<td style="padding:3px 8px">' + (r.computedAtt||'—') + '</td>'
-                + '<td style="padding:3px 8px;color:' + (ptsOk?'#16a34a':'#dc2626') + '">' + (r.storedPts||'—') + '</td>'
-                + '<td style="padding:3px 8px">' + (r.computedPts||'—') + '</td>'
+                + '<td style="padding:3px 8px;color:' + (attOk?'#16a34a':'#dc2626') + '">' + (r.storedAtt||'-') + '</td>'
+                + '<td style="padding:3px 8px">' + (r.computedAtt||'-') + '</td>'
+                + '<td style="padding:3px 8px;color:' + (ptsOk?'#16a34a':'#dc2626') + '">' + (r.storedPts||'-') + '</td>'
+                + '<td style="padding:3px 8px">' + (r.computedPts||'-') + '</td>'
                 + '</tr>';
             }).join('')}
           </tbody>
         </table>
       </div>
-      ${mismatch.length ? '<div style="color:#dc2626;margin-top:6px">⚠ Highlighted rows have mismatches — run <strong>Backfill Expiry Dates</strong> to fix them.</div>' : '<div style="color:#16a34a;margin-top:6px">✓ All stored values match computed values.</div>'}
+      ${mismatch.length ? '<div style="color:#dc2626;margin-top:6px">⚠ Highlighted rows have mismatches - run <strong>Backfill Expiry Dates</strong> to fix them.</div>' : '<div style="color:#16a34a;margin-top:6px">✓ All stored values match computed values.</div>'}
     </div>`;
 };
 
@@ -6409,7 +6409,7 @@ window.runManualExpiryCheck = async () => {
         const e = { id: d.id, ...d.data() };
         const ms = toMs(e.createdAt);
         if ((e.pts || 0) > 0 && !e.expired && ms !== null && ms < cutoffMs) {
-          lines.push(`<span style="color:#dc2626">✕ Engagement pts</span> — ${escapeHtml(a.name)}: ${e.type||'entry'} from ${new Date(ms).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} (+${e.pts} pts → expired)`);
+          lines.push(`<span style="color:#dc2626">✕ Engagement pts</span> - ${escapeHtml(a.name)}: ${e.type||'entry'} from ${new Date(ms).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} (+${e.pts} pts → expired)`);
           totalPtExpired += e.pts;
           writes.push(updateDoc(doc(db, 'pointslog', a.id, 'entries', e.id), { pts: 0, expired: true, expiredAt: nowIso, originalPts: e.pts }));
         }
@@ -6436,7 +6436,7 @@ window.runManualExpiryCheck = async () => {
       attSnap.docs.forEach(d => {
         const e = { id: d.id, ...d.data() };
         if ((e.points || 0) > 0 && !e.expired && e.date && e.date <= attCutoff) {
-          lines.push(`<span style="color:#d97706">✕ Attendance pts</span> — ${escapeHtml(a.name)}: ${e.type||'entry'} on ${e.date} (+${e.points} pts → expired)`);
+          lines.push(`<span style="color:#d97706">✕ Attendance pts</span> - ${escapeHtml(a.name)}: ${e.type||'entry'} on ${e.date} (+${e.points} pts → expired)`);
           totalAttExpired += e.points;
           writes.push(updateDoc(doc(db, 'attendance', a.id, 'entries', e.id), { points: 0, expired: true, expiredAt: nowIso, originalPoints: e.points }));
         }
@@ -6467,7 +6467,7 @@ window.runManualExpiryCheck = async () => {
         <div style="font-size:0.8rem;max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:8px">${lines.map(l=>`<div style="padding:2px 0;border-bottom:1px solid #f1f5f9">${l}</div>`).join('')}</div>
         <div style="color:#6b7280;font-size:0.75rem;margin-top:4px">Reload the Points Log tab to see updated entries.</div>`;
     } else {
-      status.innerHTML = '<span style="color:#16a34a">✓ Nothing to expire — all entries are within the 1-year window.</span>';
+      status.innerHTML = '<span style="color:#16a34a">✓ Nothing to expire - all entries are within the 1-year window.</span>';
       _expirationChecked = true;
     }
   } catch(err) {
@@ -6510,7 +6510,7 @@ window.recalcAllAttPoints = async () => {
     status.innerHTML = results.length
       ? `<div style="color:#16a34a;font-weight:600;margin-bottom:4px">✓ Corrected ${results.length} associate${results.length===1?'':'s'}:</div>
          <div style="font-size:0.8rem;max-height:160px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:8px">${results.map(r=>`<div>${r}</div>`).join('')}</div>`
-      : '<span style="color:#16a34a">✓ All attendance totals are already correct — no changes needed.</span>';
+      : '<span style="color:#16a34a">✓ All attendance totals are already correct - no changes needed.</span>';
   } catch(err) {
     status.innerHTML = `<span class="text-danger">Error: ${escapeHtml(err.message)}</span>`;
   }
@@ -6765,7 +6765,7 @@ window.loadOneOnOneRequests = async () => {
   el.innerHTML = snap.docs.map(d => {
     const r = d.data();
     const name = assocMap[r.associateId] || 'Unknown Associate';
-    const date = r.requestedDate ? new Date(r.requestedDate).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) : '—';
+    const date = r.requestedDate ? new Date(r.requestedDate).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) : '-';
     const submitted = r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
     return `<div class="d-flex align-items-start gap-3 p-3 rounded mb-2" style="background:#fff8f1;border:1px solid #fed7aa;" id="oor-${d.id}">
       <div style="flex:1;">
@@ -6898,7 +6898,7 @@ window.parseAttImport = () => {
     // Match associate by name (case-insensitive)
     // 1st pass: exact match
     // 2nd pass: one name fully contains the other (handles "Last, First" ↔ "First Last")
-    // 3rd pass: any whole word in common — uses exact word comparison, NOT substring,
+    // 3rd pass: any whole word in common - uses exact word comparison, NOT substring,
     //           so "Jose" won't match "Joseph" (fixes Jose Ayala / Joseph Quidachay mixup)
     const nameLower = rawName.toLowerCase();
     const assoc = allAssociates.find(a => a.name.toLowerCase() === nameLower)
@@ -6944,7 +6944,7 @@ window.parseAttImport = () => {
       ? `<span class="badge bg-success" style="font-size:0.7rem">✓ matched</span>`
       : `<span class="badge bg-danger" style="font-size:0.7rem">✗ no match</span>`;
     const expiredTag = r.expired
-      ? `<div class="mt-1"><span class="badge" style="background:#6b7280;font-size:0.68rem;letter-spacing:0.02em">⏱ Point Removed — Expired</span></div>`
+      ? `<div class="mt-1"><span class="badge" style="background:#6b7280;font-size:0.68rem;letter-spacing:0.02em">⏱ Point Removed - Expired</span></div>`
       : '';
     return `<tr class="${!r.assoc ? 'table-danger' : r.expired ? 'table-secondary' : ''}">
       <td>${status}</td>
@@ -6985,7 +6985,7 @@ window.submitAttImport = async () => {
         record.expired    = true;
         record.expiredAt  = now;
         record.originalPts = 0;
-        record.note = (r.note ? r.note + ' ' : '') + '[Point removed — expired]';
+        record.note = (r.note ? r.note + ' ' : '') + '[Point removed - expired]';
       }
       writes.push(addDoc(collection(db, 'attendance', r.assoc.id, 'entries'), record));
       ptsMap[r.assoc.id] = (ptsMap[r.assoc.id] || 0) + r.pts; // pts is 0 for expired so no change
@@ -7128,7 +7128,7 @@ window.parsePastedSnapshot = async () => {
     importedBy: displayName, importedByUid: currentUser.uid,
     createdAt: new Date().toISOString()
   });
-  statusEl.textContent = `✓ Imported for ${associates[matchId].name} — UPH ${avgUph}${onPace ? ', ' + onPace : ''}`;
+  statusEl.textContent = `✓ Imported for ${associates[matchId].name} - UPH ${avgUph}${onPace ? ', ' + onPace : ''}`;
   statusEl.style.color = 'green';
   document.getElementById('pasteArea').value = '';
   setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('importModal'))?.hide(), 2000);
@@ -7233,11 +7233,11 @@ function parseOcrText(text, filename) {
     if (dSlash) isoDate = `${dSlash[3]}-${dSlash[1].padStart(2,'0')}-${dSlash[2].padStart(2,'0')}`;
     const row = { employeeId: empId.toUpperCase(), date: isoDate, uph: avgUph, units: isNaN(units) ? null : units, role, onPace };
     const encoded = encodeURIComponent(JSON.stringify([row]));
-    status.textContent = 'Snapshot read — review and confirm:';
+    status.textContent = 'Snapshot read - review and confirm:';
     preview.innerHTML = `<div class="table-responsive mt-2">
       <table class="table table-sm table-bordered">
         <thead class="table-light"><tr><th>Employee ID</th><th>Date</th><th>UPH</th><th>Units</th></tr></thead>
-        <tbody><tr><td><strong>${empId}</strong></td><td>${isoDate}</td><td><strong>${avgUph}</strong></td><td>${isNaN(units) ? '—' : units}</td></tr></tbody>
+        <tbody><tr><td><strong>${empId}</strong></td><td>${isoDate}</td><td><strong>${avgUph}</strong></td><td>${isNaN(units) ? '-' : units}</td></tr></tbody>
       </table></div>
     <button class="btn btn-success" onclick="confirmOcrImport('${encoded}')"><i class="fas fa-check me-1"></i>Import</button>`;
     return;
@@ -7278,18 +7278,18 @@ function detachAll() {
 }
 function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : ''; }
 function formatDate(str) {
-  if (!str) return '—';
+  if (!str) return '-';
   // Append T00:00:00 so YYYY-MM-DD is parsed as local time, not UTC (which shifts the day back in US timezones)
   try { return new Date(str.length === 10 ? str + 'T00:00:00' : str).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); }
   catch { return str; }
 }
 function formatDateTime(str) {
-  if (!str) return '—';
+  if (!str) return '-';
   try { return new Date(str).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }); }
   catch { return str; }
 }
 function formatTime(str) {
-  if (!str) return '—';
+  if (!str) return '-';
   try { return new Date(str).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }); }
   catch { return str; }
 }
@@ -7316,10 +7316,10 @@ const KB_COLS = [
   { key: 'done',       label: 'Done',        color: '#16a34a' },
 ];
 
-// In-memory cache of active task counts per associate — survives renderCards() redraws
+// In-memory cache of active task counts per associate - survives renderCards() redraws
 const _kbCountCache = {}; // { assocId: activeCount }
 
-// Apply cached counts to DOM — zero Firestore reads, safe to call after every renderCards()
+// Apply cached counts to DOM - zero Firestore reads, safe to call after every renderCards()
 function applyKanbanCounts() {
   for (const [id, count] of Object.entries(_kbCountCache)) {
     const el = document.getElementById(`kb-count-${id}`);
@@ -7329,7 +7329,7 @@ function applyKanbanCounts() {
   }
 }
 
-// Read Firestore once, populate cache, then apply — only called on dashboard load and board changes
+// Read Firestore once, populate cache, then apply - only called on dashboard load and board changes
 async function loadKanbanCounts() {
   const leaders = allAssociates.filter(a =>
     (a.position === 'supervisor' || a.position === 'lead' || a.position === 'ops-manager') && a.status === 'active'
@@ -7352,7 +7352,7 @@ window.openKanban = async (assocId, assocName) => {
   _kbAssocId   = assocId;
   _kbAssocName = assocName;
   _kbViewMode  = 'board';
-  document.getElementById('kbModalTitle').textContent = assocName + ' — Daily Board';
+  document.getElementById('kbModalTitle').textContent = assocName + ' - Daily Board';
   document.getElementById('kbBoardSection').classList.remove('d-none');
   document.getElementById('kbLogsSection').classList.add('d-none');
   document.getElementById('kbViewLogsBtn').classList.remove('d-none');
@@ -7429,10 +7429,10 @@ function _kbRenderPresets(canEdit) {
   container.innerHTML = `
     <div style="font-size:0.8rem;font-weight:700;color:#475569;margin-bottom:8px">
       <i class="fas fa-clipboard-list me-1" style="color:#94a3b8"></i>Daily Templates
-      <span style="font-weight:400;color:#94a3b8;margin-left:4px">— click to add to board</span>
+      <span style="font-weight:400;color:#94a3b8;margin-left:4px">- click to add to board</span>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
-      ${entries.length === 0 ? '<span style="font-size:0.78rem;color:#94a3b8">No templates yet — save one below.</span>' :
+      ${entries.length === 0 ? '<span style="font-size:0.78rem;color:#94a3b8">No templates yet - save one below.</span>' :
         entries.map(([pid, p]) => {
           const freq = FREQ_META[p.frequency] || FREQ_META.daily;
           return `<div style="display:inline-flex;align-items:center;gap:6px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:20px;padding:5px 12px;font-size:0.8rem">
@@ -7579,7 +7579,7 @@ window.kbViewLog = async (date) => {
   const snap = await getDoc(doc(db, 'supervisorTasks', _kbAssocId, 'logs', date));
   if (!snap.exists()) return;
   const log = snap.data();
-  document.getElementById('kbModalTitle').textContent = `${_kbAssocName} — Log: ${date}`;
+  document.getElementById('kbModalTitle').textContent = `${_kbAssocName} - Log: ${date}`;
   document.getElementById('kbLogsSection').classList.add('d-none');
   document.getElementById('kbBoardSection').classList.remove('d-none');
   // Hide add form + presets, show read-only banner
@@ -7605,7 +7605,7 @@ window.kbViewLog = async (date) => {
 };
 
 window.kbBack = () => {
-  document.getElementById('kbModalTitle').textContent = _kbAssocName + ' — Daily Board';
+  document.getElementById('kbModalTitle').textContent = _kbAssocName + ' - Daily Board';
   document.getElementById('kbAddForm').classList.remove('d-none');
   document.getElementById('kbReadOnlyBanner').classList.add('d-none');
   _kbRenderBoard();
@@ -8300,37 +8300,37 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <div id="statFlagged" class="d-none"></div>
 
       <div class="row g-3 mb-4">
-        <div class="col-6 col-lg-3"><div class="stat-card h-100" onclick="downloadActiveCSV()" style="cursor:pointer" title="Download active associate roster as CSV"><div class="val" id="statActive">—</div><div class="lbl">Active <i class="fas fa-download ms-1" style="font-size:0.65rem;opacity:0.6"></i></div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat-card h-100" onclick="downloadActiveCSV()" style="cursor:pointer" title="Download active associate roster as CSV"><div class="val" id="statActive">-</div><div class="lbl">Active <i class="fas fa-download ms-1" style="font-size:0.65rem;opacity:0.6"></i></div></div></div>
         <div class="col-6 col-lg-3">
           <div class="stat-card h-100" style="display:flex;flex-direction:column;justify-content:center;gap:6px">
             <div class="d-flex justify-content-between align-items-center">
               <span class="lbl" style="margin-top:0">Associates</span>
-              <span class="val" id="statAssociates" style="font-size:1.4rem">—</span>
+              <span class="val" id="statAssociates" style="font-size:1.4rem">-</span>
             </div>
             <div class="d-flex justify-content-between align-items-center">
               <span class="lbl" style="margin-top:0">Directs</span>
-              <span class="val" id="statDirects" style="font-size:1.4rem">—</span>
+              <span class="val" id="statDirects" style="font-size:1.4rem">-</span>
             </div>
             <div class="d-flex justify-content-between align-items-center">
               <span class="lbl" style="margin-top:0">Temps</span>
-              <span class="val" id="statTemps" style="font-size:1.4rem">—</span>
+              <span class="val" id="statTemps" style="font-size:1.4rem">-</span>
             </div>
           </div>
         </div>
-        <div class="col-6 col-lg-3"><div class="stat-card h-100" onclick="openInBuildingList()" style="cursor:pointer" title="Click for emergency roster"><div class="val" id="statInBuilding">—</div><div class="lbl">In Building <i class="fas fa-print ms-1" style="font-size:0.65rem;opacity:0.6"></i></div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat-card h-100" onclick="openInBuildingList()" style="cursor:pointer" title="Click for emergency roster"><div class="val" id="statInBuilding">-</div><div class="lbl">In Building <i class="fas fa-print ms-1" style="font-size:0.65rem;opacity:0.6"></i></div></div></div>
         <div class="col-6 col-lg-3">
           <div class="stat-card h-100" style="display:flex;flex-direction:column;justify-content:center;gap:6px">
             <div class="d-flex justify-content-between align-items-center">
               <span class="lbl" style="margin-top:0">Call Outs</span>
-              <span class="val" id="statCallOuts" style="font-size:1.4rem">—</span>
+              <span class="val" id="statCallOuts" style="font-size:1.4rem">-</span>
             </div>
             <div class="d-flex justify-content-between align-items-center">
               <span class="lbl" style="margin-top:0">Early Outs</span>
-              <span class="val" id="statEarlyOuts" style="font-size:1.4rem">—</span>
+              <span class="val" id="statEarlyOuts" style="font-size:1.4rem">-</span>
             </div>
             <div class="d-flex justify-content-between align-items-center">
               <span class="lbl" style="margin-top:0">Time Off</span>
-              <span class="val" id="statTimeOff" style="font-size:1.4rem">—</span>
+              <span class="val" id="statTimeOff" style="font-size:1.4rem">-</span>
             </div>
           </div>
         </div>
@@ -8426,7 +8426,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
       <div class="profile-header">
         <div class="d-flex align-items-center gap-3 mb-3">
-          <div class="profile-avatar" id="profileAvatar">—</div>
+          <div class="profile-avatar" id="profileAvatar">-</div>
           <div class="flex-grow-1">
             <div class="profile-name" id="profileName"></div>
             <div class="profile-meta" id="profileMeta"></div>
@@ -8442,30 +8442,30 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="d-flex align-items-center gap-3">
           <div class="row g-3 text-center flex-grow-1">
             <div class="col">
-              <div style="font-size:2rem;font-weight:700;color:var(--orange)" id="statNoteCount">—</div>
+              <div style="font-size:2rem;font-weight:700;color:var(--orange)" id="statNoteCount">-</div>
               <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Notes on File</div>
             </div>
             <div class="col">
-              <div style="font-size:2rem;font-weight:700;color:var(--orange)" id="statCertCount">—</div>
+              <div style="font-size:2rem;font-weight:700;color:var(--orange)" id="statCertCount">-</div>
               <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Certifications</div>
             </div>
             <div class="col">
-              <div style="font-size:2rem;font-weight:700" id="statPoints">—</div>
+              <div style="font-size:2rem;font-weight:700" id="statPoints">-</div>
               <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">⭐ Points</div>
             </div>
             <div class="col">
-              <div style="font-size:2rem;font-weight:700;color:#f87171" id="statAttPts">—</div>
+              <div style="font-size:2rem;font-weight:700;color:#f87171" id="statAttPts">-</div>
               <div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">Att. Points</div>
             </div>
             <div class="col">
-              <div style="font-size:1rem;font-weight:700;line-height:1.2;margin-top:0.4rem" id="statWarnTier">—</div>
+              <div style="font-size:1rem;font-weight:700;line-height:1.2;margin-top:0.4rem" id="statWarnTier">-</div>
               <div style="font-size:0.72rem;color:rgba(255,255,255,0.55);margin-top:0.25rem">Discipline</div>
             </div>
           </div>
           <button class="kanban-btn d-none" id="profileBoardBtn" onclick="openKanban(window._getCurrentAssocId(), document.getElementById('profileName').textContent)" style="flex-direction:column;align-items:center;justify-content:center;gap:6px;border-radius:14px;padding:20px 28px;min-width:140px;align-self:stretch">
             <i class="fas fa-columns" style="font-size:2rem;margin-bottom:2px"></i>
             <span style="font-size:1rem;font-weight:700">Daily Board</span>
-            <span class="kb-count d-none" id="kb-count-profile" style="margin-top:2px;font-size:1rem;padding:4px 16px">—</span>
+            <span class="kb-count d-none" id="kb-count-profile" style="margin-top:2px;font-size:1rem;padding:4px 16px">-</span>
           </button>
           <button class="kanban-btn d-none" id="profileCorrectiveBtn" onclick="openCorrectivePicker()" style="flex-direction:column;align-items:center;justify-content:center;gap:6px;border-radius:14px;padding:20px 22px;min-width:130px;align-self:stretch;background:rgba(220,38,38,0.13);border:1.5px solid rgba(220,38,38,0.35)">
             <i class="fas fa-file-alt" style="font-size:2rem;margin-bottom:2px;color:#fca5a5"></i>
@@ -8488,7 +8488,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <!-- Certifications section -->
       <div class="chips-section">
         <h6><i class="fas fa-certificate me-1" style="color:#f97316"></i>Cross-Training Certifications
-          <span class="text-muted fw-normal" style="font-size:0.7rem"> — click to toggle (leads/supervisors/admins)</span>
+          <span class="text-muted fw-normal" style="font-size:0.7rem"> - click to toggle (leads/supervisors/admins)</span>
         </h6>
         <div class="chips-row" id="certsContainer">
           <span class="text-muted small">Loading…</span>
@@ -8554,7 +8554,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
       <!-- Attendance -->
       <div class="mt-4" id="attendanceSection">
-        <!-- Score panel (always visible) — click to expand log -->
+        <!-- Score panel (always visible) - click to expand log -->
         <div class="att-score-panel mb-0" style="cursor:pointer" onclick="toggleAttendanceLog()" id="attScoreToggle">
           <div>
             <div class="att-score-big" id="attScoreVal" style="color:#10b981">0</div>
@@ -8584,7 +8584,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="d-flex align-items-center gap-2 mb-2">
             <i class="fas fa-gavel" style="color:var(--navy);font-size:0.85rem"></i>
             <span class="fw-bold small" style="color:var(--navy)">Disciplinary Actions</span>
-            <span class="text-muted small ms-1">— click Log to record when a warning is issued</span>
+            <span class="text-muted small ms-1">- click Log to record when a warning is issued</span>
           </div>
           <div id="warningsContainer"></div>
         </div>
@@ -8694,16 +8694,16 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <option value="">All Types</option>
               <option value="ncns">NCNS (No Call No Show)</option>
               <option value="call-out">Call Out</option>
-              <option value="call-out-sick-half">Call Out — Sick Time (covers &ge; half shift)</option>
-              <option value="call-out-sick-no">Call Out — Sick Time (not enough for half)</option>
-              <option value="call-out-sick-full">Call Out — Sick Time Used (no point)</option>
-              <option value="call-out-pending">Call Out — Pending (awaiting documentation)</option>
-              <option value="call-out-excused">Call Out — Excused (documentation provided)</option>
+              <option value="call-out-sick-half">Call Out - Sick Time (covers &ge; half shift)</option>
+              <option value="call-out-sick-no">Call Out - Sick Time (not enough for half)</option>
+              <option value="call-out-sick-full">Call Out - Sick Time Used (no point)</option>
+              <option value="call-out-pending">Call Out - Pending (awaiting documentation)</option>
+              <option value="call-out-excused">Call Out - Excused (documentation provided)</option>
               <option value="late-arrival">Late Arrival</option>
               <option value="late-arrival-half">Late Arrival (after half shift)</option>
               <option value="left-early-before">Left Early (before half shift)</option>
               <option value="left-early-after">Left Early (after half shift)</option>
-              <option value="left-early-sick">Early Out — Sick Time Used (no point)</option>
+              <option value="left-early-sick">Early Out - Sick Time Used (no point)</option>
             </select>
           </div>
           <div>
@@ -8766,16 +8766,16 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
                     <tr><td>Leadership List <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:0.65rem">Elite</span></td><td class="text-end fw-bold text-success">+200</td></tr>
                     <tr><td>Employee of the Month <span class="badge" style="background:#fef3c7;color:#92400e;font-size:0.65rem">Elite+</span></td><td class="text-end fw-bold text-success">+300</td></tr>
                     <tr><td colspan="2" class="pt-2 fw-semibold small" style="color:var(--navy)">Productivity Badges <span class="text-muted fw-normal">(20 pts per 100 units)</span></td></tr>
-                    <tr><td>Large Pack — 300 Units 📦</td><td class="text-end fw-bold text-success">+60</td></tr>
-                    <tr><td>Large Pack — 400 Units 📦</td><td class="text-end fw-bold text-success">+80</td></tr>
-                    <tr><td>Large Pack — 500 Units 📦</td><td class="text-end fw-bold text-success">+100</td></tr>
-                    <tr><td>Small Pack — 600 Units 📬</td><td class="text-end fw-bold text-success">+120</td></tr>
-                    <tr><td>Small Pack — 700 Units 📬</td><td class="text-end fw-bold text-success">+140</td></tr>
-                    <tr><td>Small Pack — 800 Units 📬</td><td class="text-end fw-bold text-success">+160</td></tr>
-                    <tr><td>Small Pack — 900 Units 📬</td><td class="text-end fw-bold text-success">+180</td></tr>
-                    <tr><td>Small Pack — 1000 Units 📬</td><td class="text-end fw-bold text-success">+200</td></tr>
-                    <tr><td>Replen Pick — 1000 Units 🔄</td><td class="text-end fw-bold text-success">+200</td></tr>
-                    <tr><td>OP Pick — 600 Units 🎯</td><td class="text-end fw-bold text-success">+120</td></tr>
+                    <tr><td>Large Pack - 300 Units 📦</td><td class="text-end fw-bold text-success">+60</td></tr>
+                    <tr><td>Large Pack - 400 Units 📦</td><td class="text-end fw-bold text-success">+80</td></tr>
+                    <tr><td>Large Pack - 500 Units 📦</td><td class="text-end fw-bold text-success">+100</td></tr>
+                    <tr><td>Small Pack - 600 Units 📬</td><td class="text-end fw-bold text-success">+120</td></tr>
+                    <tr><td>Small Pack - 700 Units 📬</td><td class="text-end fw-bold text-success">+140</td></tr>
+                    <tr><td>Small Pack - 800 Units 📬</td><td class="text-end fw-bold text-success">+160</td></tr>
+                    <tr><td>Small Pack - 900 Units 📬</td><td class="text-end fw-bold text-success">+180</td></tr>
+                    <tr><td>Small Pack - 1000 Units 📬</td><td class="text-end fw-bold text-success">+200</td></tr>
+                    <tr><td>Replen Pick - 1000 Units 🔄</td><td class="text-end fw-bold text-success">+200</td></tr>
+                    <tr><td>OP Pick - 600 Units 🎯</td><td class="text-end fw-bold text-success">+120</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -8820,7 +8820,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-trophy me-2" style="color:var(--orange)"></i>Achievement Badges</h6>
-            <p class="small text-muted">Leads, Supervisors, and Admins can nominate associates for badges. Each nomination requires a reason and goes to an Admin for approval. Once approved, points are awarded automatically. Badges stack — an associate can earn the same badge multiple times.</p>
+            <p class="small text-muted">Leads, Supervisors, and Admins can nominate associates for badges. Each nomination requires a reason and goes to an Admin for approval. Once approved, points are awarded automatically. Badges stack - an associate can earn the same badge multiple times.</p>
             <p class="small text-muted mb-0"><strong>Tiers:</strong> Standard (25 pts) · Productivity (60–200 pts based on units) · Elite/Leadership List (200 pts) · Employee of the Month (300 pts). Productivity badges cover Large Pack (300–500 units), Small Pack (600–1000 units), Replen Pick (1000 units), and OP Pick (600 units).</p>
           </div>
         </div>
@@ -8851,18 +8851,18 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
                 <tbody>
                   <tr><td><strong>NCNS</strong></td><td class="text-muted">No call, no show</td><td class="text-end fw-bold" style="color:#7c0000">+2.0</td></tr>
                   <tr><td><strong>Call Out</strong></td><td class="text-muted">Absent, no sick time coverage</td><td class="text-end fw-bold" style="color:#dc2626">+1.0</td></tr>
-                  <tr><td><strong>Call Out — Sick Time (≥ half shift)</strong></td><td class="text-muted">Sick time covers at least half shift</td><td class="text-end fw-bold" style="color:#d97706">+0.5</td></tr>
-                  <tr><td><strong>Call Out — Sick Time (under half)</strong></td><td class="text-muted">Sick time doesn't cover half shift</td><td class="text-end fw-bold" style="color:#dc2626">+1.0</td></tr>
-                  <tr><td><strong>Call Out — Sick Time Used (no point)</strong></td><td class="text-muted">Full sick time coverage, tracking only</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
-                  <tr><td><strong>Called Out — Doctor's Note</strong></td><td class="text-muted">Absent with doctor's note on file</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
+                  <tr><td><strong>Call Out - Sick Time (≥ half shift)</strong></td><td class="text-muted">Sick time covers at least half shift</td><td class="text-end fw-bold" style="color:#d97706">+0.5</td></tr>
+                  <tr><td><strong>Call Out - Sick Time (under half)</strong></td><td class="text-muted">Sick time doesn't cover half shift</td><td class="text-end fw-bold" style="color:#dc2626">+1.0</td></tr>
+                  <tr><td><strong>Call Out - Sick Time Used (no point)</strong></td><td class="text-muted">Full sick time coverage, tracking only</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
+                  <tr><td><strong>Called Out - Doctor's Note</strong></td><td class="text-muted">Absent with doctor's note on file</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
                   <tr><td><strong>Late Arrival</strong></td><td class="text-muted">Arrived late, before half-shift mark</td><td class="text-end fw-bold" style="color:#d97706">+0.5</td></tr>
                   <tr><td><strong>Late Arrival (after half shift)</strong></td><td class="text-muted">Arrived after half-shift mark</td><td class="text-end fw-bold" style="color:#dc2626">+1.0</td></tr>
                   <tr><td><strong>Left Early (before half shift)</strong></td><td class="text-muted">Left before completing half shift</td><td class="text-end fw-bold" style="color:#dc2626">+1.0</td></tr>
                   <tr><td><strong>Left Early (after half shift)</strong></td><td class="text-muted">Left after completing more than half shift</td><td class="text-end fw-bold" style="color:#d97706">+0.5</td></tr>
-                  <tr><td><strong>Early Out — Sick Time Used (no point)</strong></td><td class="text-muted">Left early with full sick time coverage</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
+                  <tr><td><strong>Early Out - Sick Time Used (no point)</strong></td><td class="text-muted">Left early with full sick time coverage</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
                   <tr style="background:#f0fdf4"><td><strong>Pending FMLA</strong></td><td class="text-muted">FMLA application submitted, awaiting approval</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
-                  <tr style="background:#f0fdf4"><td><strong>Approved FMLA</strong></td><td class="text-muted">FMLA approved — protected leave</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
-                  <tr style="background:#f0fdf4"><td><strong>Bereavement</strong></td><td class="text-muted">Bereavement leave — recorded for tracking only</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
+                  <tr style="background:#f0fdf4"><td><strong>Approved FMLA</strong></td><td class="text-muted">FMLA approved - protected leave</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
+                  <tr style="background:#f0fdf4"><td><strong>Bereavement</strong></td><td class="text-muted">Bereavement leave - recorded for tracking only</td><td class="text-end fw-bold" style="color:#059669">0</td></tr>
                 </tbody>
               </table>
             </div>
@@ -8873,7 +8873,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <!-- Attendance Policy -->
         <div class="col-12">
           <div class="admin-card" style="border-left:4px solid #dc2626">
-            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-gavel me-2" style="color:#dc2626"></i>Attendance Policy — 3 / 6 / 9 / 10</h6>
+            <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-gavel me-2" style="color:#dc2626"></i>Attendance Policy - 3 / 6 / 9 / 10</h6>
             <div class="table-responsive">
               <table class="table table-sm small mb-0">
                 <thead class="table-light"><tr><th>Points</th><th>Step</th><th>Action</th></tr></thead>
@@ -8896,7 +8896,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <p class="small text-muted mb-2">Leads, Supervisors, and Admins can set a flag on any associate profile. Flags appear on the card on the dashboard.</p>
             <table class="table table-sm small mb-0">
               <tbody>
-                <tr><td><span class="badge bg-secondary">No Flag</span></td><td class="text-muted small">Default — no special flag.</td></tr>
+                <tr><td><span class="badge bg-secondary">No Flag</span></td><td class="text-muted small">Default - no special flag.</td></tr>
                 <tr><td><span class="badge bg-success">High Potential</span></td><td class="text-muted small">Top performer with leadership potential.</td></tr>
                 <tr><td><span class="badge bg-warning text-dark">Needs Support</span></td><td class="text-muted small">May need additional coaching or resources.</td></tr>
                 <tr><td><span class="badge bg-danger">Attendance Issue</span></td><td class="text-muted small">Ongoing attendance concerns.</td></tr>
@@ -8918,7 +8918,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <ul class="small text-muted ps-3 mb-2">
               <li><strong>Calendar View:</strong> Click any day to add an entry pre-filled with that date.</li>
               <li><strong>Types:</strong> Vacation, Sick, Personal, FMLA, Bereavement, Leave of Absence, Out (Other), Unpaid.</li>
-              <li><strong>Card Banners:</strong> When an entry is active today, a banner appears on the associate's card. Only one banner shows at a time — attendance events take priority.</li>
+              <li><strong>Card Banners:</strong> When an entry is active today, a banner appears on the associate's card. Only one banner shows at a time - attendance events take priority.</li>
               <li><strong>Upcoming Events:</strong> Entries within the next 40 days also appear in the Upcoming Events dashboard panel.</li>
             </ul>
             <p class="small text-muted mb-0"><i class="fas fa-info-circle me-1" style="color:var(--orange)"></i>Time off and attendance logs are independent. Adding FMLA or Bereavement to both systems will not create duplicate banners or double-count points.</p>
@@ -8931,7 +8931,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-file-signature me-2" style="color:var(--orange)"></i>HR Records</h6>
             <p class="small text-muted mb-2">The <strong>HR Records</strong> tab stores all signed corrective action forms. Each record shows the associate name, warning tier, points at time of signing, and signature status.</p>
             <ul class="small text-muted ps-3 mb-0">
-              <li><strong>Submit to HR:</strong> A blue button under each associate's name lets you log the date the form was physically submitted to HR. Once clicked, it stamps the date and turns green — persists across sessions.</li>
+              <li><strong>Submit to HR:</strong> A blue button under each associate's name lets you log the date the form was physically submitted to HR. Once clicked, it stamps the date and turns green - persists across sessions.</li>
               <li><strong>View / PDF:</strong> Open the full signed form or download it as a PDF.</li>
               <li><strong>Filter:</strong> Search by name or filter by warning tier.</li>
             </ul>
@@ -8950,7 +8950,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="col-12">
           <div class="admin-card" style="border-left:4px solid var(--orange)">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-mobile-alt me-2" style="color:var(--orange)"></i>Associate Mobile Portal</h6>
-            <p class="small text-muted mb-2">Associates can log in to a mobile-friendly portal using credentials created by an admin. The portal gives read-only access to their own data — they cannot see other associates' information.</p>
+            <p class="small text-muted mb-2">Associates can log in to a mobile-friendly portal using credentials created by an admin. The portal gives read-only access to their own data - they cannot see other associates' information.</p>
             <div class="row g-3">
               <div class="col-md-4">
                 <div class="fw-semibold small mb-1" style="color:var(--navy)">🏠 Home Tab</div>
@@ -9015,7 +9015,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="col-lg-6">
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-key me-2" style="color:#6366f1"></i>System Credentials</h6>
-            <p class="small text-muted mb-0">The <strong>System Credentials</strong> panel stores system logins (WMS, scheduler, etc.) per associate. Leads and above can add entries; only Admins can delete. Passwords are masked by default — click the eye icon to reveal. Not visible to Viewer-role accounts.</p>
+            <p class="small text-muted mb-0">The <strong>System Credentials</strong> panel stores system logins (WMS, scheduler, etc.) per associate. Leads and above can add entries; only Admins can delete. Passwords are masked by default - click the eye icon to reveal. Not visible to Viewer-role accounts.</p>
           </div>
         </div>
 
@@ -9194,7 +9194,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     <!-- HR RECORDS VIEW -->
     <div id="hrrecordsView" class="view d-none">
       <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-        <h1 class="page-title"><i class="fas fa-file-signature me-2" style="color:var(--orange)"></i>HR Records — Signed Warnings</h1>
+        <h1 class="page-title"><i class="fas fa-file-signature me-2" style="color:var(--orange)"></i>HR Records - Signed Warnings</h1>
         <button class="btn btn-sm btn-orange" onclick="loadHRRecords()"><i class="fas fa-sync me-1"></i>Refresh</button>
       </div>
       <div class="card shadow-sm mb-3" style="border:none">
@@ -9332,7 +9332,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <!-- Data Management -->
       <div class="admin-card admin-only-section" style="border-left:4px solid #dc2626">
         <div class="d-flex justify-content-between align-items-center mb-3">
-          <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-database me-2" style="color:#dc2626"></i>Data Management — Engagement Points</h6>
+          <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-database me-2" style="color:#dc2626"></i>Data Management - Engagement Points</h6>
           <button class="btn btn-sm btn-outline-danger" id="resetAllPtsBtn" onclick="resetAllEngagementPoints()">
             <i class="fas fa-trash-alt me-1"></i>Reset All Points
           </button>
@@ -9439,7 +9439,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <i class="fas fa-play me-1"></i>Run Once
           </button>
         </div>
-        <p class="small text-muted mb-2">One-time setup. Reads existing attendance and points data for all associates and writes their upcoming expiry dates directly to their profile. This lets the Upcoming Events panel show expiry alerts without expensive Firestore reads. Run this once after deploying — never needed again.</p>
+        <p class="small text-muted mb-2">One-time setup. Reads existing attendance and points data for all associates and writes their upcoming expiry dates directly to their profile. This lets the Upcoming Events panel show expiry alerts without expensive Firestore reads. Run this once after deploying - never needed again.</p>
         <div id="migrationStatus" class="small"></div>
       </div>
 
@@ -9559,11 +9559,11 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div>
           <label class="form-label small fw-semibold">Role</label>
           <select class="form-select" id="newRole">
-            <option value="viewer">Viewer — read only</option>
-            <option value="lead" selected>Lead — add notes, certs, nominate badges, view/add credentials</option>
-            <option value="supervisor">Supervisor — Lead access + schedule 1:1s, manage time off, delete notes</option>
-            <option value="om">OM — Supervisor access + watch notes, approve/reject badges, delete credentials</option>
-            <option value="admin">Admin — full access + user management + portal access + data management</option>
+            <option value="viewer">Viewer - read only</option>
+            <option value="lead" selected>Lead - add notes, certs, nominate badges, view/add credentials</option>
+            <option value="supervisor">Supervisor - Lead access + schedule 1:1s, manage time off, delete notes</option>
+            <option value="om">OM - Supervisor access + watch notes, approve/reject badges, delete credentials</option>
+            <option value="admin">Admin - full access + user management + portal access + data management</option>
           </select>
         </div>
       </form>
@@ -9601,7 +9601,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="col-6">
             <label class="form-label small fw-semibold">Shift</label>
             <select class="form-select" id="assocShift">
-              <option value="">— Select —</option>
+              <option value="">- Select -</option>
               <option>A1</option><option>A2</option><option>B1</option>
             </select>
           </div>
@@ -9642,7 +9642,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="col-6">
             <label class="form-label small fw-semibold">Reports To</label>
             <select class="form-select" id="assocReportsTo">
-              <option value="">— Select Supervisor / Lead —</option>
+              <option value="">- Select Supervisor / Lead -</option>
             </select>
           </div>
           <div class="col-6">
@@ -9675,7 +9675,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
     </div>
     <div class="modal-body pb-2">
-      <p class="text-muted small mb-3">Select all that apply — multiple flags can be set.</p>
+      <p class="text-muted small mb-3">Select all that apply - multiple flags can be set.</p>
       <div id="flagCheckGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
           <input type="checkbox" value="high-potential" style="width:16px;height:16px;accent-color:#198754"> ⭐ High Potential</label>
@@ -9749,23 +9749,23 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <label class="form-label fw-semibold">Event Type <span class="text-danger">*</span></label>
         <select class="form-select" id="attTypeSelect">
           <option value="">Select event…</option>
-          <option value="ncns">NCNS — No Call No Show (+2.0 pts)</option>
+          <option value="ncns">NCNS - No Call No Show (+2.0 pts)</option>
           <option value="call-out">Call Out (+1.0 pt)</option>
-          <option value="call-out-sick-half">Call Out — Sick Time (covers ≥ half shift) (+0.5 pt)</option>
-          <option value="call-out-sick-no">Call Out — Sick Time (not enough for half) (+1.0 pt)</option>
-          <option value="call-out-sick-full">Call Out — Sick Time Used (no point)</option>
+          <option value="call-out-sick-half">Call Out - Sick Time (covers ≥ half shift) (+0.5 pt)</option>
+          <option value="call-out-sick-no">Call Out - Sick Time (not enough for half) (+1.0 pt)</option>
+          <option value="call-out-sick-full">Call Out - Sick Time Used (no point)</option>
           <option value="call-out-vac-half">Vacation Time (not enough to cover half shift) (+1.0 pt)</option>
           <option value="call-out-vac-full">Vacation Time (not enough to cover full shift) (+0.5 pt)</option>
-          <option value="call-out-pending">Call Out — Pending (awaiting documentation)</option>
+          <option value="call-out-pending">Call Out - Pending (awaiting documentation)</option>
           <option value="late-arrival">Late Arrival (+0.5 pt)</option>
           <option value="late-arrival-half">Late Arrival (after half shift) (+1.0 pt)</option>
           <option value="left-early-before">Left Early (before half shift) (+1.0 pt)</option>
           <option value="left-early-after">Left Early (after half shift) (+0.5 pt)</option>
-          <option value="left-early-sick">Early Out — Sick Time Used (no point)</option>
+          <option value="left-early-sick">Early Out - Sick Time Used (no point)</option>
           <option value="fmla-pending">Pending FMLA (no point)</option>
           <option value="fmla-approved">Approved FMLA (no point)</option>
           <option value="bereavement">Bereavement (no point)</option>
-          <option value="doctors-note">Called Out — Doctor's Note (no point)</option>
+          <option value="doctors-note">Called Out - Doctor's Note (no point)</option>
         </select>
       </div>
       <div class="mb-3">
@@ -9910,7 +9910,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <!-- Board Section -->
       <div id="kbBoardSection">
         <div id="kbReadOnlyBanner" class="alert alert-warning py-2 px-3 mb-3 d-none" style="font-size:0.85rem">
-          <i class="fas fa-eye me-1"></i>Viewing archived snapshot — read only.
+          <i class="fas fa-eye me-1"></i>Viewing archived snapshot - read only.
         </div>
         <div id="kbBoard" style="display:flex;gap:16px;min-height:300px;overflow-x:auto;padding-bottom:8px"></div>
         <div id="kbAddForm" class="mt-3 pt-3 border-top d-flex gap-2 flex-wrap align-items-end">
@@ -9962,7 +9962,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="mb-3">
             <label class="form-label fw-semibold small">Conducted by</label>
             <select class="form-select" id="1on1Conductor">
-              <option value="">— Select leader —</option>
+              <option value="">- Select leader -</option>
             </select>
           </div>
           <div class="mb-2">
@@ -9985,7 +9985,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="mb-3">
             <label class="form-label fw-semibold small">Conducted by</label>
             <select class="form-select" id="1on1LogConductor">
-              <option value="">— Select leader —</option>
+              <option value="">- Select leader -</option>
             </select>
           </div>
           <div class="mb-3">
@@ -10183,7 +10183,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
         <div class="mb-1">
           <label class="form-label fw-semibold small">Notes</label>
-          <textarea class="form-control" id="exitNotes" rows="3" placeholder="Optional — reason, circumstances, eligible for rehire, etc."></textarea>
+          <textarea class="form-control" id="exitNotes" rows="3" placeholder="Optional - reason, circumstances, eligible for rehire, etc."></textarea>
         </div>
       </div>
       <div class="modal-footer border-0 pt-0">
@@ -10260,7 +10260,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <div class="modal-header border-0" style="background:#1a2744;border-radius:12px 12px 0 0">
         <div>
           <h5 class="modal-title text-white fw-bold mb-0" id="gcFormTitle">Employee Warning Notice</h5>
-          <div class="text-white-50 small mt-1">Fill in the details — the form will open in a new window for signing and printing.</div>
+          <div class="text-white-50 small mt-1">Fill in the details - the form will open in a new window for signing and printing.</div>
         </div>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
@@ -10283,7 +10283,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
         <div class="mb-3">
           <label class="form-label fw-semibold small">Description of Incident <span class="text-danger">*</span></label>
-          <textarea class="form-control" id="gcDescription" rows="4" placeholder="Describe what happened — specific behavior, time, location, who was present, impact to operations or team..."></textarea>
+          <textarea class="form-control" id="gcDescription" rows="4" placeholder="Describe what happened - specific behavior, time, location, who was present, impact to operations or team..."></textarea>
         </div>
         <div class="mb-3">
           <label class="form-label fw-semibold small">Prior History <span class="text-muted fw-normal">(optional)</span></label>
