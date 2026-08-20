@@ -2125,7 +2125,10 @@ function renderGoals(goals) {
   container.innerHTML = goals.map(g => {
     const color = statusColor[g.status] || '#6b7280';
     const icon  = catIcon[g.category] || 'fa-bullseye';
-    const overdue = g.dueDate && g.status === 'Active' && g.dueDate < new Date().toISOString().slice(0,10);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const dueD  = g.dueDate ? new Date(g.dueDate+'T00:00:00') : null;
+    const daysLeft = dueD ? Math.round((dueD - today) / 86400000) : null;
+    const overdue = dueD && g.status === 'Active' && daysLeft < 0;
     const pNotes = g.progressNotes || [];
     const notesHtml = renderProgressNotes(pNotes, g.id, canManage);
     const addNoteForm = canManage
@@ -2155,6 +2158,26 @@ function renderGoals(goals) {
           (roleAtLeast('admin') ? '<button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deleteGoal(\'' + g.id + '\')"><i class="fas fa-trash-alt"></i></button>' : '') +
         '</div>'
       : '';
+    // Countdown widget — only for Active goals with a due date
+    let countdownHtml = '';
+    if (g.dueDate && g.status === 'Active') {
+      let cdNum, cdLabel, cdBg, cdColor;
+      if (daysLeft > 0) {
+        cdNum = daysLeft; cdLabel = 'days left';
+        cdBg = daysLeft <= 7 ? '#fff7ed' : daysLeft <= 14 ? '#fefce8' : '#eff6ff';
+        cdColor = daysLeft <= 7 ? '#ea580c' : daysLeft <= 14 ? '#ca8a04' : '#2563eb';
+      } else if (daysLeft === 0) {
+        cdNum = 'Today'; cdLabel = 'due today!';
+        cdBg = '#fff7ed'; cdColor = '#ea580c';
+      } else {
+        cdNum = Math.abs(daysLeft); cdLabel = 'days overdue';
+        cdBg = '#fee2e2'; cdColor = '#dc2626';
+      }
+      countdownHtml = '<div style="flex-shrink:0;text-align:center;background:' + cdBg + ';border-radius:10px;padding:8px 14px;min-width:72px;border:1px solid ' + cdColor + '30">' +
+        '<div style="font-size:1.9rem;font-weight:900;line-height:1;color:' + cdColor + '">' + cdNum + '</div>' +
+        '<div style="font-size:0.65rem;font-weight:600;color:' + cdColor + ';text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">' + cdLabel + '</div>' +
+      '</div>';
+    }
     return '<div class="goal-card" style="border-left:4px solid ' + color + '">' +
       '<div class="d-flex justify-content-between align-items-start mb-1 flex-wrap gap-1">' +
         '<div class="d-flex align-items-center gap-2 flex-wrap">' +
@@ -2165,10 +2188,15 @@ function renderGoals(goals) {
         '</div>' +
         statusDropdown +
       '</div>' +
-      '<div class="goal-title mt-1">' + escapeHtml(g.title) + '</div>' +
-      dueLine +
-      notesLine +
-      '<div class="goal-meta mt-1"><i class="fas fa-user me-1"></i>Set by ' + escapeHtml(g.createdBy||'-') + ' · ' + formatDate(g.createdAt) + '</div>' +
+      '<div class="d-flex align-items-center gap-3">' +
+        '<div style="flex:1">' +
+          '<div class="goal-title mt-1">' + escapeHtml(g.title) + '</div>' +
+          dueLine +
+          notesLine +
+          '<div class="goal-meta mt-1"><i class="fas fa-user me-1"></i>Set by ' + escapeHtml(g.createdBy||'-') + ' · ' + formatDate(g.createdAt) + '</div>' +
+        '</div>' +
+        countdownHtml +
+      '</div>' +
       '<div class="mt-2 pt-1" style="border-top:1px solid #e2e8f0">' +
         '<button class="btn btn-link p-0" style="font-size:0.72rem;color:#64748b;text-decoration:none" onclick="toggleGoalProgress(\'' + g.id + '\')">' +
           '<i class="fas fa-history me-1"></i>' + pNotes.length + ' progress note' + (pNotes.length !== 1 ? 's' : '') +
