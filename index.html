@@ -1452,6 +1452,13 @@ window.openProfile = async (id) => {
   document.getElementById('watchNotesBody').classList.add('d-none');
   document.getElementById('watchChevron').classList.remove('open');
   document.getElementById('watchAddBtn').style.display = 'none';
+  // Reset goals panel state
+  const goalsBodyEl = document.getElementById('goalsBody');
+  const goalsChevronEl = document.getElementById('goalsChevron');
+  const goalsAddBtnEl = document.getElementById('goalsAddBtn');
+  if (goalsBodyEl) goalsBodyEl.classList.add('d-none');
+  if (goalsChevronEl) goalsChevronEl.classList.remove('open');
+  if (goalsAddBtnEl) goalsAddBtnEl.style.display = 'none';
 
   // Reset 1:1 panel state
   oneOnOneOpen = false;
@@ -2090,7 +2097,7 @@ function listenGoals(assocId) {
     });
     lastGoals = goals;
     const badge = document.getElementById('goalCountBadge');
-    if (badge) badge.textContent = goals.filter(g => g.status === 'Active').length;
+    if (badge) badge.textContent = goals.filter(g => g.status !== 'Completed').length;
     if (goalsOpen) renderGoals(goals);
   }).catch(() => {});
 }
@@ -2315,7 +2322,27 @@ window.saveGoal = async () => {
 };
 
 window.updateGoalStatus = async (goalId, status) => {
-  await updateDoc(doc(db, 'goals', currentAssociateId, 'entries', goalId), { status });
+  const goalRef = doc(db, 'goals', currentAssociateId, 'entries', goalId);
+  const goalSnap = await getDoc(goalRef);
+  const g = goalSnap.exists() ? goalSnap.data() : {};
+  const update = { status };
+
+  if (status === 'On Hold') {
+    // Record when the hold started
+    update.heldAt = new Date().toISOString();
+  } else if (status === 'Active' && g.heldAt && g.dueDate) {
+    // Resume: push the due date forward by however many days it was on hold
+    const heldMs = Date.now() - new Date(g.heldAt).getTime();
+    const heldDays = Math.ceil(heldMs / 86400000);
+    const newDue = new Date(g.dueDate + 'T00:00:00');
+    newDue.setDate(newDue.getDate() + heldDays);
+    update.dueDate = newDue.toISOString().slice(0, 10);
+    update.heldAt = null;
+  } else if (status === 'Active') {
+    update.heldAt = null;
+  }
+
+  await updateDoc(goalRef, update);
   listenGoals(currentAssociateId);
 };
 
