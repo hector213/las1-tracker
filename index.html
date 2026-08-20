@@ -2272,10 +2272,23 @@ window.toggleGoalsPanel = () => {
   if (goalsOpen) renderGoals(lastGoals);
 };
 
+window.autoSetGoalDueDate = () => {
+  const cat = document.getElementById('goalCategory').value;
+  const days = { '30-Day': 30, '60-Day': 60, '90-Day': 90 }[cat];
+  const dueDateEl = document.getElementById('goalDueDate');
+  if (days) {
+    const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() + days);
+    dueDateEl.value = d.toISOString().slice(0,10);
+  } else {
+    dueDateEl.value = '';
+  }
+};
+
 window.openAddGoalModal = () => {
   document.getElementById('goalForm').reset();
   document.getElementById('goalEditId').value = '';
   bootstrap.Modal.getOrCreateInstance(document.getElementById('goalModal')).show();
+  autoSetGoalDueDate(); // pre-fill due date based on default category (30-Day)
 };
 
 window.saveGoal = async () => {
@@ -10159,7 +10172,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="row g-3 mb-3">
             <div class="col-6">
               <label class="form-label fw-semibold small">Category</label>
-              <select class="form-select" id="goalCategory">
+              <select class="form-select" id="goalCategory" onchange="autoSetGoalDueDate()">
                 <option value="30-Day">30-Day Target</option>
                 <option value="60-Day">60-Day Target</option>
                 <option value="90-Day">90-Day Target</option>
