@@ -3536,12 +3536,12 @@ function computeAttRisk(entries, assoc) {
     });
   }
 
-  // Mon/Fri clustering (>55% of events on Mon or Fri, min 4 events)
+  // Mon/Thu clustering (>55% of events on Mon or Thu — shift bookends, min 4 events)
   if (events90.length >= 4) {
-    const monFri = events90.filter(e => { const d = new Date(e.date+'T00:00:00').getDay(); return d===1||d===5; }).length;
-    if (monFri / events90.length >= 0.55) {
+    const monThu = events90.filter(e => { const d = new Date(e.date+'T00:00:00').getDay(); return d===1||d===4; }).length;
+    if (monThu / events90.length >= 0.55) {
       score += 10;
-      flags.push({ label: `Mon/Fri pattern - ${monFri} of ${events90.length} events`, color: '#d97706', bg: '#fef9c3', icon: 'fa-calendar-day' });
+      flags.push({ label: `Mon/Thu pattern - ${monThu} of ${events90.length} events`, color: '#d97706', bg: '#fef9c3', icon: 'fa-calendar-day' });
     }
   }
 
@@ -5317,11 +5317,15 @@ function renderAttPredictor() {
   const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const today_dow = now.getDay(); // 0=Sun … 6=Sat
 
-  // Next 7 days, including today
-  const upcomingDays = Array.from({length:7}, (_,i) => {
+  // Next Mon-Thu workdays (up to 14 days out to find the next full Mon-Thu week)
+  const WORK_DAYS = new Set([1,2,3,4]); // Mon=1, Tue=2, Wed=3, Thu=4
+  const upcomingDays = [];
+  for (let i = 0; i < 14 && upcomingDays.length < 4; i++) {
     const d = new Date(now); d.setDate(now.getDate()+i);
-    return { date: iso(d), dow: d.getDay(), label: i===0 ? 'Today' : i===1 ? 'Tomorrow' : DAY_NAMES[d.getDay()] };
-  });
+    const dow = d.getDay();
+    if (!WORK_DAYS.has(dow)) continue;
+    upcomingDays.push({ date: iso(d), dow, label: i===0 ? 'Today' : i===1 ? 'Tomorrow' : DAY_NAMES[dow] });
+  }
 
   // Build per-associate prediction data from allAssociates + _allAttEntries
   const activeAssocs = allAssociates.filter(a => a.status === 'active');
@@ -5333,12 +5337,14 @@ function renderAttPredictor() {
     const callOutTypes  = e => e.type?.startsWith('call-out') || e.type === 'ncns';
     const earlyOutTypes = e => e.type?.startsWith('left-early');
 
-    const events90 = entries.filter(e => behaviorTypes(e) && e.date && e.date >= iso(d90));
-    const events30 = entries.filter(e => behaviorTypes(e) && e.date && e.date >= iso(d30));
-    const eventsPrior = entries.filter(e => behaviorTypes(e) && e.date && e.date >= iso(d60) && e.date < iso(d30));
+    // Only count events that occurred on workdays (Mon-Thu)
+    const isWorkDay = e => { if (!e.date) return false; const d = new Date(e.date+'T00:00:00').getDay(); return WORK_DAYS.has(d); };
+    const events90 = entries.filter(e => behaviorTypes(e) && isWorkDay(e) && e.date >= iso(d90));
+    const events30 = entries.filter(e => behaviorTypes(e) && isWorkDay(e) && e.date >= iso(d30));
+    const eventsPrior = entries.filter(e => behaviorTypes(e) && isWorkDay(e) && e.date >= iso(d60) && e.date < iso(d30));
     if (events90.length === 0) return; // clean associate, skip
 
-    // Day-of-week hit counts (last 90d)
+    // Day-of-week hit counts (last 90d, Mon-Thu only)
     const dowCO = Array(7).fill(0);  // call-out by DOW
     const dowEO = Array(7).fill(0);  // early-out by DOW
     events90.forEach(e => {
@@ -5360,7 +5366,7 @@ function renderAttPredictor() {
       const coCount = dowCO[d];
       const eoCount = dowEO[d];
       const totalForDay = coCount + eoCount;
-      // Weeks with data in last 90 days: ~13 weeks
+      // ~13 weeks sampled in 90 days; each day (Mon-Thu) appears ~13 times
       const weeksSampled = 13;
       // Base probability: how often did this person miss this DOW in last 90d
       let prob = totalForDay / weeksSampled;
@@ -5368,9 +5374,9 @@ function renderAttPredictor() {
       if (accel) prob = Math.min(prob * 1.35, 0.95);
       // Boost by current points level (higher pts = higher baseline risk)
       prob = Math.min(prob + (totalPts * 0.015), 0.95);
-      // Mon/Fri premium if clustering detected
-      const monFriRatio = events90.length > 0 ? events90.filter(e => { const dow2 = new Date(e.date+'T00:00:00').getDay(); return dow2===1||dow2===5; }).length / events90.length : 0;
-      if ((d === 1 || d === 5) && monFriRatio >= 0.5) prob = Math.min(prob * 1.2, 0.95);
+      // Mon/Thu premium if clustering detected on those bookend days
+      const monThuRatio = events90.length > 0 ? events90.filter(e => { const dow2 = new Date(e.date+'T00:00:00').getDay(); return dow2===1||dow2===4; }).length / events90.length : 0;
+      if ((d === 1 || d === 4) && monThuRatio >= 0.5) prob = Math.min(prob * 1.2, 0.95);
       return { ...day, prob: Math.round(prob * 100), coCount, eoCount, totalForDay };
     });
 
