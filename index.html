@@ -3490,6 +3490,83 @@ function listenAttendance(associateId) {
   });
 }
 
+// ─── Attrition Risk Score ─────────────────────────────────────────────────────
+function computeAttRisk(entries, assoc) {
+  const now = new Date(); now.setHours(0,0,0,0);
+  const iso = d => d.toISOString().slice(0,10);
+  const d90 = new Date(now); d90.setDate(d90.getDate() - 90);
+  const d30 = new Date(now); d30.setDate(d30.getDate() - 30);
+  const d60 = new Date(now); d60.setDate(d60.getDate() - 60);
+
+  const pointEvents = entries.filter(e => (e.points||0) > 0 && !e.expired && !e.pending);
+  const behaviorEvents = pointEvents.filter(e =>
+    e.type?.startsWith('call-out') || e.type === 'ncns' || e.type?.startsWith('left-early')
+  );
+  const events90 = behaviorEvents.filter(e => e.date && e.date >= iso(d90));
+  const events30 = behaviorEvents.filter(e => e.date && e.date >= iso(d30));
+  const eventsPrior = behaviorEvents.filter(e => e.date && e.date >= iso(d60) && e.date < iso(d30));
+
+  const pts = assoc?.attendancePoints || 0;
+  let score = 0;
+  const flags = [];
+
+  // Base: attendance points (max 70)
+  score += Math.min(pts * 7, 70);
+
+  // NCNS in last 90 days
+  const ncns90 = events90.filter(e => e.type === 'ncns').length;
+  if (ncns90 > 0) {
+    score += Math.min(ncns90 * 15, 20);
+    flags.push({ label: `${ncns90} NCNS in last 90 days`, color: '#7c0000', bg: '#fee2e2', icon: 'fa-ban' });
+  }
+
+  // Recurring day-of-week pattern (3+ same day in 90 days)
+  const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const dayCounts = {};
+  events90.forEach(e => {
+    if (!e.date) return;
+    const dow = new Date(e.date+'T00:00:00').getDay();
+    dayCounts[dow] = (dayCounts[dow]||0) + 1;
+  });
+  const recurringDays = Object.entries(dayCounts).filter(([,c]) => c >= 3).sort((a,b) => b[1]-a[1]);
+  if (recurringDays.length > 0) {
+    score += 15;
+    recurringDays.forEach(([dow, count]) => {
+      flags.push({ label: `${DAY_NAMES[dow]} pattern - ${count}x in 90 days`, color: '#7c3aed', bg: '#ede9fe', icon: 'fa-calendar-week' });
+    });
+  }
+
+  // Mon/Fri clustering (>55% of events on Mon or Fri, min 4 events)
+  if (events90.length >= 4) {
+    const monFri = events90.filter(e => { const d = new Date(e.date+'T00:00:00').getDay(); return d===1||d===5; }).length;
+    if (monFri / events90.length >= 0.55) {
+      score += 10;
+      flags.push({ label: `Mon/Fri pattern - ${monFri} of ${events90.length} events`, color: '#d97706', bg: '#fef9c3', icon: 'fa-calendar-day' });
+    }
+  }
+
+  // Acceleration: more events in last 30 days than prior 30
+  if (events30.length > eventsPrior.length && events30.length >= 2) {
+    score += 10;
+    flags.push({ label: `Accelerating: ${events30.length} events last 30d vs ${eventsPrior.length} prior`, color: '#dc2626', bg: '#fee2e2', icon: 'fa-arrow-trend-up' });
+  }
+
+  // New hire at-risk: <90 days tenure with 2+ events
+  if (assoc?.hireDate) {
+    const hireDays = Math.round((now - new Date(assoc.hireDate+'T00:00:00')) / 86400000);
+    if (hireDays < 90 && pointEvents.length >= 2) {
+      score += 10;
+      flags.push({ label: `New hire risk - ${hireDays}d tenure, ${pointEvents.length} events`, color: '#0369a1', bg: '#e0f2fe', icon: 'fa-user-clock' });
+    }
+  }
+
+  score = Math.min(Math.round(score), 100);
+  const riskLevel = score >= 75 ? 'Critical' : score >= 50 ? 'High' : score >= 25 ? 'Moderate' : 'Low';
+  const riskColor = score >= 75 ? '#dc2626' : score >= 50 ? '#ea580c' : score >= 25 ? '#d97706' : '#059669';
+  const riskBg    = score >= 75 ? '#fee2e2' : score >= 50 ? '#ffedd5' : score >= 25 ? '#fef9c3' : '#dcfce7';
+  return { score, riskLevel, riskColor, riskBg, flags };
+}
+
 function updateAttScoreDisplay() {
   const total = lastAttendance.reduce((s, e) => s + (e.points || 0), 0);
   const el = document.getElementById('attScoreVal');
@@ -3498,16 +3575,39 @@ function updateAttScoreDisplay() {
   el.textContent = total % 1 === 0 ? total : total.toFixed(1);
   el.style.color = color;
   document.getElementById('attScoreCount').textContent = lastAttendance.length;
-  // breakdown counts
   const counts = { callOut: 0, late: 0, leftEarly: 0 };
   lastAttendance.forEach(e => {
     if (e.type?.startsWith('call-out')) counts.callOut++;
     else if (e.type?.startsWith('late'))    counts.late++;
     else if (e.type?.startsWith('left'))    counts.leftEarly++;
   });
-  document.getElementById('attBreakCallOut').textContent  = counts.callOut;
-  document.getElementById('attBreakLate').textContent     = counts.late;
-  document.getElementById('attBreakLeft').textContent     = counts.leftEarly;
+  document.getElementById('attBreakCallOut').textContent = counts.callOut;
+  document.getElementById('attBreakLate').textContent    = counts.late;
+  document.getElementById('attBreakLeft').textContent    = counts.leftEarly;
+
+  // Render attrition risk score
+  const riskContainer = document.getElementById('attRiskScore');
+  if (!riskContainer || !roleAtLeast('lead')) return;
+  const assoc = allAssociates.find(a => a.id === currentAssociateId);
+  const risk = computeAttRisk(lastAttendance, assoc);
+  if (risk.score === 0 && risk.flags.length === 0) { riskContainer.innerHTML = ''; return; }
+  const barWidth = risk.score + '%';
+  const barColor = risk.riskColor;
+  riskContainer.innerHTML =
+    `<div style="background:${risk.riskBg};border:1px solid ${risk.riskColor}30;border-radius:10px;padding:10px 14px;margin-top:10px">` +
+      `<div class="d-flex align-items-center justify-content-between mb-2">` +
+        `<span style="font-size:0.75rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.5px"><i class="fas fa-chart-line me-1" style="color:${risk.riskColor}"></i>Attrition Risk</span>` +
+        `<span style="font-size:0.75rem;font-weight:800;color:${risk.riskColor};background:${risk.riskColor}18;padding:2px 10px;border-radius:12px;border:1px solid ${risk.riskColor}40">${risk.riskLevel} - ${risk.score}/100</span>` +
+      `</div>` +
+      `<div style="background:#e5e7eb;border-radius:99px;height:6px;margin-bottom:${risk.flags.length?'10px':'0'}">` +
+        `<div style="background:${barColor};width:${barWidth};height:6px;border-radius:99px;transition:width .4s"></div>` +
+      `</div>` +
+      (risk.flags.length ? risk.flags.map(f =>
+        `<div style="font-size:0.72rem;color:${f.color};background:${f.bg};border-radius:6px;padding:3px 8px;margin-top:4px;display:inline-flex;align-items:center;gap:5px;margin-right:4px">` +
+          `<i class="fas ${f.icon||'fa-exclamation-circle'}"></i>${f.label}` +
+        `</div>`
+      ).join('') : '') +
+    `</div>`;
 }
 
 function renderAttendanceLog() {
@@ -5154,7 +5254,12 @@ window.renderRiskPanel = () => {
   if (!riskEl) return;
   const f = window._riskFilter;
   const sorted = Object.entries(window._riskByAssoc)
-    .sort((a, b) => b[1].total - a[1].total)
+    .sort((a, b) => {
+      // Sort by risk score if available, fall back to points
+      const rA = a[1].risk?.score ?? a[1].total * 7;
+      const rB = b[1].risk?.score ?? b[1].total * 7;
+      return rB - rA;
+    })
     .filter(([, d]) => {
       if (f === 'red')    return d.total >= 9;
       if (f === 'orange') return d.total >= 6 && d.total < 9;
@@ -5171,13 +5276,22 @@ window.renderRiskPanel = () => {
     const icon   = d.total >= 10 ? '🔴' : d.total >= 9 ? '🔴' : d.total >= 6 ? '🟠' : d.total >= 3 ? '⚠️' : '✅';
     const color  = d.total >= 9 ? '#dc2626' : d.total >= 6 ? '#ea580c' : d.total >= 3 ? '#d97706' : '#059669';
     const policy = d.total >= 10 ? 'Termination' : d.total >= 9 ? 'Final Warning' : d.total >= 6 ? 'Written Warning' : d.total >= 3 ? 'Doc. Verbal' : 'Good Standing';
-    return `<div class="att-risk-card ${cls}" onclick="openProfile('${id}')">
-      <span style="font-size:1.1rem">${icon}</span>
-      <div class="flex-grow-1">
-        <div class="fw-semibold small" style="color:var(--navy)">${escapeHtml(d.name)}</div>
-        <div style="font-size:0.7rem;color:${color};font-weight:600">${policy}</div>
+    const risk = d.risk;
+    const riskBadge = risk && risk.score >= 25 ? `<span style="font-size:0.65rem;font-weight:700;color:${risk.riskColor};background:${risk.riskColor}18;border:1px solid ${risk.riskColor}40;border-radius:10px;padding:1px 6px;margin-left:4px">${risk.riskLevel} ${risk.score}</span>` : '';
+    const flagsHtml = risk && risk.flags.length ?
+      `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px">` +
+        risk.flags.map(fl => `<span style="font-size:0.6rem;color:${fl.color};background:${fl.bg};border-radius:4px;padding:1px 5px;display:inline-flex;align-items:center;gap:3px"><i class="fas ${fl.icon||'fa-exclamation-circle'}" style="font-size:0.55rem"></i>${fl.label}</span>`).join('') +
+      `</div>` : '';
+    return `<div class="att-risk-card ${cls}" onclick="openProfile('${id}')" style="flex-direction:column;align-items:flex-start;gap:4px">
+      <div style="display:flex;align-items:center;width:100%;gap:8px">
+        <span style="font-size:1.1rem">${icon}</span>
+        <div class="flex-grow-1">
+          <div class="fw-semibold small d-flex align-items-center" style="color:var(--navy)">${escapeHtml(d.name)}${riskBadge}</div>
+          <div style="font-size:0.7rem;color:${color};font-weight:600">${policy}</div>
+        </div>
+        <div class="fw-bold" style="color:${color};flex-shrink:0">${d.total % 1 === 0 ? d.total : d.total.toFixed(1)} pts</div>
       </div>
-      <div class="fw-bold" style="color:${color}">${d.total % 1 === 0 ? d.total : d.total.toFixed(1)} pts</div>
+      ${flagsHtml}
     </div>`;
   }).join('');
 };
@@ -5186,8 +5300,171 @@ window.setAttPeriod = (period, btn) => {
   _attActivePeriod = period;
   document.querySelectorAll('.att-period-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
+  if (period === 'predictor') { renderAttPredictor(); return; }
   renderAttTrends(); // trends only - table is not affected
 };
+
+// ─── Attendance Predictor ─────────────────────────────────────────────────────
+function renderAttPredictor() {
+  const el = document.getElementById('attTrendsContainer');
+  if (!el) return;
+
+  const now = new Date(); now.setHours(0,0,0,0);
+  const iso = d => d.toISOString().slice(0,10);
+  const d90 = new Date(now); d90.setDate(d90.getDate()-90);
+  const d30 = new Date(now); d30.setDate(d30.getDate()-30);
+  const d60 = new Date(now); d60.setDate(d60.getDate()-60);
+  const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const today_dow = now.getDay(); // 0=Sun … 6=Sat
+
+  // Next 7 days, including today
+  const upcomingDays = Array.from({length:7}, (_,i) => {
+    const d = new Date(now); d.setDate(now.getDate()+i);
+    return { date: iso(d), dow: d.getDay(), label: i===0 ? 'Today' : i===1 ? 'Tomorrow' : DAY_NAMES[d.getDay()] };
+  });
+
+  // Build per-associate prediction data from allAssociates + _allAttEntries
+  const activeAssocs = allAssociates.filter(a => a.status === 'active');
+  const predictions = [];
+
+  activeAssocs.forEach(assoc => {
+    const entries = _allAttEntries.filter(e => e.assocId === assoc.id && !e.expired && !e.pending);
+    const behaviorTypes = e => e.type?.startsWith('call-out') || e.type === 'ncns' || e.type?.startsWith('left-early') || e.type?.startsWith('late');
+    const callOutTypes  = e => e.type?.startsWith('call-out') || e.type === 'ncns';
+    const earlyOutTypes = e => e.type?.startsWith('left-early');
+
+    const events90 = entries.filter(e => behaviorTypes(e) && e.date && e.date >= iso(d90));
+    const events30 = entries.filter(e => behaviorTypes(e) && e.date && e.date >= iso(d30));
+    const eventsPrior = entries.filter(e => behaviorTypes(e) && e.date && e.date >= iso(d60) && e.date < iso(d30));
+    if (events90.length === 0) return; // clean associate, skip
+
+    // Day-of-week hit counts (last 90d)
+    const dowCO = Array(7).fill(0);  // call-out by DOW
+    const dowEO = Array(7).fill(0);  // early-out by DOW
+    events90.forEach(e => {
+      const dow = new Date(e.date+'T00:00:00').getDay();
+      if (callOutTypes(e))  dowCO[dow]++;
+      if (earlyOutTypes(e)) dowEO[dow]++;
+    });
+
+    // Acceleration factor
+    const accel = events30.length > eventsPrior.length && events30.length >= 2;
+
+    // Total events and points
+    const totalEvents = events90.length;
+    const totalPts = assoc.attendancePoints || 0;
+
+    // Build 7-day prediction: probability per upcoming day
+    const weekPredictions = upcomingDays.map(day => {
+      const d = day.dow;
+      const coCount = dowCO[d];
+      const eoCount = dowEO[d];
+      const totalForDay = coCount + eoCount;
+      // Weeks with data in last 90 days: ~13 weeks
+      const weeksSampled = 13;
+      // Base probability: how often did this person miss this DOW in last 90d
+      let prob = totalForDay / weeksSampled;
+      // Boost if accelerating
+      if (accel) prob = Math.min(prob * 1.35, 0.95);
+      // Boost by current points level (higher pts = higher baseline risk)
+      prob = Math.min(prob + (totalPts * 0.015), 0.95);
+      // Mon/Fri premium if clustering detected
+      const monFriRatio = events90.length > 0 ? events90.filter(e => { const dow2 = new Date(e.date+'T00:00:00').getDay(); return dow2===1||dow2===5; }).length / events90.length : 0;
+      if ((d === 1 || d === 5) && monFriRatio >= 0.5) prob = Math.min(prob * 1.2, 0.95);
+      return { ...day, prob: Math.round(prob * 100), coCount, eoCount, totalForDay };
+    });
+
+    // Primary prediction: most likely day in next 7
+    const bestDay = weekPredictions.reduce((a, b) => b.prob > a.prob ? b : a);
+    // Prediction type: mostly call-outs or mostly early-outs?
+    const coTotal90 = events90.filter(e => callOutTypes(e)).length;
+    const eoTotal90 = events90.filter(e => earlyOutTypes(e)).length;
+    const primaryType = eoTotal90 > coTotal90 ? 'Early Out' : 'Call Out';
+    const primaryColor = eoTotal90 > coTotal90 ? '#ea580c' : '#dc2626';
+    const primaryIcon  = eoTotal90 > coTotal90 ? 'fa-sign-out-alt' : 'fa-phone-slash';
+
+    // Recurring day label
+    const recurDays = dowCO.map((c,i) => ({dow:i, total:c+dowEO[i]})).filter(x=>x.total>=3).sort((a,b)=>b.total-a.total);
+
+    predictions.push({
+      assocId: assoc.id,
+      name: assoc.name,
+      totalPts,
+      totalEvents,
+      primaryType,
+      primaryColor,
+      primaryIcon,
+      accel,
+      weekPredictions,
+      bestDay,
+      recurDays,
+      coTotal90,
+      eoTotal90,
+    });
+  });
+
+  // Sort: highest max probability for this week first
+  predictions.sort((a, b) => b.bestDay.prob - a.bestDay.prob);
+
+  if (!predictions.length) {
+    el.innerHTML = `<div class="text-center py-4 text-muted small"><i class="fas fa-check-circle fa-2x mb-2 d-block" style="color:#10b981"></i>No attendance patterns to predict - team is looking great.</div>`;
+    return;
+  }
+
+  // ── Day-of-week heat column for next 7 days ─────────────────────
+  const dayHeaders = upcomingDays.map(d =>
+    `<div style="text-align:center;font-size:0.6rem;font-weight:700;color:#6b7280;min-width:36px">${d.label === 'Today' ? 'Today' : d.label === 'Tomorrow' ? 'Tmrw' : DAY_NAMES[d.dow].slice(0,3)}</div>`
+  ).join('');
+
+  el.innerHTML =
+    `<div class="mb-2">
+      <div class="d-flex align-items-center justify-content-between mb-1">
+        <span class="fw-bold small" style="color:var(--navy)"><i class="fas fa-brain me-1" style="color:#7c3aed"></i>Attendance Predictor</span>
+        <span style="font-size:0.65rem;color:#9ca3af">Based on last 90 days of behavior</span>
+      </div>
+      <div class="d-flex align-items-center gap-2 mb-2" style="padding-left:140px">
+        ${dayHeaders}
+      </div>
+    </div>` +
+    predictions.map(p => {
+      const heatCells = p.weekPredictions.map(d => {
+        const pct = d.prob;
+        const bg = pct >= 60 ? '#dc2626' : pct >= 40 ? '#ea580c' : pct >= 25 ? '#f59e0b' : pct >= 10 ? '#fde68a' : '#f3f4f6';
+        const fg = pct >= 25 ? '#fff' : '#374151';
+        const isToday = d.label === 'Today';
+        return `<div style="min-width:36px;height:30px;border-radius:5px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700;color:${fg};${isToday?'outline:2px solid var(--navy);outline-offset:1px':''}" title="${d.label}: ${pct}% risk">${pct > 0 ? pct+'%' : ''}</div>`;
+      }).join('');
+
+      const recurLabel = p.recurDays.length
+        ? `<span style="font-size:0.6rem;color:#7c3aed;background:#ede9fe;border-radius:4px;padding:1px 5px;margin-left:4px"><i class="fas fa-calendar-week" style="font-size:0.55rem"></i> ${p.recurDays.map(r=>DAY_NAMES[r.dow].slice(0,3)).join('/')}</span>`
+        : '';
+      const accelLabel = p.accel
+        ? `<span style="font-size:0.6rem;color:#dc2626;background:#fee2e2;border-radius:4px;padding:1px 5px;margin-left:4px"><i class="fas fa-arrow-trend-up" style="font-size:0.55rem"></i> Accel</span>`
+        : '';
+      const bestDayProb = p.bestDay.prob;
+      const bestDayColor = bestDayProb >= 60 ? '#dc2626' : bestDayProb >= 40 ? '#ea580c' : bestDayProb >= 25 ? '#d97706' : '#6b7280';
+
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 6px;border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="openProfile('${p.assocId}')">
+        <div style="min-width:130px;max-width:130px">
+          <div style="font-size:0.75rem;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.name)}</div>
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;margin-top:2px">
+            <span style="font-size:0.6rem;color:${p.primaryColor};background:${p.primaryColor}15;border-radius:4px;padding:1px 5px"><i class="fas ${p.primaryIcon}" style="font-size:0.55rem"></i> ${p.primaryType}</span>
+            ${recurLabel}${accelLabel}
+          </div>
+          <div style="font-size:0.6rem;color:#9ca3af;margin-top:1px">${p.totalPts} pts - ${p.totalEvents} events/90d</div>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;flex:1">${heatCells}</div>
+        <div style="min-width:50px;text-align:right">
+          <div style="font-size:0.85rem;font-weight:800;color:${bestDayColor}">${bestDayProb}%</div>
+          <div style="font-size:0.55rem;color:#9ca3af;line-height:1.1">${p.bestDay.label}</div>
+        </div>
+      </div>`;
+    }).join('') +
+    `<div style="margin-top:8px;padding:6px 8px;background:#f8fafc;border-radius:6px;font-size:0.6rem;color:#9ca3af;text-align:center">
+      Probability based on day-of-week history, acceleration trend, and current point level. Click any name to open profile.
+    </div>`
+  ;
+}
 
 function _trendMetrics(entries) {
   return {
@@ -5337,11 +5614,14 @@ window.loadAttendance = () => {
 };
 
 function renderTeamAttendance(entries) {
-  // At-risk panel - all-time running totals only
+  // At-risk panel - all-time running totals + risk scores
   window._riskByAssoc = {};
   allAssociates.filter(a => a.status === 'active').forEach(a => {
-    if ((a.attendancePoints || 0) > 0)
-      window._riskByAssoc[a.id] = { name: a.name, total: a.attendancePoints || 0, count: 0 };
+    if ((a.attendancePoints || 0) > 0) {
+      const assocEntries = entries.filter(e => e.assocId === a.id);
+      const risk = computeAttRisk(assocEntries, a);
+      window._riskByAssoc[a.id] = { name: a.name, total: a.attendancePoints || 0, count: 0, risk };
+    }
   });
   renderRiskPanel();
 
@@ -8640,6 +8920,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <i class="fas fa-chevron-down" id="attLogChevron" style="transition:.2s"></i>
           </div>
         </div>
+        <!-- Attrition Risk Score (leads+ only, rendered by updateAttScoreDisplay) -->
+        <div id="attRiskScore"></div>
         <!-- Collapsible log -->
         <div id="attLogBody" class="d-none">
           <div class="d-flex justify-content-end mt-2 mb-1">
@@ -8733,6 +9015,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <button class="btn btn-sm att-period-btn" data-period="month" onclick="setAttPeriod('month', this)">This Month</button>
               <button class="btn btn-sm att-period-btn" data-period="year" onclick="setAttPeriod('year', this)">This Year</button>
               <button class="btn btn-sm att-period-btn" data-period="all" onclick="setAttPeriod('all', this)">All Time</button>
+              <button class="btn btn-sm att-period-btn" data-period="predictor" onclick="setAttPeriod('predictor', this)" style="border-color:#7c3aed;color:#7c3aed"><i class="fas fa-brain me-1"></i>Predictor</button>
             </div>
             <div id="attTrendsContainer" style="flex:1;overflow-y:auto">
               <p class="text-muted small">Loading trends…</p>
