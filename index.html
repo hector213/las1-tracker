@@ -5454,9 +5454,9 @@ function renderAttPredictor() {
       </div>
       <div style="display:flex;align-items:center;gap:8px;padding:0 6px 4px">
         <div style="min-width:130px"></div>
-        <div style="display:flex;gap:4px;align-items:center;flex:1">${dayHeaders}</div>
-        <div style="min-width:52px;text-align:center;font-size:0.6rem;font-weight:700;color:#6b7280">Emp. Life</div>
-        <div style="min-width:52px;text-align:center;font-size:0.6rem;font-weight:700;color:#6b7280">Risk</div>
+        <div style="display:flex;gap:4px;align-items:center;flex:0 0 auto">${dayHeaders}</div>
+        <div style="min-width:70px;text-align:center;font-size:0.82rem;font-weight:700;color:#6b7280">Emp. Life</div>
+        <div style="min-width:70px;text-align:center;font-size:0.82rem;font-weight:700;color:#6b7280">Risk</div>
       </div>
     </div>` +
     predictions.map(p => {
@@ -5476,16 +5476,16 @@ function renderAttPredictor() {
         : '';
 
       // Employment expectancy column
-      const empCol = `<div style="min-width:52px;text-align:center">
-        <div style="font-size:0.78rem;font-weight:800;color:${p.expectancyColor};line-height:1.1">${p.expectancyLabel}</div>
-        <div style="font-size:0.52rem;color:#9ca3af;margin-top:1px">at cur. rate</div>
+      const empCol = `<div style="min-width:70px;text-align:center">
+        <div style="font-size:1.1rem;font-weight:800;color:${p.expectancyColor};line-height:1.1">${p.expectancyLabel}</div>
+        <div style="font-size:0.65rem;color:#9ca3af;margin-top:2px">at cur. rate</div>
       </div>`;
 
       // Risk score column
       const r = p.risk;
-      const riskCol = `<div style="min-width:52px;text-align:center">
-        <div style="font-size:0.78rem;font-weight:800;color:${r.riskColor};line-height:1.1">${r.score}</div>
-        <div style="font-size:0.52rem;color:${r.riskColor};background:${r.riskColor}18;border-radius:8px;padding:0 4px;margin-top:1px;font-weight:700">${r.riskLevel}</div>
+      const riskCol = `<div style="min-width:70px;text-align:center">
+        <div style="font-size:1.1rem;font-weight:800;color:${r.riskColor};line-height:1.1">${r.score}</div>
+        <div style="font-size:0.65rem;color:${r.riskColor};background:${r.riskColor}18;border-radius:8px;padding:1px 6px;margin-top:2px;font-weight:700">${r.riskLevel}</div>
       </div>`;
 
       return `<div style="display:flex;align-items:center;gap:8px;padding:7px 6px;border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="openProfile('${p.assocId}')">
@@ -5497,7 +5497,7 @@ function renderAttPredictor() {
           </div>
           <div style="font-size:0.6rem;color:#9ca3af;margin-top:1px">${p.totalPts} pts - ${p.totalEvents} events/90d</div>
         </div>
-        <div style="display:flex;gap:4px;align-items:center;flex:1">${heatCells}</div>
+        <div style="display:flex;gap:4px;align-items:center;flex:0 0 auto">${heatCells}</div>
         ${empCol}
         ${riskCol}
       </div>`;
