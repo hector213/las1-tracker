@@ -5247,6 +5247,7 @@ window.excuseAttendance = async (entryId) => {
 let _allAttEntries = [];
 let _attActivePeriod = 'week';
 window._riskFilter  = 'all';
+window._riskSort    = 'risk'; // 'risk' | 'points'
 window._riskByAssoc = {};
 
 window.renderRiskPanel = () => {
@@ -5255,7 +5256,7 @@ window.renderRiskPanel = () => {
   const f = window._riskFilter;
   const sorted = Object.entries(window._riskByAssoc)
     .sort((a, b) => {
-      // Sort by risk score if available, fall back to points
+      if (window._riskSort === 'points') return b[1].total - a[1].total;
       const rA = a[1].risk?.score ?? a[1].total * 7;
       const rB = b[1].risk?.score ?? b[1].total * 7;
       return rB - rA;
@@ -5443,7 +5444,7 @@ function renderAttPredictor() {
 
   // ── Day-of-week heat column for next 7 days ─────────────────────
   const dayHeaders = upcomingDays.map(d =>
-    `<div style="text-align:center;font-size:0.6rem;font-weight:700;color:#6b7280;min-width:36px">${d.label === 'Today' ? 'Today' : d.label === 'Tomorrow' ? 'Tmrw' : DAY_NAMES[d.dow].slice(0,3)}</div>`
+    `<div style="text-align:center;font-size:0.75rem;font-weight:700;color:#6b7280;min-width:42px">${d.label === 'Today' ? 'Today' : d.label === 'Tomorrow' ? 'Tmrw' : DAY_NAMES[d.dow].slice(0,3)}</div>`
   ).join('');
 
   el.innerHTML =
@@ -5453,10 +5454,10 @@ function renderAttPredictor() {
         <span style="font-size:0.65rem;color:#9ca3af">Based on last 90 days of behavior</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;padding:0 6px 4px">
-        <div style="min-width:130px"></div>
-        <div style="display:flex;gap:4px;align-items:center;flex:0 0 auto">${dayHeaders}</div>
-        <div style="min-width:70px;text-align:center;font-size:0.82rem;font-weight:700;color:#6b7280">Emp. Life</div>
-        <div style="min-width:70px;text-align:center;font-size:0.82rem;font-weight:700;color:#6b7280">Risk</div>
+        <div style="min-width:145px"></div>
+        <div style="display:flex;gap:5px;align-items:center;flex:0 0 auto">${dayHeaders}</div>
+        <div style="min-width:78px;text-align:center;font-size:0.82rem;font-weight:700;color:#6b7280">Emp. Life</div>
+        <div style="min-width:78px;text-align:center;font-size:0.82rem;font-weight:700;color:#6b7280">Risk</div>
       </div>
     </div>` +
     predictions.map(p => {
@@ -5465,39 +5466,39 @@ function renderAttPredictor() {
         const bg = pct >= 60 ? '#dc2626' : pct >= 40 ? '#ea580c' : pct >= 25 ? '#f59e0b' : pct >= 10 ? '#fde68a' : '#f3f4f6';
         const fg = pct >= 25 ? '#fff' : '#374151';
         const isToday = d.label === 'Today';
-        return `<div style="min-width:36px;height:30px;border-radius:5px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700;color:${fg};${isToday?'outline:2px solid var(--navy);outline-offset:1px':''}" title="${d.label}: ${pct}% risk">${pct > 0 ? pct+'%' : ''}</div>`;
+        return `<div style="min-width:42px;height:36px;border-radius:6px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;color:${fg};${isToday?'outline:2px solid var(--navy);outline-offset:1px':''}" title="${d.label}: ${pct}% risk">${pct > 0 ? pct+'%' : ''}</div>`;
       }).join('');
 
       const recurLabel = p.recurDays.length
-        ? `<span style="font-size:0.6rem;color:#7c3aed;background:#ede9fe;border-radius:4px;padding:1px 5px;margin-left:4px"><i class="fas fa-calendar-week" style="font-size:0.55rem"></i> ${p.recurDays.map(r=>DAY_NAMES[r.dow].slice(0,3)).join('/')}</span>`
+        ? `<span style="font-size:0.7rem;color:#7c3aed;background:#ede9fe;border-radius:4px;padding:2px 6px;margin-left:4px"><i class="fas fa-calendar-week" style="font-size:0.65rem"></i> ${p.recurDays.map(r=>DAY_NAMES[r.dow].slice(0,3)).join('/')}</span>`
         : '';
       const accelLabel = p.accel
-        ? `<span style="font-size:0.6rem;color:#dc2626;background:#fee2e2;border-radius:4px;padding:1px 5px;margin-left:4px"><i class="fas fa-arrow-trend-up" style="font-size:0.55rem"></i> Accel</span>`
+        ? `<span style="font-size:0.7rem;color:#dc2626;background:#fee2e2;border-radius:4px;padding:2px 6px;margin-left:4px"><i class="fas fa-arrow-trend-up" style="font-size:0.65rem"></i> Accel</span>`
         : '';
 
       // Employment expectancy column
-      const empCol = `<div style="min-width:70px;text-align:center">
-        <div style="font-size:1.1rem;font-weight:800;color:${p.expectancyColor};line-height:1.1">${p.expectancyLabel}</div>
-        <div style="font-size:0.65rem;color:#9ca3af;margin-top:2px">at cur. rate</div>
+      const empCol = `<div style="min-width:78px;text-align:center">
+        <div style="font-size:1.2rem;font-weight:800;color:${p.expectancyColor};line-height:1.1">${p.expectancyLabel}</div>
+        <div style="font-size:0.72rem;color:#9ca3af;margin-top:3px">at cur. rate</div>
       </div>`;
 
       // Risk score column
       const r = p.risk;
-      const riskCol = `<div style="min-width:70px;text-align:center">
-        <div style="font-size:1.1rem;font-weight:800;color:${r.riskColor};line-height:1.1">${r.score}</div>
-        <div style="font-size:0.65rem;color:${r.riskColor};background:${r.riskColor}18;border-radius:8px;padding:1px 6px;margin-top:2px;font-weight:700">${r.riskLevel}</div>
+      const riskCol = `<div style="min-width:78px;text-align:center">
+        <div style="font-size:1.2rem;font-weight:800;color:${r.riskColor};line-height:1.1">${r.score}</div>
+        <div style="font-size:0.72rem;color:${r.riskColor};background:${r.riskColor}18;border-radius:8px;padding:2px 7px;margin-top:3px;font-weight:700">${r.riskLevel}</div>
       </div>`;
 
-      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 6px;border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="openProfile('${p.assocId}')">
-        <div style="min-width:130px;max-width:130px">
-          <div style="font-size:0.75rem;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.name)}</div>
-          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;margin-top:2px">
-            <span style="font-size:0.6rem;color:${p.primaryColor};background:${p.primaryColor}15;border-radius:4px;padding:1px 5px"><i class="fas ${p.primaryIcon}" style="font-size:0.55rem"></i> ${p.primaryType}</span>
+      return `<div style="display:flex;align-items:center;gap:10px;padding:10px 8px;border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="openProfile('${p.assocId}')">
+        <div style="min-width:145px;max-width:145px">
+          <div style="font-size:0.88rem;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.name)}</div>
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:3px;margin-top:3px">
+            <span style="font-size:0.7rem;color:${p.primaryColor};background:${p.primaryColor}15;border-radius:4px;padding:2px 6px"><i class="fas ${p.primaryIcon}" style="font-size:0.65rem"></i> ${p.primaryType}</span>
             ${recurLabel}${accelLabel}
           </div>
-          <div style="font-size:0.6rem;color:#9ca3af;margin-top:1px">${p.totalPts} pts - ${p.totalEvents} events/90d</div>
+          <div style="font-size:0.7rem;color:#9ca3af;margin-top:2px">${p.totalPts} pts &middot; ${p.totalEvents} events/90d</div>
         </div>
-        <div style="display:flex;gap:4px;align-items:center;flex:0 0 auto">${heatCells}</div>
+        <div style="display:flex;gap:5px;align-items:center;flex:0 0 auto">${heatCells}</div>
         ${empCol}
         ${riskCol}
       </div>`;
@@ -8251,6 +8252,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .att-risk-warning  { background:#fffbeb; border:1px solid #fde68a; }
 .att-risk-ok       { background:#f0fdf4; border:1px solid #86efac; }
 .risk-chip.active  { outline:2px solid var(--navy); outline-offset:1px; }
+.risk-sort-btn.active-sort { background:#4338ca !important; color:#fff !important; border-color:#4338ca !important; }
 .att-period-btn    { border:2px solid #d1d5db; background:#fff; color:#374151; border-radius:8px; font-weight:600; transition:.15s; }
 .att-period-btn:hover { border-color:var(--orange); color:var(--orange); background:#fff; }
 .att-period-btn.active { border-color:var(--navy); background:var(--navy); color:#fff; }
@@ -9044,6 +9046,11 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <button class="btn btn-sm risk-chip" data-risk="orange" onclick="window._riskFilter=this.dataset.risk;document.querySelectorAll('.risk-chip').forEach(b=>b.classList.remove('active'));this.classList.add('active');renderRiskPanel()" style="font-size:0.72rem;padding:2px 8px;background:#ffedd5;color:#9a3412;border:1px solid #fb923c">🟠 Written</button>
               <button class="btn btn-sm risk-chip" data-risk="yellow" onclick="window._riskFilter=this.dataset.risk;document.querySelectorAll('.risk-chip').forEach(b=>b.classList.remove('active'));this.classList.add('active');renderRiskPanel()" style="font-size:0.72rem;padding:2px 8px;background:#fef9c3;color:#713f12;border:1px solid #fde047">🟡 Verbal</button>
               <button class="btn btn-sm risk-chip" data-risk="green" onclick="window._riskFilter=this.dataset.risk;document.querySelectorAll('.risk-chip').forEach(b=>b.classList.remove('active'));this.classList.add('active');renderRiskPanel()" style="font-size:0.72rem;padding:2px 8px;background:#dcfce7;color:#14532d;border:1px solid #86efac">🟢 Good</button>
+              <div style="margin-left:auto;display:flex;align-items:center;gap:4px">
+                <span style="font-size:0.68rem;color:#9ca3af;white-space:nowrap">Sort:</span>
+                <button id="riskSortRisk" class="btn btn-sm risk-sort-btn active-sort" onclick="window._riskSort='risk';document.querySelectorAll('.risk-sort-btn').forEach(b=>b.classList.remove('active-sort'));this.classList.add('active-sort');renderRiskPanel()" style="font-size:0.68rem;padding:2px 7px;border:1px solid #6366f1;background:#eef2ff;color:#4338ca;border-radius:6px;font-weight:600">Risk ↓</button>
+                <button id="riskSortPts" class="btn btn-sm risk-sort-btn" onclick="window._riskSort='points';document.querySelectorAll('.risk-sort-btn').forEach(b=>b.classList.remove('active-sort'));this.classList.add('active-sort');renderRiskPanel()" style="font-size:0.68rem;padding:2px 7px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;border-radius:6px;font-weight:600">Points ↓</button>
+              </div>
             </div>
             <div id="attRiskList" style="overflow-y:auto;max-height:420px;flex:1"><div class="text-muted small">Loading…</div></div>
           </div>
