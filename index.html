@@ -5340,63 +5340,125 @@ function renderAttPredictor() {
 
     // Only count events that occurred on workdays (Mon-Thu)
     const isWorkDay = e => { if (!e.date) return false; const d = new Date(e.date+'T00:00:00').getDay(); return WORK_DAYS.has(d); };
-    const events90 = entries.filter(e => behaviorTypes(e) && isWorkDay(e) && e.date >= iso(d90));
-    const events30 = entries.filter(e => behaviorTypes(e) && isWorkDay(e) && e.date >= iso(d30));
-    const eventsPrior = entries.filter(e => behaviorTypes(e) && isWorkDay(e) && e.date >= iso(d60) && e.date < iso(d30));
-    if (events90.length === 0) return; // clean associate, skip
 
-    // Day-of-week hit counts (last 90d, Mon-Thu only)
-    const dowCO = Array(7).fill(0);  // call-out by DOW
-    const dowEO = Array(7).fill(0);  // early-out by DOW
-    events90.forEach(e => {
-      const dow = new Date(e.date+'T00:00:00').getDay();
-      if (callOutTypes(e))  dowCO[dow]++;
-      if (earlyOutTypes(e)) dowEO[dow]++;
+    // ── Recency-decay engine (uses full history, not just 90 days) ──────────
+    // Half-life 28 days: event from 4 weeks ago counts half as much as today
+    const DECAY_LAMBDA = Math.log(2) / 28;
+    // Event type weights
+    const eventWeight = e => e.type === 'ncns' ? 3.0 : e.type?.startsWith('call-out') ? 1.0 : e.type?.startsWith('left-early') ? 0.8 : 0.3;
+
+    const allWorkEntries = entries.filter(e => behaviorTypes(e) && isWorkDay(e) && e.date);
+    if (allWorkEntries.length === 0) return; // nothing to predict
+
+    // Weighted numerator: decay * event-weight per DOW
+    const dowScore = Array(7).fill(0);
+    const dowScoreCO = Array(7).fill(0);
+    const dowScoreEO = Array(7).fill(0);
+    // Most recent event date per DOW (for streak detection)
+    const dowLastDate = Array(7).fill(null);
+
+    allWorkEntries.forEach(e => {
+      const eDate = new Date(e.date+'T00:00:00');
+      const daysAgo = Math.max(0, Math.round((now - eDate) / 86400000));
+      const decay = Math.exp(-DECAY_LAMBDA * daysAgo);
+      const w = eventWeight(e) * decay;
+      const dow = eDate.getDay();
+      dowScore[dow] += w;
+      if (callOutTypes(e) || e.type === 'ncns') dowScoreCO[dow] += w;
+      if (earlyOutTypes(e)) dowScoreEO[dow] += w;
+      if (!dowLastDate[dow] || e.date > dowLastDate[dow]) dowLastDate[dow] = e.date;
     });
 
-    // Acceleration factor
-    const accel = events30.length > eventsPrior.length && events30.length >= 2;
+    // Weighted denominator: sum of decay for every Mon-Thu that has occurred
+    // since associate's history start (hire date or first entry)
+    const allDated = entries.filter(e => e.date).map(e => e.date).sort();
+    const histStart = assoc.hireDate
+      ? new Date(assoc.hireDate+'T00:00:00')
+      : allDated.length > 0 ? new Date(allDated[0]+'T00:00:00') : d90;
+    const dowDenom = Array(7).fill(0);
+    for (let cursor = new Date(histStart); cursor <= now; cursor.setDate(cursor.getDate()+1)) {
+      const dow = cursor.getDay();
+      if (!WORK_DAYS.has(dow)) continue;
+      const daysAgo = Math.round((now - cursor) / 86400000);
+      dowDenom[dow] += Math.exp(-DECAY_LAMBDA * daysAgo);
+    }
 
-    // Total events and points
+    // 90-day window stats (for acceleration, labels, employment expectancy)
+    const events90   = allWorkEntries.filter(e => e.date >= iso(d90));
+    const events30   = allWorkEntries.filter(e => e.date >= iso(d30));
+    const eventsPrior = allWorkEntries.filter(e => e.date >= iso(d60) && e.date < iso(d30));
+
+    // Acceleration: weighted trend — compare decayed score in last 30d vs prior 30d
+    const score30 = events30.reduce((s,e) => {
+      const daysAgo = Math.max(0, Math.round((now - new Date(e.date+'T00:00:00')) / 86400000));
+      return s + eventWeight(e) * Math.exp(-DECAY_LAMBDA * daysAgo);
+    }, 0);
+    const scorePrior = eventsPrior.reduce((s,e) => {
+      const daysAgo = Math.max(0, Math.round((now - new Date(e.date+'T00:00:00')) / 86400000));
+      return s + eventWeight(e) * Math.exp(-DECAY_LAMBDA * daysAgo);
+    }, 0);
+    const accel = score30 > scorePrior * 1.2 && events30.length >= 2;
+
     const totalEvents = events90.length;
     const totalPts = assoc.attendancePoints || 0;
 
-    // Build 7-day prediction: probability per upcoming day
+    // Mon/Thu bookend ratio (full history)
+    const monThuRatio = allWorkEntries.length > 0
+      ? allWorkEntries.filter(e => { const d = new Date(e.date+'T00:00:00').getDay(); return d===1||d===4; }).length / allWorkEntries.length
+      : 0;
+
+    // Build prediction per upcoming workday
     const weekPredictions = upcomingDays.map(day => {
       const d = day.dow;
-      const coCount = dowCO[d];
-      const eoCount = dowEO[d];
-      const totalForDay = coCount + eoCount;
-      // ~13 weeks sampled in 90 days; each day (Mon-Thu) appears ~13 times
-      const weeksSampled = 13;
-      // Base probability: how often did this person miss this DOW in last 90d
-      let prob = totalForDay / weeksSampled;
-      // Boost if accelerating
-      if (accel) prob = Math.min(prob * 1.35, 0.95);
-      // Boost by current points level (higher pts = higher baseline risk)
-      prob = Math.min(prob + (totalPts * 0.015), 0.95);
-      // Mon/Thu premium if clustering detected on those bookend days
-      const monThuRatio = events90.length > 0 ? events90.filter(e => { const dow2 = new Date(e.date+'T00:00:00').getDay(); return dow2===1||dow2===4; }).length / events90.length : 0;
-      if ((d === 1 || d === 4) && monThuRatio >= 0.5) prob = Math.min(prob * 1.2, 0.95);
-      return { ...day, prob: Math.round(prob * 100), coCount, eoCount, totalForDay };
+      const denom = dowDenom[d] || 1;
+
+      // Base: weighted miss rate for this DOW
+      let prob = dowScore[d] / denom;
+
+      // Streak boost: same DOW event in last 7 days → strong recurrence signal
+      if (dowLastDate[d]) {
+        const daysSince = Math.round((now - new Date(dowLastDate[d]+'T00:00:00')) / 86400000);
+        if (daysSince <= 7)  prob = Math.min(prob * 1.5, 0.95);
+        else if (daysSince <= 14) prob = Math.min(prob * 1.25, 0.95);
+      }
+
+      // Acceleration boost
+      if (accel) prob = Math.min(prob * 1.3, 0.95);
+
+      // Mon/Thu bookend premium
+      if ((d === 1 || d === 4) && monThuRatio >= 0.5) prob = Math.min(prob * 1.15, 0.95);
+
+      // Mild points-level floor (higher pts = known bad actor baseline)
+      prob = Math.min(prob + (totalPts * 0.008), 0.95);
+
+      return { ...day, prob: Math.round(Math.min(prob, 0.95) * 100), coScore: dowScoreCO[d], eoScore: dowScoreEO[d] };
     });
 
-    // Primary prediction: most likely day in next 7
+    // Primary prediction: most likely day this week
     const bestDay = weekPredictions.reduce((a, b) => b.prob > a.prob ? b : a);
-    // Prediction type: mostly call-outs or mostly early-outs?
+
+    // Prediction type: weighted CO vs EO across full history
+    const coTotalW = dowScoreCO.reduce((s,v)=>s+v,0);
+    const eoTotalW = dowScoreEO.reduce((s,v)=>s+v,0);
     const coTotal90 = events90.filter(e => callOutTypes(e)).length;
     const eoTotal90 = events90.filter(e => earlyOutTypes(e)).length;
-    const primaryType = eoTotal90 > coTotal90 ? 'Early Out' : 'Call Out';
-    const primaryColor = eoTotal90 > coTotal90 ? '#ea580c' : '#dc2626';
-    const primaryIcon  = eoTotal90 > coTotal90 ? 'fa-sign-out-alt' : 'fa-phone-slash';
+    const primaryType  = eoTotalW > coTotalW ? 'Early Out' : 'Call Out';
+    const primaryColor = eoTotalW > coTotalW ? '#ea580c' : '#dc2626';
+    const primaryIcon  = eoTotalW > coTotalW ? 'fa-sign-out-alt' : 'fa-phone-slash';
 
-    // Recurring day label
-    const recurDays = dowCO.map((c,i) => ({dow:i, total:c+dowEO[i]})).filter(x=>x.total>=3).sort((a,b)=>b.total-a.total);
+    // Recurring day labels (raw count in 90d, still readable)
+    const dowRawCO = Array(7).fill(0); const dowRawEO = Array(7).fill(0);
+    events90.forEach(e => { const d = new Date(e.date+'T00:00:00').getDay(); if(callOutTypes(e))dowRawCO[d]++; if(earlyOutTypes(e))dowRawEO[d]++; });
+    const recurDays = dowRawCO.map((c,i)=>({dow:i,total:c+dowRawEO[i]})).filter(x=>x.total>=3).sort((a,b)=>b.total-a.total);
 
     // ── Employment expectancy ─────────────────────────────────────
-    // Rate: point-earning events per day over last 90d
-    const pointEvents90 = events90.filter(e => (e.points||0) > 0);
-    const ratePerDay = pointEvents90.length / 90;
+    // Use decay-weighted rate (events per effective workday) for better estimate
+    const totalWeightedEvents = allWorkEntries.reduce((s,e) => {
+      const daysAgo = Math.max(0, Math.round((now - new Date(e.date+'T00:00:00')) / 86400000));
+      return s + (e.points||0) * Math.exp(-DECAY_LAMBDA * daysAgo);
+    }, 0);
+    const totalDenom = dowDenom.reduce((s,v)=>s+v,0) || 1;
+    const ratePerDay = totalWeightedEvents / totalDenom;
     const TERM_THRESHOLD = 10;
     const ptsRemaining = Math.max(TERM_THRESHOLD - totalPts, 0);
     let expectancyLabel = '—';
