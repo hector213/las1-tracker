@@ -5542,6 +5542,7 @@ function _trendRange(period) {
 function renderAttTrends() {
   const el = document.getElementById('attTrendsContainer');
   if (!el) return;
+  if (_attActivePeriod === 'predictor') { renderAttPredictor(); return; }
   const period = _attActivePeriod;
   const ML = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const METRICS = [
