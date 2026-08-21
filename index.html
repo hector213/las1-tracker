@@ -943,7 +943,8 @@ function loadDashboard() {
         loadKanbanCounts(); // load once per dashboard visit; applyKanbanCounts() restores after redraws
       }
     });
-    autoExpirePoints();
+    // autoExpirePoints() moved to Firebase Cloud Function (functions/index.js)
+    // Runs daily at 3 AM via Cloud Scheduler — no longer runs on every page load.
   });
 
   activeListeners['certsGlobal'] = onSnapshot(collection(db, 'certs'), (snap) => {
