@@ -1066,10 +1066,12 @@ function renderDashboard() {
       const todayTO  = _todayTimeOffMap[a.id];
       const todayAtt = _todayAttMap[a.id];
       let banner = null;
-      if (todayAtt === 'ncns')        banner = { label: 'NCNS',      color: '#7c0000', bg: '#fee2e2' };
-      else if (todayAtt === 'call-out')   banner = { label: 'OUT',       color: '#dc2626', bg: '#fee2e2' };
-      else if (todayAtt === 'early') banner = { label: 'Early Out', color: '#ea580c', bg: '#ffedd5' };
-      else if (todayAtt === 'late')  banner = { label: 'Tardy',     color: '#d97706', bg: '#fef3c7' };
+      if (todayAtt === 'ncns')        banner = { label: 'NCNS',           color: '#7c0000', bg: '#fee2e2', pending: false };
+      else if (todayAtt === 'call-out')   banner = { label: 'OUT',        color: '#dc2626', bg: '#fee2e2', pending: false };
+      else if (todayAtt === 'early') banner = { label: 'Early Out',       color: '#ea580c', bg: '#ffedd5', pending: false };
+      else if (todayAtt === 'late')  banner = { label: 'Tardy',           color: '#d97706', bg: '#fef3c7', pending: false };
+      // Pending entries — still show as absent, add pending indicator
+      if (banner && _todayPendingSet?.has(a.id)) banner.pending = true;
       else if (todayTO)              banner = { label: todayTO.label, color: todayTO.color, bg: todayTO.bg };
       return `<div class="col-xl-3 col-lg-4 col-md-6">
         <div class="associate-card ${a.position === 'ops-manager' ? 'card-om' : a.position === 'supervisor' ? 'card-supervisor' : a.position === 'lead' ? 'card-lead' : ''}" onclick="openProfile('${a.id}')" style="position:relative;${isTemp ? 'background:#f3e8ff;' : ''}${banner ? 'border-top:3px solid '+banner.color+';' : ''}">
@@ -1096,7 +1098,7 @@ function renderDashboard() {
               </div>
             </div>
           </div>
-          ${banner ? `<div style="background:${banner.bg};color:${banner.color};font-size:0.7rem;font-weight:700;text-align:center;padding:3px 0;${(a.position==='supervisor'||a.position==='lead'||a.position==='ops-manager')?'':'border-radius:0 0 10px 10px;'}letter-spacing:0.5px">${banner.label}</div>` : ''}
+          ${banner ? `<div style="background:${banner.bg};color:${banner.color};font-size:0.7rem;font-weight:700;text-align:center;padding:3px 0;${(a.position==='supervisor'||a.position==='lead'||a.position==='ops-manager')?'':'border-radius:0 0 10px 10px;'}letter-spacing:0.5px">${banner.label}${banner.pending ? ' <span style="font-size:0.6rem;font-weight:600;opacity:0.85">(Pending)</span>' : ''}</div>` : ''}
           ${(a.position==='supervisor'||a.position==='lead'||a.position==='ops-manager') ? `<button class="kanban-btn" onclick="event.stopPropagation();openKanban('${a.id}','${escapeHtml(a.name)}')"><i class="fas fa-columns" style="font-size:0.7rem"></i>Daily Board<span class="kb-count" id="kb-count-${a.id}">-</span></button>` : ''}
         </div>
       </div>`;
@@ -1306,7 +1308,7 @@ function renderLeaders() {
       <div class="leader-pos"><i class="fas ${icon} me-1"></i>${label}</div>
       <div class="leader-shift">${escapeHtml(a.shift || '-')} Shift</div>
       ${(currentUserRole === 'admin' || a.id === currentUserAssocId) ? `<button class="kanban-btn" onclick="event.stopPropagation();openKanban('${a.id}','${escapeHtml(a.name)}')"><i class="fas fa-columns" style="font-size:0.65rem"></i>Board<span class="kb-count" id="kb-count-${a.id}">-</span></button>` : ''}
-      ${banner ? `<div style="display:inline-block;background:${banner.color};color:#fff;font-size:0.65rem;font-weight:700;padding:2px 10px;border-radius:20px;letter-spacing:0.4px;margin-top:6px;">${banner.label}</div>` : ''}
+      ${banner ? `<div style="display:inline-block;background:${banner.color};color:#fff;font-size:0.65rem;font-weight:700;padding:2px 10px;border-radius:20px;letter-spacing:0.4px;margin-top:6px;">${banner.label}${banner.pending ? ' (Pending)' : ''}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -4969,7 +4971,8 @@ async function loadTodayAttendanceStats() {
   const ncnsIds    = new Set();
   const callOutIds = new Set();
   const earlyOutIds = new Set();
-  const lateIds = new Set();
+  const lateIds    = new Set();
+  const pendingIds = new Set(); // absent but point/docs still pending
 
   try {
     const activeIds = allAssociates.filter(a => a.status === 'active').map(a => a.id);
@@ -4979,15 +4982,19 @@ async function loadTodayAttendanceStats() {
       const snap = await getDocs(q);
       snap.docs.forEach(d => {
         const e = d.data();
-        if (e.type === 'ncns')             ncnsIds.add(assocId);
-        else if (callOutTypes.has(e.type)) callOutIds.add(assocId);
-        if (earlyOutTypes.has(e.type))     earlyOutIds.add(assocId);
-        if (e.type?.startsWith('late'))    lateIds.add(assocId);
+        // Pending entries still count as absent — point/doc status is separate from attendance status
+        if (e.type === 'ncns' || e.type === 'ncns-pending')        ncnsIds.add(assocId);
+        else if (e.type === 'call-out-pending')                    callOutIds.add(assocId);
+        else if (callOutTypes.has(e.type))                         callOutIds.add(assocId);
+        if (earlyOutTypes.has(e.type))                             earlyOutIds.add(assocId);
+        if (e.type?.startsWith('late'))                            lateIds.add(assocId);
+        if (e.type === 'ncns-pending' || e.type === 'call-out-pending') pendingIds.add(assocId);
       });
     }));
   } catch(err) { console.warn('Attendance stats load error:', err); }
 
   _todayAttMap = {};
+  window._todayPendingSet = pendingIds;
   [...ncnsIds].forEach(id    => { _todayAttMap[id] = 'ncns'; });
   [...callOutIds].forEach(id  => { if (!_todayAttMap[id]) _todayAttMap[id] = 'call-out'; });
   [...earlyOutIds].forEach(id => { if (!_todayAttMap[id]) _todayAttMap[id] = 'early'; });
