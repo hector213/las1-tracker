@@ -5648,11 +5648,42 @@ let _coverageThresholds = {}; // { 'Small_Packer': 4, 'Large_Packer': 2, ... }
 window.loadCoverage = async () => {
   showView('coverage');
   detachAll();
-  // Load thresholds from Firestore
+
+  // Load thresholds
   try {
     const snap = await getDoc(doc(db, 'settings', 'coverage'));
     _coverageThresholds = snap.exists() ? (snap.data().thresholds || {}) : {};
   } catch(e) { _coverageThresholds = {}; }
+
+  // Ensure associates + attendance entries are loaded — reuse cache if available
+  if (!allAssociates.length || !_allAttEntries.length) {
+    const cached = getCached('attendance');
+    if (cached) {
+      allAssociates  = cached.associates;
+      _allAttEntries = cached.entries;
+    } else {
+      // Fetch fresh
+      const coverageEl = document.getElementById('coverageContent');
+      if (coverageEl) coverageEl.innerHTML = `<div class="text-center py-5 text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Loading associate data...</div>`;
+      try {
+        const assocSnap = await getDocs(collection(db, 'associates'));
+        allAssociates = assocSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        _allAttEntries = [];
+        await Promise.all(allAssociates.map(a =>
+          getDocs(collection(db, 'attendance', a.id, 'entries')).then(es => {
+            es.docs.forEach(d => _allAttEntries.push({ id: d.id, assocId: a.id, assocName: a.name, ...d.data() }));
+          })
+        ));
+        _allAttEntries.sort((a,b) => new Date(b.date) - new Date(a.date));
+        setCache('attendance', { associates: allAssociates, entries: _allAttEntries });
+      } catch(e) {
+        const coverageEl2 = document.getElementById('coverageContent');
+        if (coverageEl2) coverageEl2.innerHTML = `<div class="text-center py-5 text-muted"><i class="fas fa-exclamation-triangle me-1" style="color:#d97706"></i>Could not load associate data.</div>`;
+        return;
+      }
+    }
+  }
+
   renderCoverageTab();
 };
 
