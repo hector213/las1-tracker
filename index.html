@@ -112,6 +112,7 @@ const ATTENDANCE_TYPES = [
   { key: 'call-out-sick-full',  label: 'Call Out - Sick Time Used (no point)',                    points: 0,   icon: 'fa-notes-medical',  color: '#059669' },
   { key: 'call-out-vac-half',   label: 'Vacation Time (not enough to cover half shift)',           points: 1.0, icon: 'fa-umbrella-beach', color: '#dc2626' },
   { key: 'call-out-vac-full',   label: 'Vacation Time (not enough to cover full shift)',           points: 0.5, icon: 'fa-umbrella-beach', color: '#d97706' },
+  { key: 'ncns-pending',        label: 'NCNS - Pending (verifying no call no show)',               points: 0,   icon: 'fa-hourglass-half', color: '#7c0000' },
   { key: 'call-out-pending',    label: 'Call Out - Pending (awaiting documentation)',              points: 0,   icon: 'fa-hourglass-half', color: '#d97706' },
   { key: 'call-out-excused',    label: 'Call Out - Excused (documentation provided)',              points: 0,   icon: 'fa-file-medical',   color: '#059669' },
   { key: 'late-arrival',        label: 'Late Arrival',                                points: 0.5, icon: 'fa-clock',         color: '#d97706' },
@@ -3622,23 +3623,37 @@ function renderAttendanceLog() {
     const info   = attTypeInfo(e.type);
     const isExp  = e.expired === true;
     const isPending = e.pending === true;
-    const iconBg = (isExp ? '#9ca3af' : isPending ? '#f59e0b' : info.color) + '20';
-    const iconColor = isExp ? '#9ca3af' : isPending ? '#d97706' : info.color;
-    const storedPts = e.points ?? info.points; // use stored value; fall back to type default
+    const isNcnsPending = e.type === 'ncns-pending';
+    const pendingBorderColor = isNcnsPending ? '#7c0000' : '#f59e0b';
+    const iconBg = (isExp ? '#9ca3af' : isNcnsPending ? '#7c0000' : isPending ? '#f59e0b' : info.color) + '20';
+    const iconColor = isExp ? '#9ca3af' : isNcnsPending ? '#7c0000' : isPending ? '#d97706' : info.color;
+    const storedPts = e.points ?? info.points;
     let ptsDisplay;
     if (isPending) {
-      ptsDisplay = `<span style="background:#fef3c7;color:#b45309;font-size:0.72rem;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid #fcd34d;white-space:nowrap">Pending</span>`;
+      const pendingBadgeColor = isNcnsPending ? { bg:'#fee2e2',color:'#991b1b',border:'#fca5a5' } : { bg:'#fef3c7',color:'#b45309',border:'#fcd34d' };
+      ptsDisplay = `<span style="background:${pendingBadgeColor.bg};color:${pendingBadgeColor.color};font-size:0.72rem;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid ${pendingBadgeColor.border};white-space:nowrap">${isNcnsPending ? 'NCNS Pending' : 'Pending'}</span>`;
     } else if (isExp) {
       ptsDisplay = `<span style="color:#9ca3af;text-decoration:line-through">+${storedPts % 1 === 0 ? storedPts : Number(storedPts).toFixed(1)}</span><span style="color:#9ca3af;font-size:0.75rem;margin-left:4px">(expired)</span>`;
     } else {
       ptsDisplay = `<span style="color:${info.color}">+${storedPts % 1 === 0 ? storedPts : Number(storedPts).toFixed(1)}</span>`;
     }
-    const pendingActions = isPending && canEdit ? `
-      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-        <button onclick="applyAttendancePoint('${e.id}')" style="font-size:0.75rem;padding:3px 10px;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600"><i class="fas fa-plus-circle me-1"></i>Apply Point</button>
-        <button onclick="excuseAttendance('${e.id}')" style="font-size:0.75rem;padding:3px 10px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600"><i class="fas fa-check-circle me-1"></i>Excuse</button>
-      </div>` : '';
-    return `<div class="att-entry-card" style="${isExp ? 'opacity:0.55' : ''}${isPending ? ';border-left:3px solid #f59e0b;' : ''}">
+    let pendingActions = '';
+    if (isPending && canEdit) {
+      if (isNcnsPending) {
+        pendingActions = `
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            <button onclick="applyNcnsPoints('${e.id}')" style="font-size:0.75rem;padding:3px 10px;background:#7c0000;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600"><i class="fas fa-ban me-1"></i>Confirm NCNS (+2 pts)</button>
+            <button onclick="excuseAttendance('${e.id}')" style="font-size:0.75rem;padding:3px 10px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600"><i class="fas fa-check-circle me-1"></i>Excuse</button>
+          </div>`;
+      } else {
+        pendingActions = `
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            <button onclick="applyAttendancePoint('${e.id}')" style="font-size:0.75rem;padding:3px 10px;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600"><i class="fas fa-plus-circle me-1"></i>Apply Point</button>
+            <button onclick="excuseAttendance('${e.id}')" style="font-size:0.75rem;padding:3px 10px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600"><i class="fas fa-check-circle me-1"></i>Excuse</button>
+          </div>`;
+      }
+    }
+    return `<div class="att-entry-card" style="${isExp ? 'opacity:0.55' : ''}${isPending ? `;border-left:3px solid ${pendingBorderColor};` : ''}">
       <div class="att-entry-icon" style="background:${iconBg};color:${iconColor}"><i class="fas ${isPending ? 'fa-hourglass-half' : info.icon}"></i></div>
       <div class="att-entry-body" style="flex:1">
         <div class="att-entry-type" style="${isExp ? 'text-decoration:line-through;color:#9ca3af' : isPending ? 'color:#b45309;font-weight:600' : ''}">${info.label}</div>
@@ -5173,7 +5188,7 @@ window.saveAttendance = async () => {
   if (!type || !date) { alert('Please select a type and date.'); return; }
   const info = attTypeInfo(type);
   const addedBy = await _getActorName();
-  const isPending = type === 'call-out-pending';
+  const isPending = type === 'call-out-pending' || type === 'ncns-pending';
   const entry = { type, date, note, points: info.points, addedBy, createdAt: new Date().toISOString() };
   if (isPending) entry.pending = true;
   await addDoc(collection(db, 'attendance', currentAssociateId, 'entries'), entry);
@@ -5221,9 +5236,21 @@ window.applyAttendancePoint = async (entryId) => {
     resolvedBy, resolvedAt: new Date().toISOString()
   });
   await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(1) });
-  clearCache('attendance');
-  clearCache('milestones_firestore');
-  clearCache('todayAttStats');
+  clearCache('attendance'); clearCache('milestones_firestore'); clearCache('todayAttStats');
+  recalcAttExpiry(currentAssociateId);
+  listenAttendance(currentAssociateId);
+};
+
+window.applyNcnsPoints = async (entryId) => {
+  if (!roleAtLeast('lead')) return;
+  if (!confirm('Confirm NCNS — apply 2 attendance points? This cannot be undone.')) return;
+  const resolvedBy = await _getActorName();
+  await updateDoc(doc(db, 'attendance', currentAssociateId, 'entries', entryId), {
+    type: 'ncns', points: 2, pending: false,
+    resolvedBy, resolvedAt: new Date().toISOString()
+  });
+  await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(2) });
+  clearCache('attendance'); clearCache('milestones_firestore'); clearCache('todayAttStats');
   recalcAttExpiry(currentAssociateId);
   listenAttendance(currentAssociateId);
 };
@@ -5417,7 +5444,8 @@ function renderAttPredictor() {
     const accel = wScore(events30) > wScore(eventsPrior) * 1.2 && events30.length >= 2;
 
     const totalPts    = assoc.attendancePoints || 0;
-    const totalEvents = events90.length;
+    const totalEvents = allWorkEntries.length;
+    const totalEvents90 = events90.length;
     const monThuRatio = allWorkEntries.length > 0
       ? allWorkEntries.filter(e => { const d = new Date(e.date+'T00:00:00').getDay(); return d===1||d===4; }).length / allWorkEntries.length : 0;
 
@@ -5493,7 +5521,7 @@ function renderAttPredictor() {
 
     predictions.push({
       assocId: assoc.id, name: assoc.name,
-      totalPts, totalEvents, primaryType, primaryColor, primaryIcon,
+      totalPts, totalEvents, totalEvents90, primaryType, primaryColor, primaryIcon,
       accel, weekPredictions, bestDay, recurDays, coTotal90, eoTotal90,
       expectancyLabel, expectancyColor, expectancyRange, risk,
     });
@@ -5563,7 +5591,7 @@ function renderAttPredictor() {
             <span style="font-size:0.7rem;color:${p.primaryColor};background:${p.primaryColor}15;border-radius:4px;padding:2px 6px"><i class="fas ${p.primaryIcon}" style="font-size:0.65rem"></i> ${p.primaryType}</span>
             ${recurLabel}${accelLabel}
           </div>
-          <div style="font-size:0.7rem;color:#9ca3af;margin-top:2px">${p.totalPts} pts &middot; ${p.totalEvents} events/90d</div>
+          <div style="font-size:0.7rem;color:#9ca3af;margin-top:2px">${p.totalPts} pts &middot; ${p.totalEvents} events total</div>
         </div>
         <div style="display:flex;gap:5px;align-items:center;flex:0 0 auto">${heatCells}</div>
         ${empCol}
@@ -9162,6 +9190,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <select class="form-select form-select-sm" id="attFilterType" onchange="loadAttendance()" style="min-width:200px">
               <option value="">All Types</option>
               <option value="ncns">NCNS (No Call No Show)</option>
+              <option value="ncns-pending">NCNS - Pending (verifying no call no show)</option>
               <option value="call-out">Call Out</option>
               <option value="call-out-sick-half">Call Out - Sick Time (covers &ge; half shift)</option>
               <option value="call-out-sick-no">Call Out - Sick Time (not enough for half)</option>
@@ -10219,6 +10248,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <select class="form-select" id="attTypeSelect">
           <option value="">Select event…</option>
           <option value="ncns">NCNS - No Call No Show (+2.0 pts)</option>
+          <option value="ncns-pending">NCNS - Pending (verifying, 0 pts until confirmed)</option>
           <option value="call-out">Call Out (+1.0 pt)</option>
           <option value="call-out-sick-half">Call Out - Sick Time (covers ≥ half shift) (+0.5 pt)</option>
           <option value="call-out-sick-no">Call Out - Sick Time (not enough for half) (+1.0 pt)</option>
