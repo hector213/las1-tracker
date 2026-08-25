@@ -5759,23 +5759,29 @@ async function renderCoverageTab() {
     const ratePerDay = totalDenom > 0 ? wtdPts / totalDenom : 0;
     const meanDays   = ratePerDay > 0 && ptsRemaining > 0 ? ptsRemaining / ratePerDay : Infinity;
     const stdDays    = ratePerDay > 0 && ptsRemaining > 0 ? Math.sqrt(ptsRemaining) / ratePerDay : Infinity;
+    // loDays = pessimistic 80% CI lower bound — only used for secondary display note.
+    // The Gamma normal approx breaks down for small k (ptsRemaining < 2), so don't use it for severity.
     const loDays     = meanDays < Infinity ? Math.max(1, Math.round(meanDays - 1.28 * stdDays)) : Infinity;
+    // meanDaysRnd is what we classify severity against — matches what the predictor highlights.
+    const meanDaysRnd = meanDays < Infinity ? Math.round(meanDays) : Infinity;
 
     const risk = computeAttRisk(entries, assoc);
 
     return {
       id: assoc.id, name: assoc.name,
       employmentType: assoc.employmentType || 'direct-hire',
-      totalPts, ptsRemaining, loDays,
+      totalPts, ptsRemaining,
+      meanDays: meanDaysRnd, loDays,
       riskScore: risk.score, riskColor: risk.riskColor,
     };
   });
 
   const fmtEst = d => {
-    if (d === Infinity) return null;
-    if (d <= 7)  return `~${d}d`;
-    if (d <= 60) return `~${Math.round(d/7)}wk`;
-    return `~${Math.round(d/30)}mo`;
+    if (d === Infinity || d === null) return null;
+    if (d < 14)  return `~${d}d`;
+    if (d < 60)  return `~${Math.round(d/7)}wk`;
+    if (d < 365) return `~${Math.round(d/30)}mo`;
+    return `~${(d/365).toFixed(1)}yr`;
   };
 
   // Build per-cert coverage alerts
@@ -5790,18 +5796,19 @@ async function renderCoverageTab() {
 
     const total = certified.length;
 
-    // Categorize by timing (pessimistic 80% CI lower bound)
-    const critRisk  = certified.filter(a => a.loDays !== Infinity && a.loDays <= DIRECT_LEAD_DAYS);
-    const highRisk  = certified.filter(a => a.loDays !== Infinity && a.loDays > DIRECT_LEAD_DAYS && a.loDays <= 42);
-    const watchRisk = certified.filter(a => a.loDays !== Infinity && a.loDays > 42 && a.loDays <= 84);
-    const scoreRisk = certified.filter(a => a.riskScore >= 65 && a.loDays === Infinity); // flagged by score but no clear trajectory
+    // Categorize by MEAN employment expectancy (matches what predictor highlights).
+    // loDays is saved only for a secondary "could be as soon as X" display note.
+    const critRisk  = certified.filter(a => a.meanDays !== Infinity && a.meanDays <= DIRECT_LEAD_DAYS);
+    const highRisk  = certified.filter(a => a.meanDays !== Infinity && a.meanDays > DIRECT_LEAD_DAYS && a.meanDays <= 60);
+    const watchRisk = certified.filter(a => a.meanDays !== Infinity && a.meanDays > 60 && a.meanDays <= 120);
+    const scoreRisk = certified.filter(a => a.riskScore >= 70 && a.meanDays === Infinity); // high risk score, no clear point trajectory
 
     const atRiskSet = new Map();
     [...critRisk, ...highRisk, ...watchRisk, ...scoreRisk].forEach(a => atRiskSet.set(a.id, a));
     const atRisk = [...atRiskSet.values()];
     if (!atRisk.length) return;
 
-    const soonest = atRisk.reduce((min, a) => a.loDays < min ? a.loDays : min, Infinity);
+    const soonest = atRisk.reduce((min, a) => a.meanDays < min ? a.meanDays : min, Infinity);
     const pctRisk  = atRisk.length / total;
     // How many certified remain if critical+high depart
     const remaining = Math.max(0, total - critRisk.length - highRisk.length);
@@ -5843,59 +5850,62 @@ async function renderCoverageTab() {
     el.innerHTML = `<div class="text-center py-5">
       <i class="fas fa-shield-alt fa-2x mb-2 d-block" style="color:#10b981"></i>
       <div class="fw-semibold small text-muted mb-1">No coverage concerns detected</div>
-      <div style="font-size:0.7rem;color:#9ca3af">All certified associates appear stable - team coverage looks good.</div>
+      <div style="font-size:0.84rem;color:#9ca3af">All certified associates appear stable - team coverage looks good.</div>
     </div>`;
     return;
   }
 
   const cnt = l => coverageAlerts.filter(a => a.alertLevel===l).length;
   const badgePill = (label, color, bg, border) =>
-    `<span style="font-size:0.63rem;font-weight:700;background:${bg};color:${color};border:1px solid ${border};border-radius:10px;padding:1px 7px">${label}</span>`;
+    `<span style="font-size:0.76rem;font-weight:700;background:${bg};color:${color};border:1px solid ${border};border-radius:10px;padding:2px 9px">${label}</span>`;
 
   let html = `
-    <div class="mb-1 d-flex align-items-center justify-content-between flex-wrap gap-1">
-      <span class="fw-bold small" style="color:var(--navy)"><i class="fas fa-shield-alt me-1" style="color:#059669"></i>Coverage Forecast</span>
+    <div class="mb-2 d-flex align-items-center justify-content-between flex-wrap gap-1">
+      <span class="fw-bold" style="color:var(--navy);font-size:0.95rem"><i class="fas fa-shield-alt me-1" style="color:#059669"></i>Coverage Forecast</span>
       <div class="d-flex gap-1 flex-wrap">
         ${cnt('CRITICAL') ? badgePill(cnt('CRITICAL')+' CRITICAL','#dc2626','#fee2e2','#fca5a5') : ''}
         ${cnt('HIGH')     ? badgePill(cnt('HIGH')+' HIGH','#ea580c','#ffedd5','#fdba74') : ''}
         ${cnt('WATCH')    ? badgePill(cnt('WATCH')+' WATCH','#d97706','#fef9c3','#fde047') : ''}
       </div>
     </div>
-    <div style="font-size:0.59rem;color:#9ca3af;margin-bottom:8px">Direct hire lead: <strong>3 wk</strong> &nbsp;·&nbsp; Temp lead: <strong>1 wk</strong> &nbsp;·&nbsp; Timing = 80% CI pessimistic estimate</div>`;
+    <div style="font-size:0.72rem;color:#9ca3af;margin-bottom:10px">Direct hire lead: <strong>3 wk</strong> &nbsp;·&nbsp; Temp lead: <strong>1 wk</strong> &nbsp;·&nbsp; Timing based on mean employment expectancy</div>`;
 
   html += coverageAlerts.map(a => {
     const memberRows = a.atRisk.map(m => {
-      const est = fmtEst(m.loDays);
-      const tag = est ? `Est. departure ${est}` : `Risk score ${m.riskScore}`;
-      const tagColor = m.loDays <= DIRECT_LEAD_DAYS ? '#dc2626' : m.loDays <= 42 ? '#ea580c' : m.loDays <= 84 ? '#d97706' : '#6b7280';
+      const meanEst = fmtEst(m.meanDays);
+      const loEst   = m.loDays !== m.meanDays && m.loDays < m.meanDays ? fmtEst(m.loDays) : null;
+      const tag = meanEst
+        ? `Est. departure ${meanEst}${loEst && loEst !== meanEst ? ` <span style="opacity:0.7;font-weight:500">(could be ${loEst})</span>` : ''}`
+        : `Risk score ${m.riskScore}`;
+      const tagColor = m.meanDays <= DIRECT_LEAD_DAYS ? '#dc2626' : m.meanDays <= 60 ? '#ea580c' : m.meanDays <= 120 ? '#d97706' : '#6b7280';
       const empLabel = m.employmentType === 'temp' ? 'Temp' : 'Direct';
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:3px 8px;border-radius:6px;background:#fff;margin-top:3px;border:1px solid #f3f4f6">
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 10px;border-radius:7px;background:#fff;margin-top:4px;border:1px solid #f3f4f6">
         <div>
-          <span style="font-size:0.73rem;font-weight:600;color:var(--navy)">${escapeHtml(m.name)}</span>
-          <span style="font-size:0.62rem;color:#9ca3af;margin-left:5px">${empLabel} &bull; ${m.totalPts} pts</span>
+          <span style="font-size:0.88rem;font-weight:600;color:var(--navy)">${escapeHtml(m.name)}</span>
+          <span style="font-size:0.75rem;color:#9ca3af;margin-left:6px">${empLabel} &bull; ${m.totalPts} pts</span>
         </div>
-        <span style="font-size:0.67rem;font-weight:700;color:${tagColor}">${tag}</span>
+        <span style="font-size:0.8rem;font-weight:700;color:${tagColor}">${tag}</span>
       </div>`;
     }).join('');
 
     const remainNote = a.remaining < a.total
-      ? `<div style="font-size:0.62rem;color:#6b7280;text-align:right;margin-top:3px">
+      ? `<div style="font-size:0.75rem;color:#6b7280;text-align:right;margin-top:4px">
            ${a.remaining} certified remain after projected departures
            ${a.threshold ? ` &nbsp;·&nbsp; <strong style="color:${a.remaining < a.threshold ? '#dc2626' : '#059669'}">${a.hiresNeeded > 0 ? a.hiresNeeded+' hire'+(a.hiresNeeded>1?'s':'')+' needed to meet minimum' : 'meets minimum of '+a.threshold}</strong>` : ''}
          </div>`
       : '';
 
-    return `<div style="background:${a.alertBg};border:1px solid ${a.alertColor}35;border-radius:10px;padding:10px 12px;margin-bottom:8px">
-      <div class="d-flex align-items-center justify-content-between mb-1">
+    return `<div style="background:${a.alertBg};border:1px solid ${a.alertColor}35;border-radius:12px;padding:12px 14px;margin-bottom:10px">
+      <div class="d-flex align-items-center justify-content-between mb-2">
         <div class="d-flex align-items-center gap-2 flex-wrap">
-          <i class="fas ${a.alertIcon}" style="color:${a.alertColor};font-size:0.85rem"></i>
-          <span style="font-weight:700;font-size:0.85rem;color:${a.alertColor}">${escapeHtml(a.cert)}</span>
-          <span style="font-size:0.67rem;color:#6b7280">${a.atRisk.length} of ${a.total} certified at risk</span>
-          ${a.threshold ? `<span style="font-size:0.63rem;font-weight:700;background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;border-radius:8px;padding:1px 6px">Min: ${a.threshold} &nbsp;·&nbsp; After: ${a.remaining}</span>` : ''}
+          <i class="fas ${a.alertIcon}" style="color:${a.alertColor};font-size:1rem"></i>
+          <span style="font-weight:700;font-size:1rem;color:${a.alertColor}">${escapeHtml(a.cert)}</span>
+          <span style="font-size:0.8rem;color:#6b7280">${a.atRisk.length} of ${a.total} certified at risk</span>
+          ${a.threshold ? `<span style="font-size:0.75rem;font-weight:700;background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;border-radius:8px;padding:2px 8px">Min: ${a.threshold} &nbsp;·&nbsp; After: ${a.remaining}</span>` : ''}
         </div>
-        <span style="font-size:0.61rem;font-weight:800;color:${a.alertColor};background:${a.alertColor}18;border:1px solid ${a.alertColor}40;border-radius:10px;padding:2px 8px">${a.alertLevel}</span>
+        <span style="font-size:0.75rem;font-weight:800;color:${a.alertColor};background:${a.alertColor}18;border:1px solid ${a.alertColor}40;border-radius:10px;padding:3px 10px">${a.alertLevel}</span>
       </div>
-      <div style="font-size:0.7rem;color:${a.alertColor};background:${a.alertColor}12;border-radius:6px;padding:4px 8px;margin-bottom:5px">
+      <div style="font-size:0.83rem;color:${a.alertColor};background:${a.alertColor}12;border-radius:7px;padding:6px 10px;margin-bottom:6px">
         <i class="fas fa-lightbulb me-1"></i><strong>Action:</strong> ${a.hiringRec}
       </div>
       ${memberRows}
@@ -5903,7 +5913,7 @@ async function renderCoverageTab() {
     </div>`;
   }).join('');
 
-  html += `<div style="margin-top:6px;padding:5px 8px;background:#f8fafc;border-radius:6px;font-size:0.59rem;color:#9ca3af;text-align:center">
+  html += `<div style="margin-top:8px;padding:6px 10px;background:#f8fafc;border-radius:7px;font-size:0.72rem;color:#9ca3af;text-align:center">
     Only fully certified (not in-training) associates count toward coverage. Based on attendance trajectory + cert data.
   </div>`;
 
