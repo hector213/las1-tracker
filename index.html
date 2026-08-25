@@ -914,6 +914,7 @@ async function restoreLastView() {
   if (view === 'dashboard') { loadDashboard(); return; }
   if (view === 'matrix')    { loadMatrix();    return; }
   if (view === 'attendance'){ loadAttendance(); return; }
+  if (view === 'coverage')  { loadCoverage();  return; }
   if (view === 'pointslog') { loadPointsLog(); return; }
   if (view === 'admin')     { loadAdminPanel(); return; }
   if (view === 'timeoff')   { loadTimeOff();    return; }
@@ -5641,6 +5642,274 @@ function _trendRange(period) {
   return null;
 }
 
+// ─── Coverage View ───────────────────────────────────────────────────────────
+let _coverageThresholds = {}; // { 'Small_Packer': 4, 'Large_Packer': 2, ... }
+
+window.loadCoverage = async () => {
+  showView('coverage');
+  detachAll();
+  // Load thresholds from Firestore
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'coverage'));
+    _coverageThresholds = snap.exists() ? (snap.data().thresholds || {}) : {};
+  } catch(e) { _coverageThresholds = {}; }
+  renderCoverageTab();
+};
+
+window.toggleCoverageConfig = () => {
+  const panel = document.getElementById('coverageConfigPanel');
+  if (!panel) return;
+  const showing = !panel.classList.contains('d-none');
+  if (!showing) {
+    renderCoverageConfig();
+    panel.classList.remove('d-none');
+  } else {
+    panel.classList.add('d-none');
+  }
+};
+
+function renderCoverageConfig() {
+  const grid = document.getElementById('coverageThresholdGrid');
+  if (!grid) return;
+  // Only show certs that have at least 1 certified person
+  const certsWithCoverage = CERTS.filter(cert => {
+    const certKey = cert.replace(/\s+/g,'_');
+    return Object.keys(matrixCertsData).some(id => matrixCertsData[id]?.[certKey]?.status === 'certified');
+  });
+  grid.innerHTML = certsWithCoverage.map(cert => {
+    const certKey = cert.replace(/\s+/g,'_');
+    const current = _coverageThresholds[certKey] || '';
+    return `<div style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:5px 8px">
+      <label style="font-size:0.72rem;font-weight:600;color:#374151;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${cert}">${cert}</label>
+      <input type="number" min="0" max="99" placeholder="min"
+        data-certkey="${certKey}"
+        value="${current}"
+        style="width:52px;border:1px solid #d1d5db;border-radius:6px;font-size:0.75rem;padding:2px 4px;text-align:center">
+    </div>`;
+  }).join('');
+}
+
+window.saveCoverageThresholds = async () => {
+  const inputs = document.querySelectorAll('#coverageThresholdGrid input[data-certkey]');
+  const updated = {};
+  inputs.forEach(inp => {
+    const val = parseInt(inp.value, 10);
+    if (!isNaN(val) && val > 0) updated[inp.dataset.certkey] = val;
+  });
+  try {
+    await setDoc(doc(db, 'settings', 'coverage'), { thresholds: updated }, { merge: true });
+    _coverageThresholds = updated;
+    document.getElementById('coverageConfigPanel').classList.add('d-none');
+    renderCoverageTab();
+  } catch(e) {
+    alert('Could not save thresholds: ' + e.message);
+  }
+};
+
+async function renderCoverageTab() {
+  const el = document.getElementById('coverageContent');
+  if (!el) return;
+
+  el.innerHTML = `<div class="text-center py-5 text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Analyzing coverage...</div>`;
+
+  // Load cert data if not already cached (reuse matrixCertsData from cross-training matrix)
+  if (!Object.keys(matrixCertsData).length) {
+    try {
+      const certsSnap = await getDocs(collection(db, 'certs'));
+      certsSnap.docs.forEach(d => { matrixCertsData[d.id] = d.data(); });
+    } catch(e) {
+      el.innerHTML = `<div class="text-center py-5 text-muted"><i class="fas fa-exclamation-triangle me-1" style="color:#d97706"></i>Could not load cert data. Try opening the Training Matrix first.</div>`;
+      return;
+    }
+  }
+
+  const DIRECT_LEAD_DAYS = 21; // 3 weeks
+  const TEMP_LEAD_DAYS   = 7;  // 1 week
+  const DECAY_LAMBDA = Math.log(2) / 28;
+  const TERM_THRESHOLD = 10;
+  const WORK_DAYS = new Set([1,2,3,4]);
+  const now = new Date(); now.setHours(0,0,0,0);
+  const leaderPos = new Set(['supervisor','lead','ops-manager']);
+
+  // Compute employment expectancy + attrition risk for every active associate
+  const activeAssocs = allAssociates.filter(a => a.status === 'active' && !leaderPos.has(a.position));
+
+  const assocData = activeAssocs.map(assoc => {
+    const entries = (_allAttEntries || []).filter(e => e.assocId === assoc.id && !e.expired && !e.pending);
+    const totalPts = assoc.attendancePoints || 0;
+    const ptsRemaining = Math.max(TERM_THRESHOLD - totalPts, 0);
+
+    // Decay-weighted point rate (same Gamma model as predictor)
+    const hireStart = assoc.hireDate
+      ? new Date(assoc.hireDate + 'T00:00:00')
+      : (() => { const dated = entries.filter(e=>e.date&&(e.points||0)>0).map(e=>e.date).sort(); return dated.length ? new Date(dated[0]+'T00:00:00') : new Date(now.getTime()-90*86400000); })();
+
+    let totalDenom = 0;
+    for (let c = new Date(hireStart); c <= now; c.setDate(c.getDate()+1)) {
+      if (!WORK_DAYS.has(c.getDay())) continue;
+      totalDenom += Math.exp(-DECAY_LAMBDA * Math.round((now - c) / 86400000));
+    }
+
+    const wtdPts = entries.reduce((s,e) => {
+      if ((e.points||0)<=0 || !e.date) return s;
+      const daysAgo = Math.max(0, Math.round((now - new Date(e.date+'T00:00:00')) / 86400000));
+      return s + Math.exp(-DECAY_LAMBDA * daysAgo);
+    }, 0);
+
+    const ratePerDay = totalDenom > 0 ? wtdPts / totalDenom : 0;
+    const meanDays   = ratePerDay > 0 && ptsRemaining > 0 ? ptsRemaining / ratePerDay : Infinity;
+    const stdDays    = ratePerDay > 0 && ptsRemaining > 0 ? Math.sqrt(ptsRemaining) / ratePerDay : Infinity;
+    const loDays     = meanDays < Infinity ? Math.max(1, Math.round(meanDays - 1.28 * stdDays)) : Infinity;
+
+    const risk = computeAttRisk(entries, assoc);
+
+    return {
+      id: assoc.id, name: assoc.name,
+      employmentType: assoc.employmentType || 'direct-hire',
+      totalPts, ptsRemaining, loDays,
+      riskScore: risk.score, riskColor: risk.riskColor,
+    };
+  });
+
+  const fmtEst = d => {
+    if (d === Infinity) return null;
+    if (d <= 7)  return `~${d}d`;
+    if (d <= 60) return `~${Math.round(d/7)}wk`;
+    return `~${Math.round(d/30)}mo`;
+  };
+
+  // Build per-cert coverage alerts
+  const coverageAlerts = [];
+
+  CERTS.forEach(cert => {
+    const certKey = cert.replace(/\s+/g,'_');
+
+    // All currently certified associates for this cert
+    const certified = assocData.filter(a => matrixCertsData[a.id]?.[certKey]?.status === 'certified');
+    if (!certified.length) return;
+
+    const total = certified.length;
+
+    // Categorize by timing (pessimistic 80% CI lower bound)
+    const critRisk  = certified.filter(a => a.loDays !== Infinity && a.loDays <= DIRECT_LEAD_DAYS);
+    const highRisk  = certified.filter(a => a.loDays !== Infinity && a.loDays > DIRECT_LEAD_DAYS && a.loDays <= 42);
+    const watchRisk = certified.filter(a => a.loDays !== Infinity && a.loDays > 42 && a.loDays <= 84);
+    const scoreRisk = certified.filter(a => a.riskScore >= 65 && a.loDays === Infinity); // flagged by score but no clear trajectory
+
+    const atRiskSet = new Map();
+    [...critRisk, ...highRisk, ...watchRisk, ...scoreRisk].forEach(a => atRiskSet.set(a.id, a));
+    const atRisk = [...atRiskSet.values()];
+    if (!atRisk.length) return;
+
+    const soonest = atRisk.reduce((min, a) => a.loDays < min ? a.loDays : min, Infinity);
+    const pctRisk  = atRisk.length / total;
+    // How many certified remain if critical+high depart
+    const remaining = Math.max(0, total - critRisk.length - highRisk.length);
+
+    // Threshold check — if a minimum is set, use it; otherwise fall back to smart defaults
+    const threshold = _coverageThresholds[certKey] || 0;
+    const belowThreshold = threshold > 0 ? remaining < threshold : (total <= 2 || remaining <= 1);
+    const nearThreshold  = threshold > 0 ? remaining < threshold + 1 : pctRisk >= 0.5;
+    const hiresNeeded    = threshold > 0 ? Math.max(0, threshold - remaining) : 1;
+
+    let alertLevel, alertColor, alertBg, alertIcon, hiringRec;
+
+    if (critRisk.length > 0 && belowThreshold) {
+      alertLevel = 'CRITICAL'; alertColor = '#dc2626'; alertBg = '#fff0f0'; alertIcon = 'fa-exclamation-circle';
+      const needStr = hiresNeeded > 1 ? `${hiresNeeded} hires needed` : 'replacement needed';
+      hiringRec = soonest <= TEMP_LEAD_DAYS
+        ? `Source temp immediately - departure before temp lead time. ${needStr}. Cross-train others now.`
+        : `Start direct hire NOW - inside 3-week lead window. ${needStr}. Consider temp as bridge.`;
+    } else if (critRisk.length > 0 || (highRisk.length > 0 && (belowThreshold || nearThreshold))) {
+      alertLevel = 'HIGH'; alertColor = '#ea580c'; alertBg = '#fff7ed'; alertIcon = 'fa-exclamation-triangle';
+      const needStr = hiresNeeded > 1 ? ` (${hiresNeeded} hires needed)` : '';
+      hiringRec = soonest <= DIRECT_LEAD_DAYS
+        ? `Begin direct hire this week${needStr}. Identify cross-training candidates.`
+        : `Start direct hire process${needStr}. Monitor closely and prep cross-training plan.`;
+    } else {
+      alertLevel = 'WATCH'; alertColor = '#d97706'; alertBg = '#fefce8'; alertIcon = 'fa-eye';
+      hiringRec = threshold > 0
+        ? `Trending toward minimum threshold of ${threshold}. Begin hiring pipeline prep and prioritize cross-training.`
+        : 'No immediate action - begin hiring pipeline prep and prioritize cross-training.';
+    }
+
+    coverageAlerts.push({ cert, certKey, total, atRisk, critRisk, highRisk, watchRisk, scoreRisk, remaining, threshold, hiresNeeded, alertLevel, alertColor, alertBg, alertIcon, hiringRec, soonest });
+  });
+
+  const levelOrd = { CRITICAL: 0, HIGH: 1, WATCH: 2 };
+  coverageAlerts.sort((a,b) => (levelOrd[a.alertLevel] - levelOrd[b.alertLevel]) || (a.soonest - b.soonest));
+
+  if (!coverageAlerts.length) {
+    el.innerHTML = `<div class="text-center py-5">
+      <i class="fas fa-shield-alt fa-2x mb-2 d-block" style="color:#10b981"></i>
+      <div class="fw-semibold small text-muted mb-1">No coverage concerns detected</div>
+      <div style="font-size:0.7rem;color:#9ca3af">All certified associates appear stable - team coverage looks good.</div>
+    </div>`;
+    return;
+  }
+
+  const cnt = l => coverageAlerts.filter(a => a.alertLevel===l).length;
+  const badgePill = (label, color, bg, border) =>
+    `<span style="font-size:0.63rem;font-weight:700;background:${bg};color:${color};border:1px solid ${border};border-radius:10px;padding:1px 7px">${label}</span>`;
+
+  let html = `
+    <div class="mb-1 d-flex align-items-center justify-content-between flex-wrap gap-1">
+      <span class="fw-bold small" style="color:var(--navy)"><i class="fas fa-shield-alt me-1" style="color:#059669"></i>Coverage Forecast</span>
+      <div class="d-flex gap-1 flex-wrap">
+        ${cnt('CRITICAL') ? badgePill(cnt('CRITICAL')+' CRITICAL','#dc2626','#fee2e2','#fca5a5') : ''}
+        ${cnt('HIGH')     ? badgePill(cnt('HIGH')+' HIGH','#ea580c','#ffedd5','#fdba74') : ''}
+        ${cnt('WATCH')    ? badgePill(cnt('WATCH')+' WATCH','#d97706','#fef9c3','#fde047') : ''}
+      </div>
+    </div>
+    <div style="font-size:0.59rem;color:#9ca3af;margin-bottom:8px">Direct hire lead: <strong>3 wk</strong> &nbsp;·&nbsp; Temp lead: <strong>1 wk</strong> &nbsp;·&nbsp; Timing = 80% CI pessimistic estimate</div>`;
+
+  html += coverageAlerts.map(a => {
+    const memberRows = a.atRisk.map(m => {
+      const est = fmtEst(m.loDays);
+      const tag = est ? `Est. departure ${est}` : `Risk score ${m.riskScore}`;
+      const tagColor = m.loDays <= DIRECT_LEAD_DAYS ? '#dc2626' : m.loDays <= 42 ? '#ea580c' : m.loDays <= 84 ? '#d97706' : '#6b7280';
+      const empLabel = m.employmentType === 'temp' ? 'Temp' : 'Direct';
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:3px 8px;border-radius:6px;background:#fff;margin-top:3px;border:1px solid #f3f4f6">
+        <div>
+          <span style="font-size:0.73rem;font-weight:600;color:var(--navy)">${escapeHtml(m.name)}</span>
+          <span style="font-size:0.62rem;color:#9ca3af;margin-left:5px">${empLabel} &bull; ${m.totalPts} pts</span>
+        </div>
+        <span style="font-size:0.67rem;font-weight:700;color:${tagColor}">${tag}</span>
+      </div>`;
+    }).join('');
+
+    const remainNote = a.remaining < a.total
+      ? `<div style="font-size:0.62rem;color:#6b7280;text-align:right;margin-top:3px">
+           ${a.remaining} certified remain after projected departures
+           ${a.threshold ? ` &nbsp;·&nbsp; <strong style="color:${a.remaining < a.threshold ? '#dc2626' : '#059669'}">${a.hiresNeeded > 0 ? a.hiresNeeded+' hire'+(a.hiresNeeded>1?'s':'')+' needed to meet minimum' : 'meets minimum of '+a.threshold}</strong>` : ''}
+         </div>`
+      : '';
+
+    return `<div style="background:${a.alertBg};border:1px solid ${a.alertColor}35;border-radius:10px;padding:10px 12px;margin-bottom:8px">
+      <div class="d-flex align-items-center justify-content-between mb-1">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <i class="fas ${a.alertIcon}" style="color:${a.alertColor};font-size:0.85rem"></i>
+          <span style="font-weight:700;font-size:0.85rem;color:${a.alertColor}">${escapeHtml(a.cert)}</span>
+          <span style="font-size:0.67rem;color:#6b7280">${a.atRisk.length} of ${a.total} certified at risk</span>
+          ${a.threshold ? `<span style="font-size:0.63rem;font-weight:700;background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;border-radius:8px;padding:1px 6px">Min: ${a.threshold} &nbsp;·&nbsp; After: ${a.remaining}</span>` : ''}
+        </div>
+        <span style="font-size:0.61rem;font-weight:800;color:${a.alertColor};background:${a.alertColor}18;border:1px solid ${a.alertColor}40;border-radius:10px;padding:2px 8px">${a.alertLevel}</span>
+      </div>
+      <div style="font-size:0.7rem;color:${a.alertColor};background:${a.alertColor}12;border-radius:6px;padding:4px 8px;margin-bottom:5px">
+        <i class="fas fa-lightbulb me-1"></i><strong>Action:</strong> ${a.hiringRec}
+      </div>
+      ${memberRows}
+      ${remainNote}
+    </div>`;
+  }).join('');
+
+  html += `<div style="margin-top:6px;padding:5px 8px;background:#f8fafc;border-radius:6px;font-size:0.59rem;color:#9ca3af;text-align:center">
+    Only fully certified (not in-training) associates count toward coverage. Based on attendance trajectory + cert data.
+  </div>`;
+
+  el.innerHTML = html;
+}
+
 function renderAttTrends() {
   const el = document.getElementById('attTrendsContainer');
   if (!el) return;
@@ -8715,6 +8984,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <a class="nav-link" data-view="attendance" onclick="loadAttendance()">
         <i class="fas fa-calendar-alt"></i><span>Attendance</span>
       </a>
+      <a class="nav-link" data-view="coverage" onclick="loadCoverage()">
+        <i class="fas fa-shield-alt"></i><span>Coverage</span>
+      </a>
       <a class="nav-link" data-view="timeoff" onclick="loadTimeOff()">
         <i class="fas fa-calendar-minus"></i><span>Time Off</span>
       </a>
@@ -9733,6 +10005,39 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <div id="turnoverContent"></div>
     </div>
 
+    <!-- COVERAGE VIEW -->
+    <div id="coverageView" class="view d-none">
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+          <h1 class="page-title"><i class="fas fa-shield-alt me-2" style="color:var(--orange)"></i>Coverage Forecast</h1>
+          <div class="text-muted small mt-1">Flags certified skill gaps trending toward your minimum staffing levels. Direct hire lead: <strong>3 wk</strong> &nbsp;·&nbsp; Temp lead: <strong>1 wk</strong>.</div>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-secondary" onclick="toggleCoverageConfig()"><i class="fas fa-sliders-h me-1"></i>Thresholds</button>
+          <button class="btn btn-sm" style="background:var(--navy);color:#fff;border:none" onclick="renderCoverageTab()"><i class="fas fa-sync-alt me-1"></i>Refresh</button>
+        </div>
+      </div>
+
+      <!-- Threshold Config Panel (collapsed by default) -->
+      <div id="coverageConfigPanel" class="admin-card mb-3 d-none">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-sliders-h me-2" style="color:var(--orange)"></i>Minimum Staffing Thresholds</h6>
+          <span class="text-muted" style="font-size:0.7rem">Set the minimum number of certified associates needed per skill. Alerts fire when projected coverage drops below your threshold.</span>
+        </div>
+        <div id="coverageThresholdGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;margin-bottom:10px">
+          <!-- Populated by renderCoverageConfig() -->
+        </div>
+        <div class="d-flex justify-content-end gap-2">
+          <button class="btn btn-sm btn-outline-secondary" onclick="toggleCoverageConfig()">Cancel</button>
+          <button class="btn btn-sm" style="background:var(--orange);color:#fff;border:none" onclick="saveCoverageThresholds()"><i class="fas fa-save me-1"></i>Save Thresholds</button>
+        </div>
+      </div>
+
+      <div id="coverageContent">
+        <div class="text-center py-5 text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Loading...</div>
+      </div>
+    </div>
+
     <!-- ADMIN VIEW -->
     <div id="adminView" class="view d-none">
       <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
@@ -9759,6 +10064,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
               <div class="form-check form-switch mb-0">
                 <input class="form-check-input" type="checkbox" id="tabToggle_attendance" onchange="saveTabVisibility('attendance', this.checked)">
                 <label class="form-check-label small fw-semibold" for="tabToggle_attendance"><i class="fas fa-calendar-alt me-1" style="color:var(--navy)"></i>Attendance</label>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-2">
+            <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#f8f9fa">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="tabToggle_coverage" onchange="saveTabVisibility('coverage', this.checked)">
+                <label class="form-check-label small fw-semibold" for="tabToggle_coverage"><i class="fas fa-shield-alt me-1" style="color:var(--navy)"></i>Coverage</label>
               </div>
             </div>
           </div>
