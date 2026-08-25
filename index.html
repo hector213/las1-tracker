@@ -5760,10 +5760,10 @@ async function renderCoverageTab() {
   const TERM_THRESHOLD = 10;
   const WORK_DAYS = new Set([1,2,3,4]);
   const now = new Date(); now.setHours(0,0,0,0);
-  const leaderPos = new Set(['supervisor','lead','ops-manager']);
-
-  // Compute employment expectancy + attrition risk for every active associate
-  const activeAssocs = allAssociates.filter(a => a.status === 'active' && !leaderPos.has(a.position));
+  // Coverage counts ALL active associates (including leads/supervisors) since they
+  // may be certified in functions and can provide coverage if needed.
+  // Only ops-managers are excluded as they don't perform frontline functions.
+  const activeAssocs = allAssociates.filter(a => a.status === 'active' && a.position !== 'ops-manager');
 
   const assocData = activeAssocs.map(assoc => {
     const entries = (_allAttEntries || []).filter(e => e.assocId === assoc.id && !e.expired && !e.pending);
