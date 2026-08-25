@@ -5890,7 +5890,38 @@ async function renderCoverageTab() {
   const badgePill = (label, color, bg, border) =>
     `<span style="font-size:0.76rem;font-weight:700;background:${bg};color:${color};border:1px solid ${border};border-radius:10px;padding:2px 9px">${label}</span>`;
 
-  let html = `
+  // ── Staffing Request Summary ─────────────────────────────────────────
+  const hiringNeeded = coverageAlerts.filter(a => a.hiresNeeded > 0);
+  const totalHires   = hiringNeeded.reduce((s, a) => s + a.hiresNeeded, 0);
+
+  const staffingSummary = hiringNeeded.length ? `
+    <div class="admin-card mb-4" style="border-left:4px solid #dc2626">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+          <div class="fw-bold" style="color:var(--navy);font-size:1.05rem"><i class="fas fa-user-plus me-2" style="color:#dc2626"></i>Additional Staffing Required</div>
+          <div style="font-size:0.78rem;color:#6b7280;margin-top:2px">Based on projected departures vs. your minimum thresholds</div>
+        </div>
+        <div style="text-align:center;background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:8px 16px">
+          <div style="font-size:1.6rem;font-weight:800;color:#dc2626;line-height:1">${totalHires}</div>
+          <div style="font-size:0.72rem;font-weight:600;color:#dc2626">Total Hire${totalHires !== 1 ? 's' : ''} Needed</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">
+        ${hiringNeeded.map(a => {
+          const lvlColor = a.alertLevel === 'CRITICAL' ? '#dc2626' : a.alertLevel === 'HIGH' ? '#ea580c' : '#d97706';
+          const lvlBg    = a.alertLevel === 'CRITICAL' ? '#fee2e2'  : a.alertLevel === 'HIGH' ? '#ffedd5'  : '#fefce8';
+          return `<div style="display:flex;align-items:center;justify-content:space-between;background:${lvlBg};border:1px solid ${lvlColor}30;border-radius:8px;padding:8px 12px">
+            <div>
+              <div style="font-size:0.85rem;font-weight:700;color:var(--navy)">${escapeHtml(a.cert)}</div>
+              <div style="font-size:0.72rem;color:#6b7280">Currently: ${a.total} &nbsp;·&nbsp; After: ${a.remaining}${a.threshold ? ' &nbsp;·&nbsp; Min: '+a.threshold : ''}</div>
+            </div>
+            <div style="font-size:1.4rem;font-weight:800;color:${lvlColor};margin-left:10px">${a.hiresNeeded}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  let html = staffingSummary + `
     <div class="mb-2 d-flex align-items-center justify-content-between flex-wrap gap-1">
       <span class="fw-bold" style="color:var(--navy);font-size:0.95rem"><i class="fas fa-shield-alt me-1" style="color:#059669"></i>Coverage Forecast</span>
       <div class="d-flex gap-1 flex-wrap">
