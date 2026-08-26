@@ -927,6 +927,7 @@ async function restoreLastView() {
 function loadDashboard() {
   showView('dashboard');
   detachAll();
+  clearCache('todayAttStats'); // always re-read today's attendance on dashboard load
   let _dashFirstLoad = true;
   // Always default to Active-only view - inactive associates are hidden unless explicitly filtered
   const _fs = document.getElementById('filterStatus');
@@ -4967,7 +4968,7 @@ async function loadTodayAttendanceStats() {
   if (cached) return; // still fresh - applyAttendanceStats() uses _todayAttMap
 
   const today = shiftDate(); // overnight shift: before 4:30 AM, still counts as previous day
-  const callOutTypes  = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('call-out') || t.key === 'ncns').map(t => t.key));
+  const callOutTypes  = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('call-out') || t.key === 'ncns' || t.key === 'doctors-note').map(t => t.key));
   const earlyOutTypes = new Set(ATTENDANCE_TYPES.filter(t => t.key.startsWith('left-early')).map(t => t.key));
   const ncnsIds    = new Set();
   const callOutIds = new Set();
