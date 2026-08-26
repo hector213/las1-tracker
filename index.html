@@ -3239,15 +3239,20 @@ function renderMatrix() {
     return;
   }
 
+  // Scoring pool: associates + leads only (OMs and supervisors shown in table but excluded from % calculations)
+  const scoringAssociates = associates.filter(a => a.position !== 'ops-manager' && a.position !== 'supervisor');
+
   // Build cert coverage data
-  // certCoverage[certLabel] = { count, total, assocIds[] }
+  // certCoverage[certLabel] = { count, total, holders[] }
   const certCoverage = {};
   CERTS.forEach(cert => {
-    certCoverage[cert] = { count: 0, total: associates.length, holders: [] };
+    certCoverage[cert] = { count: 0, total: scoringAssociates.length, holders: [] };
   });
 
   // Build per-associate cert map: { certLabel → 'certified'|'training'|null }
+  // All associates appear in the table; only scoringAssociates count toward percentages.
   const assocCertMap = {}; // assocId → Map of cert label → status
+  const scoringIds = new Set(scoringAssociates.map(a => a.id));
   associates.forEach(a => {
     const myCerts = matrixCertsData[a.id] || {};
     const certStatusMap = {};
@@ -3256,7 +3261,7 @@ function renderMatrix() {
       if (myCerts[key]) {
         const status = myCerts[key].status || 'certified';
         certStatusMap[cert] = status;
-        if (status === 'certified') {
+        if (status === 'certified' && scoringIds.has(a.id)) {
           certCoverage[cert].count++;
           certCoverage[cert].holders.push(a.name);
         }
@@ -5761,10 +5766,9 @@ async function renderCoverageTab() {
   const TERM_THRESHOLD = 10;
   const WORK_DAYS = new Set([1,2,3,4]);
   const now = new Date(); now.setHours(0,0,0,0);
-  // Coverage counts ALL active associates (including leads/supervisors) since they
-  // may be certified in functions and can provide coverage if needed.
-  // Only ops-managers are excluded as they don't perform frontline functions.
-  const activeAssocs = allAssociates.filter(a => a.status === 'active' && a.position !== 'ops-manager');
+  // Coverage counts associates + leads only. Supervisors and OMs are excluded
+  // as they don't perform frontline functions for coverage purposes.
+  const activeAssocs = allAssociates.filter(a => a.status === 'active' && a.position !== 'ops-manager' && a.position !== 'supervisor');
 
   const assocData = activeAssocs.map(assoc => {
     const entries = (_allAttEntries || []).filter(e => e.assocId === assoc.id && !e.expired && !e.pending);
