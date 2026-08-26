@@ -3347,14 +3347,11 @@ function renderMatrix() {
     );
     const healthColor = healthPct < 50 ? '#dc2626' : healthPct < 75 ? '#d97706' : '#059669';
 
-    // Count PIT operators vs Material Handlers among scoring associates
-    const PIT_CERTS = new Set(['OP Pick','Walkie Rider','Counter Balance','Reach Truck','Yard Truck']);
-    let pitCount = 0;
-    scoringAssociates.forEach(a => {
-      const hasPIT = [...PIT_CERTS].some(c => assocCertMap[a.id]?.[c] === 'certified');
-      if (hasPIT) pitCount++;
-    });
-    const mhCount = scoringAssociates.length - pitCount;
+    // Count PIT operators vs Material Handlers from associate profile role field
+    // Excludes OMs and supervisors; includes leads
+    const floorWorkers = associates.filter(a => a.position !== 'ops-manager' && a.position !== 'supervisor');
+    const pitCount = floorWorkers.filter(a => /pit/i.test(a.role || '')).length;
+    const mhCount  = floorWorkers.filter(a => !/pit/i.test(a.role || '')).length;
 
     barEl.innerHTML = `
       <div class="d-flex align-items-center justify-content-between mb-3">
