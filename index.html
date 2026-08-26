@@ -3287,8 +3287,8 @@ function renderMatrix() {
     return;
   }
 
-  // Scoring pool: associates + leads only (OMs and supervisors shown in table but excluded from % calculations)
-  const scoringAssociates = associates.filter(a => a.position !== 'ops-manager' && a.position !== 'supervisor');
+  // Scoring pool: associates only (leads, OMs, and supervisors shown in table but excluded from % calculations)
+  const scoringAssociates = associates.filter(a => !a.position || a.position === '');
 
   // Build cert coverage data
   // certCoverage[certLabel] = { count, total, holders[] }
@@ -3347,12 +3347,31 @@ function renderMatrix() {
     );
     const healthColor = healthPct < 50 ? '#dc2626' : healthPct < 75 ? '#d97706' : '#059669';
 
+    // Count PIT operators vs Material Handlers among scoring associates
+    const PIT_CERTS = new Set(['OP Pick','Walkie Rider','Counter Balance','Reach Truck','Yard Truck']);
+    let pitCount = 0;
+    scoringAssociates.forEach(a => {
+      const hasPIT = [...PIT_CERTS].some(c => assocCertMap[a.id]?.[c] === 'certified');
+      if (hasPIT) pitCount++;
+    });
+    const mhCount = scoringAssociates.length - pitCount;
+
     barEl.innerHTML = `
       <div class="d-flex align-items-center justify-content-between mb-3">
-        <div style="font-size:0.78rem;color:#6b7280">Coverage vs. your targets &nbsp;·&nbsp; Associates + Leads only</div>
-        <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:4px 12px">
-          <span style="font-size:0.72rem;color:#6b7280">Overall Health</span>
-          <span style="font-size:1.2rem;font-weight:800;color:${healthColor}">${healthPct}%</span>
+        <div style="font-size:0.78rem;color:#6b7280">Coverage vs. your targets &nbsp;·&nbsp; Associates only</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="display:flex;align-items:center;gap:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:4px 12px">
+            <span style="font-size:0.72rem;color:#3b82f6">Material Handlers</span>
+            <span style="font-size:1.1rem;font-weight:800;color:#1d4ed8">${mhCount}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:4px 12px">
+            <span style="font-size:0.72rem;color:#d97706">PIT Operators</span>
+            <span style="font-size:1.1rem;font-weight:800;color:#92400e">${pitCount}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:4px 12px">
+            <span style="font-size:0.72rem;color:#6b7280">Overall Health</span>
+            <span style="font-size:1.2rem;font-weight:800;color:${healthColor}">${healthPct}%</span>
+          </div>
         </div>
       </div>` +
       targetedCerts.map(cert => {
