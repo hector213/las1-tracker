@@ -3208,17 +3208,65 @@ window.exportForClaude = async () => {
 };
 
 // ─── Cross Training Matrix ─────────────────────────────────────────────
-let matrixCertsData = {}; // { associateId: { certKey: certData } }
+let matrixCertsData  = {}; // { associateId: { certKey: certData } }
+let matrixThresholds = {}; // { 'OP_Pick': 10, 'Walkie_Rider': 8, ... }
 
 window.loadMatrix = async () => {
   showView('matrix');
   detachAll();
-  // Load all certs from Firebase
-  const certsSnap = await getDocs(collection(db, 'certs'));
-  matrixCertsData = {}; certsSnap.docs.forEach(d => { matrixCertsData[d.id] = d.data(); });
+  const [certsSnap, threshSnap] = await Promise.all([
+    getDocs(collection(db, 'certs')),
+    getDoc(doc(db, 'settings', 'matrix'))
+  ]);
+  matrixCertsData  = {}; certsSnap.docs.forEach(d => { matrixCertsData[d.id] = d.data(); });
+  matrixThresholds = threshSnap.exists() ? (threshSnap.data().thresholds || {}) : {};
   renderMatrix();
 };
 window.renderMatrix = renderMatrix;
+
+window.toggleMatrixThresholds = () => {
+  const panel = document.getElementById('matrixThresholdPanel');
+  if (!panel) return;
+  if (panel.classList.contains('d-none')) {
+    renderMatrixThresholdPanel();
+    panel.classList.remove('d-none');
+  } else {
+    panel.classList.add('d-none');
+  }
+};
+
+function renderMatrixThresholdPanel() {
+  const grid = document.getElementById('matrixThresholdGrid');
+  if (!grid) return;
+  grid.innerHTML = CERTS.map(cert => {
+    const certKey = cert.replace(/\s+/g,'_');
+    const current = matrixThresholds[certKey] || '';
+    return `<div style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:5px 8px">
+      <label style="font-size:0.72rem;font-weight:600;color:#374151;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${cert}">${cert}</label>
+      <input type="number" min="0" max="99" placeholder="target"
+        data-certkey="${certKey}"
+        value="${current}"
+        style="width:56px;border:1px solid #d1d5db;border-radius:6px;font-size:0.75rem;padding:2px 4px;text-align:center">
+    </div>`;
+  }).join('');
+}
+
+window.saveMatrixThresholds = async () => {
+  const inputs = document.querySelectorAll('#matrixThresholdGrid input[data-certkey]');
+  const updated = {};
+  inputs.forEach(inp => {
+    const val = parseInt(inp.value, 10);
+    if (!isNaN(val) && val > 0) updated[inp.dataset.certkey] = val;
+  });
+  try {
+    await setDoc(doc(db, 'settings', 'matrix'), { thresholds: updated }, { merge: true });
+    matrixThresholds = updated;
+    document.getElementById('matrixThresholdPanel').classList.add('d-none');
+    renderMatrix();
+  } catch(e) {
+    alert('Could not save targets: ' + e.message);
+  }
+};
 
 function renderMatrix() {
   const shiftFilter  = document.getElementById('matrixShift')?.value  || '';
@@ -3270,75 +3318,109 @@ function renderMatrix() {
     assocCertMap[a.id] = certStatusMap;
   });
 
-  // ── Coverage bar ──────────────────────────────────────────────────
+  // ── Coverage by Role (threshold-based) ───────────────────────────
   const barEl = document.getElementById('matrixCoverageBar');
-  const sortedCerts = [...CERTS].sort((a, b) =>
-    certCoverage[a].count / certCoverage[a].total - certCoverage[b].count / certCoverage[b].total
-  );
-  barEl.innerHTML = sortedCerts.map(cert => {
-    const { count, total } = certCoverage[cert];
-    const pct = total ? Math.round((count / total) * 100) : 0;
-    const color = pct < 25 ? '#dc2626' : pct < 50 ? '#d97706' : pct < 75 ? '#f97316' : '#059669';
-    return `<div class="coverage-bar-row">
-      <div class="coverage-bar-label" title="${cert}">${cert}</div>
-      <div class="coverage-bar-track">
-        <div class="coverage-bar-fill" style="width:${pct}%;background:${color}"></div>
-      </div>
-      <div class="coverage-bar-pct" style="color:${color}">${pct}%</div>
-      <div style="font-size:11px;color:#9ca3af;min-width:60px">${count}/${total}</div>
-    </div>`;
-  }).join('');
+  const hasThresholds = Object.keys(matrixThresholds).length > 0;
 
-  // ── Recommendations ───────────────────────────────────────────────
+  if (!hasThresholds) {
+    barEl.innerHTML = `<div class="text-center py-3" style="color:#9ca3af;font-size:0.82rem">
+      <i class="fas fa-sliders-h me-1"></i>No targets set yet.
+      Click <strong>Set Targets</strong> to define how many associates you need certified per skill.
+      Percentages will be based on your targets, not total headcount.
+    </div>`;
+  } else {
+    // Only show certs that have a target set, sorted by % ascending
+    const targetedCerts = CERTS
+      .filter(cert => matrixThresholds[cert.replace(/\s+/g,'_')] > 0)
+      .sort((a, b) => {
+        const pctA = certCoverage[a].count / matrixThresholds[a.replace(/\s+/g,'_')];
+        const pctB = certCoverage[b].count / matrixThresholds[b.replace(/\s+/g,'_')];
+        return pctA - pctB;
+      });
+
+    // Overall coverage health score (average across all targeted certs)
+    const healthPct = Math.round(
+      targetedCerts.reduce((s, c) => {
+        const target = matrixThresholds[c.replace(/\s+/g,'_')];
+        return s + Math.min(certCoverage[c].count / target, 1);
+      }, 0) / targetedCerts.length * 100
+    );
+    const healthColor = healthPct < 50 ? '#dc2626' : healthPct < 75 ? '#d97706' : '#059669';
+
+    barEl.innerHTML = `
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div style="font-size:0.78rem;color:#6b7280">Coverage vs. your targets &nbsp;·&nbsp; Associates + Leads only</div>
+        <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:4px 12px">
+          <span style="font-size:0.72rem;color:#6b7280">Overall Health</span>
+          <span style="font-size:1.2rem;font-weight:800;color:${healthColor}">${healthPct}%</span>
+        </div>
+      </div>` +
+      targetedCerts.map(cert => {
+        const certKey  = cert.replace(/\s+/g,'_');
+        const target   = matrixThresholds[certKey];
+        const count    = certCoverage[cert].count;
+        const inTraining = associates.filter(a =>
+          matrixCertsData[a.id]?.[certKey]?.status === 'training' && scoringIds.has(a.id)
+        ).length;
+        const pct      = Math.min(Math.round(count / target * 100), 100);
+        const gap      = Math.max(0, target - count);
+        const color    = pct < 50 ? '#dc2626' : pct < 75 ? '#d97706' : pct < 100 ? '#f97316' : '#059669';
+        const gapNote  = gap > 0
+          ? `<span style="font-size:10px;color:${color};font-weight:700;margin-left:4px">-${gap}</span>`
+          : `<span style="font-size:10px;color:#059669;font-weight:700;margin-left:4px">✓</span>`;
+        const trainingNote = inTraining > 0
+          ? `<span style="font-size:10px;color:#d97706;margin-left:6px">${inTraining} in training</span>` : '';
+        return `<div class="coverage-bar-row" style="margin-bottom:8px">
+          <div class="coverage-bar-label" title="${cert}" style="min-width:160px;font-weight:600">${cert}</div>
+          <div class="coverage-bar-track" style="flex:1">
+            <div class="coverage-bar-fill" style="width:${pct}%;background:${color}"></div>
+          </div>
+          <div class="coverage-bar-pct" style="color:${color};min-width:38px">${pct}%</div>
+          <div style="font-size:11px;color:#6b7280;min-width:70px">${count} / ${target}${gapNote}${trainingNote}</div>
+        </div>`;
+      }).join('');
+  }
+
+  // ── Recommendations (threshold-aware) ────────────────────────────
   const recEl = document.getElementById('matrixRecommendations');
-  const critical = sortedCerts.filter(c => {
-    const pct = certCoverage[c].total ? certCoverage[c].count / certCoverage[c].total * 100 : 0;
-    return pct < 20;
-  });
-  const warning = sortedCerts.filter(c => {
-    const pct = certCoverage[c].total ? certCoverage[c].count / certCoverage[c].total * 100 : 0;
-    return pct >= 20 && pct < 40;
-  });
-  const wellCovered = sortedCerts.filter(c => {
-    const pct = certCoverage[c].total ? certCoverage[c].count / certCoverage[c].total * 100 : 0;
-    return pct >= 75;
-  });
+  const targetedCertsForRec = CERTS.filter(c => matrixThresholds[c.replace(/\s+/g,'_')] > 0);
 
   let recs = '';
-  if (critical.length) {
-    const names = critical.slice(0, 5).join(', ') + (critical.length > 5 ? ` +${critical.length - 5} more` : '');
-    recs += `<div class="rec-card rec-critical">
-      <div class="rec-icon">🚨</div>
-      <div class="rec-body">
-        <div class="rec-title">Critical gaps - immediate training needed</div>
-        <div class="rec-detail">${names} - fewer than 20% of your team is certified. A single call-out creates a coverage risk.</div>
-      </div>
-    </div>`;
+  if (!hasThresholds) {
+    recEl.innerHTML = '';
+  } else {
+    const getPct = c => {
+      const t = matrixThresholds[c.replace(/\s+/g,'_')];
+      return t ? certCoverage[c].count / t * 100 : 100;
+    };
+    const critical    = targetedCertsForRec.filter(c => getPct(c) < 50);
+    const warning     = targetedCertsForRec.filter(c => getPct(c) >= 50 && getPct(c) < 80);
+    const wellCovered = targetedCertsForRec.filter(c => getPct(c) >= 100);
+
+    if (critical.length) {
+      const names = critical.slice(0,5).join(', ') + (critical.length > 5 ? ` +${critical.length-5} more` : '');
+      recs += `<div class="rec-card rec-critical"><div class="rec-icon">🚨</div><div class="rec-body">
+        <div class="rec-title">Below 50% of target - prioritize cross-training</div>
+        <div class="rec-detail">${names} - significantly under your staffing targets. A call-out creates immediate risk.</div>
+      </div></div>`;
+    }
+    if (warning.length) {
+      const names = warning.slice(0,5).join(', ') + (warning.length > 5 ? ` +${warning.length-5} more` : '');
+      recs += `<div class="rec-card rec-warning"><div class="rec-icon">⚠️</div><div class="rec-body">
+        <div class="rec-title">50–80% of target - plan training soon</div>
+        <div class="rec-detail">${names} - approaching targets but not there yet. Schedule in next training cycle.</div>
+      </div></div>`;
+    }
+    if (wellCovered.length) {
+      const names = wellCovered.slice(0,4).join(', ') + (wellCovered.length > 4 ? ` +${wellCovered.length-4} more` : '');
+      recs += `<div class="rec-card rec-good"><div class="rec-icon">✅</div><div class="rec-body">
+        <div class="rec-title">At or above target</div>
+        <div class="rec-detail">${names} - fully meeting your staffing targets. Consider mentorship and skill deepening.</div>
+      </div></div>`;
+    }
+    if (!recs) recs = `<div class="rec-card rec-good"><div class="rec-icon">✅</div><div class="rec-body"><div class="rec-title">Good coverage across all targets!</div></div></div>`;
+    recEl.innerHTML = recs;
   }
-  if (warning.length) {
-    const names = warning.slice(0, 5).join(', ') + (warning.length > 5 ? ` +${warning.length - 5} more` : '');
-    recs += `<div class="rec-card rec-warning">
-      <div class="rec-icon">⚠️</div>
-      <div class="rec-body">
-        <div class="rec-title">Low coverage - plan cross-training soon</div>
-        <div class="rec-detail">${names} - 20–40% coverage. Prioritize these in your next training cycle.</div>
-      </div>
-    </div>`;
-  }
-  if (wellCovered.length) {
-    const names = wellCovered.slice(0, 4).join(', ') + (wellCovered.length > 4 ? ` +${wellCovered.length - 4} more` : '');
-    recs += `<div class="rec-card rec-good">
-      <div class="rec-icon">✅</div>
-      <div class="rec-body">
-        <div class="rec-title">Well covered</div>
-        <div class="rec-detail">${names} - 75%+ of the team is certified. Maintain and consider mentorship opportunities.</div>
-      </div>
-    </div>`;
-  }
-  if (!recs) {
-    recs = `<div class="rec-card rec-good"><div class="rec-icon">✅</div><div class="rec-body"><div class="rec-title">Good coverage across the board!</div></div></div>`;
-  }
-  recEl.innerHTML = recs;
 
   // ── Matrix table ──────────────────────────────────────────────────
   const pctOf = cert => certCoverage[cert].total
@@ -9981,7 +10063,22 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
       <!-- Coverage summary bar -->
       <div class="admin-card mb-3 p-3">
-        <div class="fw-semibold mb-2" style="font-size:0.8rem;color:var(--navy)"><i class="fas fa-chart-bar me-2" style="color:var(--orange)"></i>Certification Coverage by Role</div>
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <div class="fw-semibold" style="font-size:0.85rem;color:var(--navy)"><i class="fas fa-bullseye me-2" style="color:var(--orange)"></i>Certification Coverage by Role</div>
+          <button class="btn btn-sm btn-outline-secondary" onclick="toggleMatrixThresholds()" style="font-size:0.75rem"><i class="fas fa-sliders-h me-1"></i>Set Targets</button>
+        </div>
+
+        <!-- Threshold config panel -->
+        <div id="matrixThresholdPanel" class="d-none mb-3 p-3" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px">
+          <div class="fw-semibold small mb-1" style="color:var(--navy)">How many associates do you need trained in each skill?</div>
+          <div class="text-muted mb-2" style="font-size:0.72rem">Only skills with a target will appear in the coverage bars. Leave blank to hide a skill from coverage tracking.</div>
+          <div id="matrixThresholdGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px;margin-bottom:10px"></div>
+          <div class="d-flex justify-content-end gap-2">
+            <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('matrixThresholdPanel').classList.add('d-none')">Cancel</button>
+            <button class="btn btn-sm" style="background:var(--orange);color:#fff;border:none" onclick="saveMatrixThresholds()"><i class="fas fa-save me-1"></i>Save Targets</button>
+          </div>
+        </div>
+
         <div id="matrixCoverageBar"></div>
       </div>
 
