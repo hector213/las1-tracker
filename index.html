@@ -3367,8 +3367,10 @@ function renderMatrix() {
 
     // Count PIT operators vs Material Handlers from associate profile role field
     // Uses scoringAssociates (associates only — no leads, OMs, or supervisors)
-    const pitList = scoringAssociates.filter(a => /pit/i.test(a.role || ''));
-    const mhList  = scoringAssociates.filter(a => !/pit/i.test(a.role || ''));
+    // Excludes Inventory Control and Maintenance roles
+    const EXCLUDED_ROLES = /inventory.control|maintenance/i;
+    const pitList = scoringAssociates.filter(a => /pit/i.test(a.role || '') && !EXCLUDED_ROLES.test(a.role || ''));
+    const mhList  = scoringAssociates.filter(a => !/pit/i.test(a.role || '') && !EXCLUDED_ROLES.test(a.role || ''));
     const pitCount = pitList.length;
     const mhCount  = mhList.length;
     // Store for modal access
