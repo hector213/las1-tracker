@@ -3118,7 +3118,6 @@ window.exportProfilePDF = async () => {
     const dateStr = b._displayDate ? new Date(b._displayDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-';
     return '<span class="badge-item">' + label + ' - ' + dateStr + '</span>';
   }).join('<br>') : ''}
-  ${notes.length ? `<h2>Manager Notes (${notes.length})</h2>${notes.map(n => `<div class="note"><div class="note-type">${n.type || 'General'}</div><div>${n.text}</div><div class="note-meta">${n.author} · ${new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div></div>`).join('')}` : ''}
   <h2>Attendance Log (${attEntries.length} event${attEntries.length !== 1 ? 's' : ''})</h2>
   <div class="att-summary">
     <div class="att-stat"><div class="att-stat-val">${attEntries.length}</div><div class="att-stat-lbl">Total Events</div></div>
