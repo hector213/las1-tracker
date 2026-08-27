@@ -3250,6 +3250,25 @@ function renderMatrixThresholdPanel() {
   }).join('');
 }
 
+window.showMatrixRoleList = (type) => {
+  const lists = window._matrixRoleLists || {};
+  const assocs = lists[type] || [];
+  const title  = type === 'pit' ? 'PIT Operators' : 'Material Handlers';
+  document.getElementById('matrixRoleModalTitle').textContent = `${title} (${assocs.length})`;
+  const body = document.getElementById('matrixRoleModalBody');
+  if (!assocs.length) {
+    body.innerHTML = '<p class="text-muted text-center py-3">No associates in this group.</p>';
+  } else {
+    body.innerHTML = assocs
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(a => `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f3f4f6">
+        <span style="font-weight:500">${escapeHtml(a.name)}</span>
+        <span style="font-size:0.78rem;color:#6b7280">${a.role || '—'}</span>
+      </div>`).join('');
+  }
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('matrixRoleModal')).show();
+};
+
 window.saveMatrixThresholds = async () => {
   const inputs = document.querySelectorAll('#matrixThresholdGrid input[data-certkey]');
   const updated = {};
@@ -3348,18 +3367,22 @@ function renderMatrix() {
 
     // Count PIT operators vs Material Handlers from associate profile role field
     // Uses scoringAssociates (associates only — no leads, OMs, or supervisors)
-    const pitCount = scoringAssociates.filter(a => /pit/i.test(a.role || '')).length;
-    const mhCount  = scoringAssociates.filter(a => !/pit/i.test(a.role || '')).length;
+    const pitList = scoringAssociates.filter(a => /pit/i.test(a.role || ''));
+    const mhList  = scoringAssociates.filter(a => !/pit/i.test(a.role || ''));
+    const pitCount = pitList.length;
+    const mhCount  = mhList.length;
+    // Store for modal access
+    window._matrixRoleLists = { pit: pitList, mh: mhList };
 
     barEl.innerHTML = `
       <div class="d-flex align-items-center justify-content-between mb-3">
         <div style="font-size:0.78rem;color:#6b7280">Coverage vs. your targets &nbsp;·&nbsp; Associates only</div>
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="display:flex;align-items:center;gap:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:4px 12px">
+          <div onclick="showMatrixRoleList('mh')" style="display:flex;align-items:center;gap:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:4px 12px;cursor:pointer" title="Click to see list">
             <span style="font-size:0.72rem;color:#3b82f6">Material Handlers</span>
             <span style="font-size:1.1rem;font-weight:800;color:#1d4ed8">${mhCount}</span>
           </div>
-          <div style="display:flex;align-items:center;gap:6px;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:4px 12px">
+          <div onclick="showMatrixRoleList('pit')" style="display:flex;align-items:center;gap:6px;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:4px 12px;cursor:pointer" title="Click to see list">
             <span style="font-size:0.72rem;color:#d97706">PIT Operators</span>
             <span style="font-size:1.1rem;font-weight:800;color:#92400e">${pitCount}</span>
           </div>
@@ -10053,6 +10076,19 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     </div>
   </div>
 </div>
+
+    <!-- Matrix Role List Modal -->
+    <div class="modal fade" id="matrixRoleModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header" style="background:#1a2744;color:#fff">
+            <h5 class="modal-title" id="matrixRoleModalTitle"></h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" id="matrixRoleModalBody"></div>
+        </div>
+      </div>
+    </div>
 
     <!-- CROSS TRAINING MATRIX VIEW -->
     <div id="matrixView" class="view d-none">
