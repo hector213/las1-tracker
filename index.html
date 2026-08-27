@@ -3253,7 +3253,8 @@ function renderMatrixThresholdPanel() {
 window.showMatrixRoleList = (type) => {
   const lists = window._matrixRoleLists || {};
   const assocs = lists[type] || [];
-  const title  = type === 'pit' ? 'PIT Operators' : 'Material Handlers';
+  const titles = { pit: 'PIT Operators', mh: 'Material Handlers', ic: 'Inventory Control', maint: 'Maintenance' };
+  const title  = titles[type] || type;
   document.getElementById('matrixRoleModalTitle').textContent = `${title} (${assocs.length})`;
   const body = document.getElementById('matrixRoleModalBody');
   if (!assocs.length) {
@@ -3367,14 +3368,18 @@ function renderMatrix() {
 
     // Count PIT operators vs Material Handlers from associate profile role field
     // Uses scoringAssociates (associates only — no leads, OMs, or supervisors)
-    // Excludes Inventory Control and Maintenance roles
+    // Excludes Inventory Control and Maintenance roles from MH/PIT buckets
     const EXCLUDED_ROLES = /inventory.control|maintenance/i;
     const pitList = scoringAssociates.filter(a => /pit/i.test(a.role || '') && !EXCLUDED_ROLES.test(a.role || ''));
     const mhList  = scoringAssociates.filter(a => !/pit/i.test(a.role || '') && !EXCLUDED_ROLES.test(a.role || ''));
-    const pitCount = pitList.length;
-    const mhCount  = mhList.length;
+    const icList   = scoringAssociates.filter(a => /inventory.control/i.test(a.role || ''));
+    const maintList = scoringAssociates.filter(a => /maintenance/i.test(a.role || ''));
+    const pitCount  = pitList.length;
+    const mhCount   = mhList.length;
+    const icCount   = icList.length;
+    const maintCount = maintList.length;
     // Store for modal access
-    window._matrixRoleLists = { pit: pitList, mh: mhList };
+    window._matrixRoleLists = { pit: pitList, mh: mhList, ic: icList, maint: maintList };
 
     barEl.innerHTML = `
       <div class="d-flex align-items-center justify-content-between mb-3">
@@ -3387,6 +3392,14 @@ function renderMatrix() {
           <div onclick="showMatrixRoleList('pit')" style="display:flex;align-items:center;gap:6px;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:4px 12px;cursor:pointer" title="Click to see list">
             <span style="font-size:0.72rem;color:#d97706">PIT Operators</span>
             <span style="font-size:1.1rem;font-weight:800;color:#92400e">${pitCount}</span>
+          </div>
+          <div onclick="showMatrixRoleList('ic')" style="display:flex;align-items:center;gap:6px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:4px 12px;cursor:pointer" title="Click to see list">
+            <span style="font-size:0.72rem;color:#16a34a">Inventory Control</span>
+            <span style="font-size:1.1rem;font-weight:800;color:#14532d">${icCount}</span>
+          </div>
+          <div onclick="showMatrixRoleList('maint')" style="display:flex;align-items:center;gap:6px;background:#faf5ff;border:1px solid #d8b4fe;border-radius:10px;padding:4px 12px;cursor:pointer" title="Click to see list">
+            <span style="font-size:0.72rem;color:#7c3aed">Maintenance</span>
+            <span style="font-size:1.1rem;font-weight:800;color:#4c1d95">${maintCount}</span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:4px 12px">
             <span style="font-size:0.72rem;color:#6b7280">Overall Health</span>
