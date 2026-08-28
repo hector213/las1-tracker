@@ -1011,20 +1011,8 @@ function renderDashboard() {
   document.getElementById('statTemps').textContent      = activeTemps.length;
   document.getElementById('statActive').textContent     = activeAll.length;
   document.getElementById('statFlagged').textContent    = allAssociates.filter(a => getFlags(a).length > 0).length;
-  // Dept breakdown for Active card
-  (function() {
-    const DEPTS = [
-      { re: /outbound/i,   label: 'Outbound' },
-      { re: /inbound/i,    label: 'Inbound' },
-      { re: /inventory/i,  label: 'Inv. Control' },
-      { re: /maintenance/i,label: 'Maintenance' },
-    ];
-    const el = document.getElementById('statActiveDepts');
-    if (el) el.innerHTML = DEPTS.map(d => {
-      const n = activeAll.filter(a => d.re.test(a.department || '')).length;
-      return `<div style="display:flex;justify-content:space-between"><span style="color:#9ca3af">${d.label}</span><strong style="color:#e5e7eb">${n}</strong></div>`;
-    }).join('');
-  })();
+  // Stat cards rendered via renderShiftStats (shift-aware)
+  renderShiftStats(leaderShiftFilter || 'All');
   // Leadership section
   const posOrder = { 'ops-manager': 0, 'supervisor': 1, 'lead': 2 };
   allLeaders = allAssociates
@@ -1329,12 +1317,60 @@ function renderLeaders() {
   }).join('');
 }
 
+function renderShiftStats(shift) {
+  const DEPTS = [
+    { re: /outbound/i,    label: 'Outbound' },
+    { re: /inbound/i,     label: 'Inbound' },
+    { re: /inventory/i,   label: 'Inv. Control' },
+    { re: /maintenance/i, label: 'Maintenance' },
+  ];
+  const shiftActive = allAssociates.filter(a =>
+    a.status === 'active' && (shift === 'All' || a.shift === shift)
+  );
+
+  // Active card
+  const activeEl = document.getElementById('statActive');
+  if (activeEl) activeEl.textContent = shiftActive.length;
+  const activeDeptEl = document.getElementById('statActiveDepts');
+  if (activeDeptEl) {
+    const hourly     = shiftActive.filter(a => a.position !== 'ops-manager' && a.position !== 'supervisor');
+    const leadership = shiftActive.filter(a => a.position === 'ops-manager' || a.position === 'supervisor');
+    activeDeptEl.innerHTML =
+      DEPTS.map(d => {
+        const n = hourly.filter(a => d.re.test(a.department || '')).length;
+        return `<div style="display:flex;justify-content:space-between"><span style="color:#9ca3af">${d.label}</span><strong style="color:#e5e7eb">${n}</strong></div>`;
+      }).join('') +
+      `<div style="display:flex;justify-content:space-between;margin-top:3px;padding-top:3px;border-top:1px solid rgba(255,255,255,0.1)"><span style="color:#9ca3af">Mgmt</span><strong style="color:#e5e7eb">${leadership.length}</strong></div>`;
+  }
+
+  // In Building card
+  const outIds = new Set([
+    ...Object.keys(_todayAttMap).filter(id => ['ncns','call-out','early'].includes(_todayAttMap[id])),
+    ...Object.keys(_todayTimeOffMap).filter(id => shiftActive.find(a => a.id === id))
+  ]);
+  const inBldg = shiftActive.filter(a => !outIds.has(a.id));
+  const inBldgEl = document.getElementById('statInBuilding');
+  if (inBldgEl) inBldgEl.textContent = inBldg.length;
+  const inBldgDeptEl = document.getElementById('statInBuildingDepts');
+  if (inBldgDeptEl) {
+    const hourly     = inBldg.filter(a => a.position !== 'ops-manager' && a.position !== 'supervisor');
+    const leadership = inBldg.filter(a => a.position === 'ops-manager' || a.position === 'supervisor');
+    inBldgDeptEl.innerHTML =
+      DEPTS.map(d => {
+        const n = hourly.filter(a => d.re.test(a.department || '')).length;
+        return `<div style="display:flex;justify-content:space-between"><span style="color:#9ca3af">${d.label}</span><strong style="color:#e5e7eb">${n}</strong></div>`;
+      }).join('') +
+      `<div style="display:flex;justify-content:space-between;margin-top:3px;padding-top:3px;border-top:1px solid rgba(255,255,255,0.1)"><span style="color:#9ca3af">Mgmt</span><strong style="color:#e5e7eb">${leadership.length}</strong></div>`;
+  }
+}
+
 window.setLeaderFilter = (shift) => {
   leaderShiftFilter = shift;
   document.querySelectorAll('.leader-filter-btn').forEach(b =>
     b.classList.toggle('filter-active', b.dataset.shift === shift)
   );
   renderLeaders();
+  renderShiftStats(shift);
 };
 
 // ─── Profile navigation ───────────────────────────────────────────────
@@ -5172,23 +5208,8 @@ function applyAttendanceStats(activeAll, activeAssoc) {
   document.getElementById('statCallOuts').textContent    = callOuts;
   document.getElementById('statEarlyOuts').textContent   = earlyOuts;
   document.getElementById('statTimeOff').textContent     = timeOffCount;
-  document.getElementById('statInBuilding').textContent  = Math.max(0, activeAll.length - outOfBuilding);
-  // Dept breakdown for In Building card
-  (function() {
-    const outIds = new Set([...ncnsIds, ...callOutIds, ...earlyOutIds, ...timeOffIds]);
-    const inBldg = activeAll.filter(a => !outIds.has(a.id));
-    const DEPTS = [
-      { re: /outbound/i,   label: 'Outbound' },
-      { re: /inbound/i,    label: 'Inbound' },
-      { re: /inventory/i,  label: 'Inv. Control' },
-      { re: /maintenance/i,label: 'Maintenance' },
-    ];
-    const el = document.getElementById('statInBuildingDepts');
-    if (el) el.innerHTML = DEPTS.map(d => {
-      const n = inBldg.filter(a => d.re.test(a.department || '')).length;
-      return `<div style="display:flex;justify-content:space-between"><span style="color:#9ca3af">${d.label}</span><strong style="color:#e5e7eb">${n}</strong></div>`;
-    }).join('');
-  })();
+  // Stat cards (Active + In Building + dept breakdowns) handled by renderShiftStats
+  renderShiftStats(leaderShiftFilter || 'All');
   renderCards();
   applyKanbanCounts(); // restore cached counts from memory - no Firestore reads
 }
@@ -9310,10 +9331,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
       <div class="row g-3 mb-4">
         <div class="col-6 col-lg-3">
-          <div class="stat-card h-100" onclick="downloadActiveCSV()" style="cursor:pointer" title="Download active associate roster as CSV">
-            <div class="val" id="statActive" style="font-size:3rem;line-height:1">-</div>
-            <div class="lbl">Active <i class="fas fa-download ms-1" style="font-size:0.65rem;opacity:0.6"></i></div>
-            <div id="statActiveDepts" style="margin-top:8px;font-size:0.72rem;line-height:1.8"></div>
+          <div class="stat-card h-100" onclick="downloadActiveCSV()" style="cursor:pointer;display:flex;align-items:center;gap:14px" title="Download active associate roster as CSV">
+            <div style="flex-shrink:0">
+              <div class="val" id="statActive" style="font-size:3rem;line-height:1">-</div>
+              <div class="lbl" style="margin-top:2px">Active <i class="fas fa-download ms-1" style="font-size:0.65rem;opacity:0.6"></i></div>
+            </div>
+            <div id="statActiveDepts" style="font-size:0.7rem;line-height:1.7;flex:1;border-left:1px solid rgba(255,255,255,0.1);padding-left:12px"></div>
           </div>
         </div>
         <div class="col-6 col-lg-3">
@@ -9333,10 +9356,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </div>
         </div>
         <div class="col-6 col-lg-3">
-          <div class="stat-card h-100" onclick="openInBuildingList()" style="cursor:pointer" title="Click for emergency roster">
-            <div class="val" id="statInBuilding" style="font-size:3rem;line-height:1">-</div>
-            <div class="lbl">In Building <i class="fas fa-print ms-1" style="font-size:0.65rem;opacity:0.6"></i></div>
-            <div id="statInBuildingDepts" style="margin-top:8px;font-size:0.72rem;line-height:1.8"></div>
+          <div class="stat-card h-100" onclick="openInBuildingList()" style="cursor:pointer;display:flex;align-items:center;gap:14px" title="Click for emergency roster">
+            <div style="flex-shrink:0">
+              <div class="val" id="statInBuilding" style="font-size:3rem;line-height:1">-</div>
+              <div class="lbl" style="margin-top:2px">In Building <i class="fas fa-print ms-1" style="font-size:0.65rem;opacity:0.6"></i></div>
+            </div>
+            <div id="statInBuildingDepts" style="font-size:0.7rem;line-height:1.7;flex:1;border-left:1px solid rgba(255,255,255,0.1);padding-left:12px"></div>
           </div>
         </div>
         <div class="col-6 col-lg-3">
