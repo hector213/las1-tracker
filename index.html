@@ -1329,23 +1329,24 @@ function renderShiftStats(shift) {
   );
 
   // Active card
+  // Dept rows: associates + leads (hourly). Mgmt row: supervisors + OMs.
   const activeEl = document.getElementById('statActive');
   if (activeEl) activeEl.textContent = shiftActive.length;
   const activeDeptEl = document.getElementById('statActiveDepts');
   if (activeDeptEl) {
-    const hourly     = shiftActive.filter(a => a.position !== 'ops-manager' && a.position !== 'supervisor');
-    const leadership = shiftActive.filter(a => a.position === 'ops-manager' || a.position === 'supervisor');
+    const hourly  = shiftActive.filter(a => a.position !== 'ops-manager' && a.position !== 'supervisor');
+    const mgmt    = shiftActive.filter(a => a.position === 'ops-manager' || a.position === 'supervisor');
     activeDeptEl.innerHTML =
       DEPTS.map(d => {
         const n = hourly.filter(a => d.re.test(a.department || '')).length;
         return `<div style="display:flex;justify-content:space-between"><span style="color:#9ca3af">${d.label}</span><strong style="color:#e5e7eb">${n}</strong></div>`;
       }).join('') +
-      `<div style="display:flex;justify-content:space-between;margin-top:3px;padding-top:3px;border-top:1px solid rgba(255,255,255,0.1)"><span style="color:#9ca3af">Mgmt</span><strong style="color:#e5e7eb">${leadership.length}</strong></div>`;
+      `<div style="display:flex;justify-content:space-between;margin-top:3px;padding-top:3px;border-top:1px solid rgba(255,255,255,0.1)"><span style="color:#9ca3af">Mgmt</span><strong style="color:#e5e7eb">${mgmt.length}</strong></div>`;
   }
 
   // In Building card
   const outIds = new Set([
-    ...Object.keys(_todayAttMap).filter(id => ['ncns','call-out','early'].includes(_todayAttMap[id])),
+    ...Object.keys(_todayAttMap).filter(id => ['ncns','call-out','early','doctors-note'].includes(_todayAttMap[id])),
     ...Object.keys(_todayTimeOffMap).filter(id => shiftActive.find(a => a.id === id))
   ]);
   const inBldg = shiftActive.filter(a => !outIds.has(a.id));
@@ -1353,14 +1354,14 @@ function renderShiftStats(shift) {
   if (inBldgEl) inBldgEl.textContent = inBldg.length;
   const inBldgDeptEl = document.getElementById('statInBuildingDepts');
   if (inBldgDeptEl) {
-    const hourly     = inBldg.filter(a => a.position !== 'ops-manager' && a.position !== 'supervisor');
-    const leadership = inBldg.filter(a => a.position === 'ops-manager' || a.position === 'supervisor');
+    const hourly = inBldg.filter(a => a.position !== 'ops-manager' && a.position !== 'supervisor');
+    const mgmt   = inBldg.filter(a => a.position === 'ops-manager' || a.position === 'supervisor');
     inBldgDeptEl.innerHTML =
       DEPTS.map(d => {
         const n = hourly.filter(a => d.re.test(a.department || '')).length;
         return `<div style="display:flex;justify-content:space-between"><span style="color:#9ca3af">${d.label}</span><strong style="color:#e5e7eb">${n}</strong></div>`;
       }).join('') +
-      `<div style="display:flex;justify-content:space-between;margin-top:3px;padding-top:3px;border-top:1px solid rgba(255,255,255,0.1)"><span style="color:#9ca3af">Mgmt</span><strong style="color:#e5e7eb">${leadership.length}</strong></div>`;
+      `<div style="display:flex;justify-content:space-between;margin-top:3px;padding-top:3px;border-top:1px solid rgba(255,255,255,0.1)"><span style="color:#9ca3af">Mgmt</span><strong style="color:#e5e7eb">${mgmt.length}</strong></div>`;
   }
 }
 
@@ -4055,9 +4056,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
   const pts       = assoc.attendancePoints || 0;
   const _docDate = (() => {
     if (latest) return new Date(latest.issuedAt);
-    const d = new Date();
-    if (tierKey === 'termination') d.setDate(d.getDate() + 1); // post-date termination docs by 1 day for processing
-    return d;
+    return new Date();
   })();
   const issuedDate = _docDate.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
   const schedule  = SHIFT_SCHEDULES[assoc.shift] || assoc.shift || '-';
