@@ -915,6 +915,7 @@ async function restoreLastView() {
   if (view === 'matrix')    { loadMatrix();    return; }
   if (view === 'attendance'){ loadAttendance(); return; }
   if (view === 'coverage')  { loadCoverage();  return; }
+  if (view === 'eom') { loadEOM(); return; }
   if (view === 'pointslog') { loadPointsLog(); return; }
   if (view === 'admin')     { loadAdminPanel(); return; }
   if (view === 'timeoff')   { loadTimeOff();    return; }
@@ -7160,7 +7161,7 @@ window.loadAdminPanel = () => {
 };
 
 // ─── Tab Visibility ───────────────────────────────────────────────────
-const CONTROLLABLE_TABS = ['matrix', 'attendance', 'timeoff', 'pointslog', 'hrrecords', 'help'];
+const CONTROLLABLE_TABS = ['matrix', 'attendance', 'coverage', 'timeoff', 'pointslog', 'hrrecords', 'help'];
 
 async function loadTabToggles() {
   const snap = await getDoc(doc(db, 'settings', 'tabs'));
@@ -7184,6 +7185,8 @@ async function applyTabVisibility() {
       const navLink = document.querySelector(`.nav-link[data-view="${key}"]`);
       if (navLink) navLink.classList.remove('d-none');
     });
+    const eomLink = document.querySelector('.nav-link[data-view="eom"]');
+    if (eomLink) eomLink.classList.remove('d-none');
     return;
   }
   const snap = await getDoc(doc(db, 'settings', 'tabs'));
@@ -7199,6 +7202,8 @@ async function applyTabVisibility() {
       if (activeView && !activeView.classList.contains('d-none')) loadDashboard();
     }
   });
+  const eomLink = document.querySelector('.nav-link[data-view="eom"]');
+  if (eomLink) eomLink.classList.toggle('d-none', !roleAtLeast('om'));
 }
 
 // ─── Login Tracker ────────────────────────────────────────────────────
@@ -8640,6 +8645,277 @@ window.kbBack = () => {
   document.getElementById('kbBackBtn').classList.add('d-none');
 };
 // ── End Kanban ────────────────────────────────────────────────────────────────
+
+// ─── Employee of the Month ────────────────────────────────────────────────────
+
+function eomVoteMonthKey() {
+  const d = new Date();
+  const prev = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  return `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}`;
+}
+function eomMonthLabel(key) {
+  const [y,m] = key.split('-');
+  return new Date(parseInt(y), parseInt(m)-1, 1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+}
+
+async function computeEOMScores(monthKey) {
+  const nominees = allAssociates.filter(a => a.status === 'active' && !a.position);
+  const votesSnap = await getDocs(collection(db, 'eom', monthKey, 'votes'));
+  const votes = votesSnap.docs.map(d => ({ voterId: d.id, ...d.data() }));
+
+  const assocVotes = votes.filter(v => v.voterType === 'associate');
+  const leadVotes  = votes.filter(v => v.voterType === 'leadership');
+
+  const avCount = {}, lvCount = {};
+  nominees.forEach(n => { avCount[n.id] = 0; lvCount[n.id] = 0; });
+  assocVotes.forEach(v => { if (avCount[v.nomineeId] !== undefined) avCount[v.nomineeId]++; });
+  leadVotes.forEach(v => { if (lvCount[v.nomineeId] !== undefined) lvCount[v.nomineeId]++; });
+
+  const maxAV = Math.max(1, ...Object.values(avCount));
+  const maxLV = Math.max(1, ...Object.values(lvCount));
+  const maxEng = Math.max(1, ...nominees.map(n => Math.max(0, n.points||0)));
+
+  return nominees.map(n => {
+    const attScore = (1 - Math.min((n.attendancePoints||0)/10, 1)) * 40;
+    const engScore = (Math.max(0, n.points||0) / maxEng) * 10;
+    const objScore = Math.min(50, attScore + engScore);
+    const avScore  = (avCount[n.id] / maxAV) * 25;
+    const lvScore  = (lvCount[n.id] / maxLV) * 25;
+    const total    = Math.round(objScore + avScore + lvScore);
+    return {
+      id: n.id, name: n.name, total,
+      objScore: Math.round(objScore), avScore: Math.round(avScore), lvScore: Math.round(lvScore),
+      assocVoteCount: avCount[n.id], leadVoteCount: lvCount[n.id],
+      votes: votes.filter(v => v.nomineeId === n.id),
+      attendancePoints: n.attendancePoints||0, engagementPoints: n.points||0,
+    };
+  }).sort((a,b) => b.total - a.total);
+}
+
+window.loadEOM = async () => {
+  showView('eom');
+  detachAll();
+
+  // Build month options: current vote month + last 12 months
+  const sel = document.getElementById('eomMonthSelect');
+  if (sel && !sel.options.length) {
+    const now = new Date();
+    for (let i = 1; i <= 13; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const opt = document.createElement('option');
+      opt.value = key; opt.textContent = eomMonthLabel(key);
+      if (i === 1) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  await renderEOMDashboard();
+};
+
+window.renderEOMDashboard = async () => {
+  const el = document.getElementById('eomContent');
+  if (!el) return;
+  el.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Loading...</div>';
+
+  const monthKey = document.getElementById('eomMonthSelect')?.value || eomVoteMonthKey();
+  const label = eomMonthLabel(monthKey);
+
+  const [scores, winnerSnap, historySnaps] = await Promise.all([
+    computeEOMScores(monthKey),
+    getDoc(doc(db, 'eom', monthKey, 'meta', 'winner')),
+    getDocs(collection(db, 'eom')),
+  ]);
+
+  const winner = winnerSnap.exists() ? winnerSnap.data() : null;
+  const top3 = scores.slice(0,3);
+
+  // Build history
+  const historyRows = [];
+  for (const hDoc of historySnaps.docs) {
+    const wSnap = await getDoc(doc(db, 'eom', hDoc.id, 'meta', 'winner'));
+    if (wSnap.exists()) {
+      historyRows.push({ month: hDoc.id, ...wSnap.data() });
+    }
+  }
+  historyRows.sort((a,b) => b.month.localeCompare(a.month));
+
+  // All votes for this month
+  const allVotes = scores.flatMap(s => s.votes).sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
+
+  el.innerHTML = `
+    <!-- Winner Banner -->
+    ${winner ? `
+    <div class="admin-card mb-4" style="background:linear-gradient(135deg,#1a2744,#243460);color:#fff;text-align:center">
+      <div style="font-size:2rem">🏆</div>
+      <div style="font-size:1.4rem;font-weight:800;color:#f97316;margin:6px 0">${escapeHtml(winner.winnerName)}</div>
+      <div style="color:#94a3b8;font-size:0.82rem">${label} Employee of the Month</div>
+      <div style="color:#64748b;font-size:0.72rem;margin-top:4px">Confirmed by ${escapeHtml(winner.confirmedBy)} · ${new Date(winner.confirmedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+    </div>` : ''}
+
+    <!-- Top 3 -->
+    <div class="admin-card mb-4">
+      <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-medal me-2" style="color:var(--orange)"></i>Top Candidates — ${escapeHtml(label)}</h6>
+      ${scores.filter(s => s.assocVoteCount > 0 || s.leadVoteCount > 0 || s.objScore > 20).length === 0 ? '<p class="text-muted small">No votes recorded yet for this month.</p>' :
+      `<div class="row g-3">
+        ${top3.map((s,i) => `
+        <div class="col-md-4">
+          <div style="border:2px solid ${i===0?'#f97316':i===1?'#94a3b8':'#cd7f32'};border-radius:12px;padding:16px;position:relative">
+            <div style="position:absolute;top:-12px;left:16px;background:${i===0?'#f97316':i===1?'#94a3b8':'#cd7f32'};color:#fff;border-radius:20px;padding:2px 12px;font-size:0.72rem;font-weight:700">#${i+1}</div>
+            <div style="font-weight:700;font-size:1rem;color:#1a2744;margin-top:4px">${escapeHtml(s.name)}</div>
+            <div style="font-size:2rem;font-weight:800;color:${i===0?'#f97316':'#374151'}">${s.total}<span style="font-size:0.8rem;font-weight:400;color:#9ca3af">/100</span></div>
+            <div style="font-size:0.72rem;color:#6b7280;margin-bottom:10px">
+              Objective: ${s.objScore} · Peers: ${s.avScore} · Leadership: ${s.lvScore}<br>
+              ${s.assocVoteCount} peer vote${s.assocVoteCount!==1?'s':''} · ${s.leadVoteCount} leadership vote${s.leadVoteCount!==1?'s':''}
+            </div>
+            ${!winner ? `<button class="btn btn-sm btn-orange w-100" onclick="confirmEOMWinner('${monthKey}','${s.id}','${escapeHtml(s.name).replace(/'/g,"\'")}')">
+              <i class="fas fa-check me-1"></i>Confirm as Winner
+            </button>` : ''}
+          </div>
+        </div>`).join('')}
+      </div>`}
+    </div>
+
+    <!-- All Votes -->
+    <div class="admin-card mb-4">
+      <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-vote-yea me-2" style="color:var(--orange)"></i>All Nominations — ${escapeHtml(label)} <span class="text-muted fw-normal small">(${allVotes.length} total)</span></h6>
+      ${allVotes.length === 0 ? '<p class="text-muted small">No votes recorded yet.</p>' : `
+      <div style="overflow-x:auto">
+        <table class="table table-sm table-hover" style="font-size:0.8rem">
+          <thead><tr style="background:#f8fafc">
+            <th>Nominated</th><th>Type</th><th>From</th><th>Comment</th><th>Date</th>
+          </tr></thead>
+          <tbody>
+            ${allVotes.map(v => `<tr>
+              <td><strong>${escapeHtml(v.nomineeName||'')}</strong></td>
+              <td><span class="badge" style="background:${v.voterType==='leadership'?'#1a2744':'#f97316'}">${v.voterType==='leadership'?'Leadership':'Associate'}</span></td>
+              <td>${escapeHtml(v.voterName||'Anonymous')}</td>
+              <td style="max-width:280px;white-space:normal">${escapeHtml(v.comment||'')}</td>
+              <td style="white-space:nowrap">${v.timestamp ? new Date(v.timestamp).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`}
+    </div>
+
+    <!-- Month History -->
+    <div class="admin-card">
+      <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-history me-2" style="color:var(--orange)"></i>Month-to-Month History</h6>
+      ${historyRows.length === 0 ? '<p class="text-muted small">No winners confirmed yet.</p>' : `
+      <table class="table table-sm" style="font-size:0.82rem">
+        <thead><tr style="background:#f8fafc"><th>Month</th><th>Winner</th><th>Confirmed By</th><th>Date</th></tr></thead>
+        <tbody>
+          ${historyRows.map(h => `<tr ${h.month===monthKey?'style="background:#fff7ed"':''}>
+            <td>${eomMonthLabel(h.month)}</td>
+            <td><strong style="color:${h.month===monthKey?'#f97316':'inherit'}">${h.month===monthKey?'🏆 ':''} ${escapeHtml(h.winnerName)}</strong></td>
+            <td>${escapeHtml(h.confirmedBy)}</td>
+            <td>${new Date(h.confirmedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`}
+    </div>
+  `;
+};
+
+window.confirmEOMWinner = async (monthKey, winnerId, winnerName) => {
+  if (!confirm(`Confirm ${winnerName} as Employee of the Month for ${eomMonthLabel(monthKey)}?`)) return;
+  const confirmedBy = currentUser?.email || 'Admin';
+  await setDoc(doc(db, 'eom', monthKey, 'meta', 'winner'), {
+    winnerId, winnerName, confirmedBy, confirmedAt: new Date().toISOString()
+  });
+  await renderEOMDashboard();
+};
+
+// ─── Portal Nominate Tab ──────────────────────────────────────────────────────
+
+window.loadPortalNominate = async () => {
+  const el = document.getElementById('apNominateContent');
+  if (!el) return;
+  el.innerHTML = '<div class="text-center py-4" style="color:#94a3b8"><i class="fas fa-spinner fa-spin"></i></div>';
+
+  const monthKey = eomVoteMonthKey();
+  const label = eomMonthLabel(monthKey);
+
+  // Check if already voted
+  if (!currentAssociateId) {
+    el.innerHTML = '<p class="text-center text-muted py-4">Unable to load your profile.</p>';
+    return;
+  }
+
+  const existingVote = await getDoc(doc(db, 'eom', monthKey, 'votes', currentAssociateId));
+
+  if (existingVote.exists()) {
+    const v = existingVote.data();
+    el.innerHTML = `
+      <div style="background:#fff;border-radius:14px;padding:20px;box-shadow:0 2px 10px rgba(0,0,0,0.07);text-align:center;margin-bottom:16px">
+        <div style="font-size:2rem;margin-bottom:8px">✅</div>
+        <div style="font-weight:700;color:#1a2744;margin-bottom:4px">Your nomination is in!</div>
+        <div style="color:#6b7280;font-size:0.82rem;margin-bottom:12px">You nominated <strong>${escapeHtml(v.nomineeName)}</strong> for ${escapeHtml(label)}.</div>
+        <div style="background:#f8fafc;border-radius:8px;padding:10px;font-size:0.8rem;color:#374151;text-align:left">
+          <div style="font-size:0.7rem;color:#9ca3af;margin-bottom:4px">Your reason</div>
+          "${escapeHtml(v.comment)}"
+        </div>
+      </div>
+      <div style="text-align:center;color:#9ca3af;font-size:0.75rem">Results are revealed after winners are confirmed by management.</div>`;
+    return;
+  }
+
+  // Eligible nominees
+  const nominees = allAssociates
+    .filter(a => a.status === 'active' && !a.position && a.id !== currentAssociateId)
+    .sort((a,b) => a.name.localeCompare(b.name));
+
+  // Determine voter type
+  const me = allAssociates.find(a => a.id === currentAssociateId);
+  const voterType = (me && (me.position === 'lead' || me.position === 'supervisor' || me.position === 'ops-manager'))
+    ? 'leadership' : 'associate';
+
+  el.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:20px;box-shadow:0 2px 10px rgba(0,0,0,0.07);margin-bottom:16px">
+      <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:4px"><i class="fas fa-trophy me-1" style="color:#f97316"></i>Nominate for ${escapeHtml(label)}</div>
+      <div style="font-size:0.75rem;color:#6b7280;margin-bottom:16px">Your vote is confidential. Nominate a colleague who went above and beyond this month.</div>
+
+      <div style="margin-bottom:12px">
+        <label style="font-size:0.75rem;font-weight:600;color:#374151;margin-bottom:4px;display:block">Who are you nominating?</label>
+        <select id="eomNomineeSelect" class="form-select form-select-sm">
+          <option value="">— Select an associate —</option>
+          ${nominees.map(n => `<option value="${n.id}" data-name="${escapeHtml(n.name)}">${escapeHtml(n.name)}</option>`).join('')}
+        </select>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <label style="font-size:0.75rem;font-weight:600;color:#374151;margin-bottom:4px;display:block">Why do they deserve it? <span style="color:#ef4444">*</span></label>
+        <textarea id="eomNomineeComment" class="form-control form-control-sm" rows="3" maxlength="300" placeholder="Tell us what made them stand out this month…" style="font-size:0.82rem;resize:none"></textarea>
+        <div style="text-align:right;font-size:0.68rem;color:#9ca3af;margin-top:2px">300 chars max</div>
+      </div>
+
+      <button class="btn btn-orange w-100" onclick="submitEOMVote('${monthKey}','${voterType}')">
+        <i class="fas fa-paper-plane me-1"></i>Submit Nomination
+      </button>
+      <div id="eomVoteError" class="d-none" style="color:#dc2626;font-size:0.78rem;margin-top:8px;text-align:center"></div>
+    </div>
+    <div style="text-align:center;color:#9ca3af;font-size:0.72rem">One nomination per person per month. Your choice is anonymous to other associates.</div>`;
+};
+
+window.submitEOMVote = async (monthKey, voterType) => {
+  const nomineeId = document.getElementById('eomNomineeSelect')?.value;
+  const nomineeName = document.getElementById('eomNomineeSelect')?.selectedOptions[0]?.dataset.name || '';
+  const comment = (document.getElementById('eomNomineeComment')?.value || '').trim();
+  const errEl = document.getElementById('eomVoteError');
+
+  if (!nomineeId) { errEl.textContent = 'Please select someone to nominate.'; errEl.classList.remove('d-none'); return; }
+  if (comment.length < 10) { errEl.textContent = 'Please write at least 10 characters for your reason.'; errEl.classList.remove('d-none'); return; }
+  errEl.classList.add('d-none');
+
+  const me = allAssociates.find(a => a.id === currentAssociateId);
+  await setDoc(doc(db, 'eom', monthKey, 'votes', currentAssociateId), {
+    nomineeId, nomineeName, comment, voterType,
+    voterName: me?.name || currentUser?.email || 'Unknown',
+    timestamp: new Date().toISOString(),
+  });
+
+  await loadPortalNominate();
+};
+
 </script>
 
 <style>
@@ -9142,6 +9418,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <button class="ap-tab active" data-tab="home" onclick="switchApTab('home')" style="flex:1;background:none;border:none;color:#fff;padding:10px 4px;font-size:0.78rem;font-weight:600;border-bottom:2px solid #f97316;margin-bottom:-2px;cursor:pointer;"><i class="fas fa-home" style="display:block;font-size:1rem;margin-bottom:2px;"></i>Home</button>
       <button class="ap-tab" data-tab="attendance" onclick="switchApTab('attendance')" style="flex:1;background:none;border:none;color:rgba(255,255,255,0.6);padding:10px 4px;font-size:0.78rem;font-weight:600;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;"><i class="fas fa-calendar-check" style="display:block;font-size:1rem;margin-bottom:2px;"></i>Attendance</button>
       <button class="ap-tab" data-tab="schedule" onclick="switchApTab('schedule')" style="flex:1;background:none;border:none;color:rgba(255,255,255,0.6);padding:10px 4px;font-size:0.78rem;font-weight:600;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;"><i class="fas fa-calendar-alt" style="display:block;font-size:1rem;margin-bottom:2px;"></i>Schedule</button>
+      <button class="ap-tab" data-tab="nominate" onclick="switchApTab('nominate');loadPortalNominate()" style="flex:1;background:none;border:none;color:rgba(255,255,255,0.6);padding:10px 4px;font-size:0.78rem;font-weight:600;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;"><i class="fas fa-trophy" style="display:block;font-size:1rem;margin-bottom:2px;"></i>Nominate</button>
     </div>
   </div>
 
@@ -9223,6 +9500,13 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <div id="apTimeOff" style="background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);"></div>
     </div>
 
+    <!-- NOMINATE TAB -->
+    <div id="apTab-nominate" class="ap-tab-panel d-none">
+      <div id="apNominateContent">
+        <div class="text-center py-5" style="color:#94a3b8">Loading...</div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -9247,6 +9531,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       </a>
       <a class="nav-link" data-view="coverage" onclick="loadCoverage()">
         <i class="fas fa-shield-alt"></i><span>Coverage</span>
+      </a>
+      <a class="nav-link d-none" data-view="eom" onclick="loadEOM()">
+        <i class="fas fa-trophy"></i><span>Emp. of Month</span>
       </a>
       <a class="nav-link" data-view="timeoff" onclick="loadTimeOff()">
         <i class="fas fa-calendar-minus"></i><span>Time Off</span>
@@ -10341,6 +10628,18 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <div id="coverageContent">
         <div class="text-center py-5 text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Loading...</div>
       </div>
+    </div>
+
+    <!-- EOM VIEW -->
+    <div id="eomView" class="view d-none">
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h1 class="page-title"><i class="fas fa-trophy me-2" style="color:var(--orange)"></i>Employee of the Month</h1>
+        <div class="d-flex gap-2 align-items-center">
+          <select id="eomMonthSelect" class="form-select form-select-sm" style="width:auto" onchange="renderEOMDashboard()"></select>
+          <button class="btn btn-sm btn-orange" onclick="loadEOM()"><i class="fas fa-sync-alt me-1"></i>Refresh</button>
+        </div>
+      </div>
+      <div id="eomContent"><div class="text-center py-5 text-muted">Loading...</div></div>
     </div>
 
     <!-- ADMIN VIEW -->
