@@ -8764,7 +8764,7 @@ window.renderEOMDashboard = async () => {
   const activeMonthKey = eomVoteMonthKey();
   const myAssocId = currentUserAssocId || currentAssociateId;
   const me = myAssocId ? allAssociates.find(a => a.id === myAssocId) : null;
-  const isLeadershipVoter = roleAtLeast('lead') && !roleAtLeast('admin');
+  const isLeadershipVoter = roleAtLeast('lead');
   const isVotingMonth = monthKey === activeMonthKey;
 
   const extraFetches = (isLeadershipVoter && isVotingMonth && myAssocId)
