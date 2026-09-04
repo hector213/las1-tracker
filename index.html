@@ -8762,9 +8762,9 @@ window.renderEOMDashboard = async () => {
 
   // Check if current user is leadership and can vote on the active month
   const activeMonthKey = eomVoteMonthKey();
-  const me = allAssociates.find(a => a.viewerUid === currentUser?.uid) || allAssociates.find(a => a.id === currentAssociateId);
-  const myAssocId = me?.id || currentAssociateId;
-  const isLeadershipVoter = me && (me.position === 'lead' || me.position === 'supervisor' || me.position === 'ops-manager');
+  const myAssocId = currentUserAssocId || currentAssociateId;
+  const me = myAssocId ? allAssociates.find(a => a.id === myAssocId) : null;
+  const isLeadershipVoter = roleAtLeast('lead') && !roleAtLeast('admin');
   const isVotingMonth = monthKey === activeMonthKey;
 
   const extraFetches = (isLeadershipVoter && isVotingMonth && myAssocId)
@@ -8927,8 +8927,8 @@ window.submitLeaderEOMVote = async (monthKey) => {
   if (!nomineeId) { errEl.textContent = 'Please select a nominee.'; errEl.classList.remove('d-none'); return; }
   if (comment.length < 10) { errEl.textContent = 'Please write at least 10 characters for your reason.'; errEl.classList.remove('d-none'); return; }
   errEl.classList.add('d-none');
-  const me = allAssociates.find(a => a.viewerUid === currentUser?.uid) || allAssociates.find(a => a.id === currentAssociateId);
-  const myAssocId = me?.id || currentAssociateId || currentUser?.uid;
+  const myAssocId = currentUserAssocId || currentAssociateId || currentUser?.uid;
+  const me = myAssocId ? allAssociates.find(a => a.id === myAssocId) : null;
   await setDoc(doc(db, 'eom', monthKey, 'votes', myAssocId), {
     nomineeId, nomineeName, comment, voterType: 'leadership',
     voterName: me?.name || currentUser?.email || 'Unknown',
