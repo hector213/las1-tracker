@@ -8720,10 +8720,21 @@ window.renderEOMDashboard = async () => {
   const monthKey = document.getElementById('eomMonthSelect')?.value || eomVoteMonthKey();
   const label = eomMonthLabel(monthKey);
 
-  const [scores, winnerSnap, historySnaps] = await Promise.all([
+  // Check if current user is leadership and can vote on the active month
+  const activeMonthKey = eomVoteMonthKey();
+  const me = allAssociates.find(a => a.id === currentAssociateId);
+  const isLeadershipVoter = me && (me.position === 'lead' || me.position === 'supervisor' || me.position === 'ops-manager');
+  const isVotingMonth = monthKey === activeMonthKey;
+
+  const extraFetches = (isLeadershipVoter && isVotingMonth && currentAssociateId)
+    ? [getDoc(doc(db, 'eom', monthKey, 'votes', currentAssociateId))]
+    : [Promise.resolve(null)];
+
+  const [scores, winnerSnap, historySnaps, myVoteSnap] = await Promise.all([
     computeEOMScores(monthKey),
     getDoc(doc(db, 'eom', monthKey, 'meta', 'winner')),
     getDocs(collection(db, 'eom')),
+    ...extraFetches,
   ]);
 
   const winner = winnerSnap.exists() ? winnerSnap.data() : null;
@@ -8742,7 +8753,41 @@ window.renderEOMDashboard = async () => {
   // All votes for this month
   const allVotes = scores.flatMap(s => s.votes).sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''));
 
-  el.innerHTML = `
+  // Leadership vote card (only for lead/supervisor/OM viewing the active vote month)
+  const myVote = myVoteSnap?.exists() ? myVoteSnap.data() : null;
+  const nominees = allAssociates.filter(a => a.status === 'active' && !a.position).sort((a,b) => a.name.localeCompare(b.name));
+  const leadershipVoteCard = (isLeadershipVoter && isVotingMonth) ? `
+    <div class="admin-card mb-4" style="border:2px solid #1a2744">
+      <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-vote-yea me-2" style="color:var(--orange)"></i>Your Leadership Nomination — ${escapeHtml(label)}</h6>
+      ${myVote ? `
+        <div style="text-align:center;padding:10px 0">
+          <div style="font-size:1.5rem;margin-bottom:6px">✅</div>
+          <div style="font-weight:700;color:#1a2744">You nominated <span style="color:#f97316">${escapeHtml(myVote.nomineeName)}</span></div>
+          <div style="background:#f8fafc;border-radius:8px;padding:10px;margin-top:10px;font-size:0.8rem;color:#374151;text-align:left">
+            <div style="font-size:0.7rem;color:#9ca3af;margin-bottom:4px">Your reason</div>
+            "${escapeHtml(myVote.comment)}"
+          </div>
+        </div>` : `
+        <div class="row g-3">
+          <div class="col-md-5">
+            <label style="font-size:0.75rem;font-weight:600;color:#374151;margin-bottom:4px;display:block">Nominee</label>
+            <select id="eomLeadNomineeSelect" class="form-select form-select-sm">
+              <option value="">— Select an associate —</option>
+              ${nominees.map(n => `<option value="${n.id}" data-name="${escapeHtml(n.name)}">${escapeHtml(n.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="col-md-5">
+            <label style="font-size:0.75rem;font-weight:600;color:#374151;margin-bottom:4px;display:block">Reason <span style="color:#ef4444">*</span></label>
+            <input type="text" id="eomLeadNomineeComment" class="form-control form-control-sm" maxlength="300" placeholder="Why do they deserve it?">
+          </div>
+          <div class="col-md-2 d-flex align-items-end">
+            <button class="btn btn-sm btn-orange w-100" onclick="submitLeaderEOMVote('${monthKey}')">Submit</button>
+          </div>
+        </div>
+        <div id="eomLeadVoteError" class="d-none" style="color:#dc2626;font-size:0.78rem;margin-top:8px"></div>`}
+    </div>` : '';
+
+  el.innerHTML = leadershipVoteCard + `
     <!-- Winner Banner -->
     ${winner ? `
     <div class="admin-card mb-4" style="background:linear-gradient(135deg,#1a2744,#243460);color:#fff;text-align:center">
@@ -8821,6 +8866,24 @@ window.confirmEOMWinner = async (monthKey, winnerId, winnerName) => {
   const confirmedBy = currentUser?.email || 'Admin';
   await setDoc(doc(db, 'eom', monthKey, 'meta', 'winner'), {
     winnerId, winnerName, confirmedBy, confirmedAt: new Date().toISOString()
+  });
+  await renderEOMDashboard();
+};
+
+window.submitLeaderEOMVote = async (monthKey) => {
+  const sel = document.getElementById('eomLeadNomineeSelect');
+  const nomineeId = sel?.value;
+  const nomineeName = sel?.selectedOptions[0]?.dataset.name || '';
+  const comment = (document.getElementById('eomLeadNomineeComment')?.value || '').trim();
+  const errEl = document.getElementById('eomLeadVoteError');
+  if (!nomineeId) { errEl.textContent = 'Please select a nominee.'; errEl.classList.remove('d-none'); return; }
+  if (comment.length < 10) { errEl.textContent = 'Please write at least 10 characters for your reason.'; errEl.classList.remove('d-none'); return; }
+  errEl.classList.add('d-none');
+  const me = allAssociates.find(a => a.id === currentAssociateId);
+  await setDoc(doc(db, 'eom', monthKey, 'votes', currentAssociateId), {
+    nomineeId, nomineeName, comment, voterType: 'leadership',
+    voterName: me?.name || currentUser?.email || 'Unknown',
+    timestamp: new Date().toISOString(),
   });
   await renderEOMDashboard();
 };
