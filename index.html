@@ -30,6 +30,7 @@ const db = getFirestore(app);
 // ─── Constants ────────────────────────────────────────────────────────
 const BADGES = [
   { key: 'top-performer',       label: 'Top Performer of the Week', emoji: '🏆', tier: 'standard' },
+  { key: 'most-improved',       label: 'Most Improved',             emoji: '📈', tier: 'standard' },
   { key: 'team-player',         label: 'Team Player',               emoji: '🤝', tier: 'standard' },
   { key: 'great-attendance',    label: 'Great Attendance',          emoji: '🗓️', tier: 'standard' },
   { key: 'safety-champion',     label: 'Safety Champion',           emoji: '⛑️', tier: 'standard' },
@@ -38,6 +39,13 @@ const BADGES = [
   { key: 'always-helpful',      label: 'Always Helpful',            emoji: '🙌', tier: 'standard' },
   { key: 'leadership-list',     label: 'Leadership List',           emoji: '⭐', tier: 'elite'    },
   { key: 'employee-of-month',   label: 'Employee of the Month',     emoji: '🏅', tier: 'elite-plus' },
+  // Cycle Count milestones
+  { key: 'cc-mod-400',  label: 'Cycle Count MOD - 400',  emoji: '🔢', tier: 'productivity', points: 40 },
+  { key: 'cc-mod-500',  label: 'Cycle Count MOD - 500',  emoji: '🔢', tier: 'productivity', points: 50 },
+  { key: 'cc-mod-600',  label: 'Cycle Count MOD - 600',  emoji: '🔢', tier: 'productivity', points: 60 },
+  { key: 'cc-rack-200', label: 'Cycle Count Rack - 200', emoji: '🗄️', tier: 'productivity', points: 40 },
+  { key: 'cc-rack-300', label: 'Cycle Count Rack - 300', emoji: '🗄️', tier: 'productivity', points: 60 },
+  { key: 'cc-rack-400', label: 'Cycle Count Rack - 400', emoji: '🗄️', tier: 'productivity', points: 80 },
   // Cert milestone badges - auto-awarded, not available for manual nomination
   // Productivity milestone badges - 20 pts per 100 units
   { key: 'large-pack-300',  label: 'Large Pack - 300 Units',   emoji: '📦', tier: 'productivity', points:  60 },
@@ -542,7 +550,7 @@ window.loadAssociatePortal = async (assocId, assocData) => {
   if (approvedBadges.length === 0) {
     badgesEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">No badges earned yet.</span>';
   } else {
-    const BADGE_ICONS = { 'Top Performer':'🏆','Most Improved':'📈','Team Player':'🤝','Perfect Attendance':'📅','Safety Champion':'🦺','Training Leader':'🎓' };
+    const BADGE_ICONS = { 'Top Performer':'🏆','Most Improved':'📈','Team Player':'🤝','Perfect Attendance':'📅','Safety Champion':'🦺','Training Leader':'🎓','Cycle Count MOD - 400':'🔢','Cycle Count MOD - 500':'🔢','Cycle Count MOD - 600':'🔢','Cycle Count Rack - 200':'🗄️','Cycle Count Rack - 300':'🗄️','Cycle Count Rack - 400':'🗄️' };
     badgesEl.innerHTML = approvedBadges.map(b => `<div class="ap-badge-chip">${BADGE_ICONS[b.badge]||'🏅'} ${b.badge}</div>`).join('');
   }
 
