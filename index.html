@@ -8659,35 +8659,75 @@ function eomMonthLabel(key) {
 }
 
 async function computeEOMScores(monthKey) {
-  const nominees = allAssociates.filter(a => a.status === 'active' && !a.position);
-  const votesSnap = await getDocs(collection(db, 'eom', monthKey, 'votes'));
+  // Tenure filter: must have been hired 30+ days ago
+  const tenureCutoff = new Date();
+  tenureCutoff.setDate(tenureCutoff.getDate() - 30);
+
+  const nominees = allAssociates.filter(a => {
+    if (a.status !== 'active' || a.position) return false;
+    if (!a.hireDate) return true;
+    return new Date(a.hireDate + 'T00:00:00') <= tenureCutoff;
+  });
+
+  // Month date range for attendance events
+  const [yr, mo] = monthKey.split('-').map(Number);
+  const monthStart = `${monthKey}-01`;
+  const monthEnd   = `${monthKey}-${String(new Date(yr, mo, 0).getDate()).padStart(2,'0')}`;
+
+  // Load votes + per-associate scoring data in parallel
+  const [votesSnap, ...assocData] = await Promise.all([
+    getDocs(collection(db, 'eom', monthKey, 'votes')),
+    ...nominees.map(n => Promise.all([
+      getDocs(collection(db, 'attendance', n.id, 'entries')),
+      getDocs(collection(db, 'notes', n.id, 'entries')),
+      getDocs(collection(db, 'badges', n.id, 'entries')),
+    ])),
+  ]);
+
   const votes = votesSnap.docs.map(d => ({ voterId: d.id, ...d.data() }));
 
+  // Build per-associate stats
+  const sdMap = {};
+  nominees.forEach((n, i) => {
+    const [attSnap, notesSnap, badgesSnap] = assocData[i];
+    const monthAtt = attSnap.docs.map(d => d.data()).filter(e => e.date >= monthStart && e.date <= monthEnd);
+    const callOuts  = monthAtt.filter(e => e.type?.startsWith('call-out') || e.type === 'ncns' || e.type === 'doctors-note').length;
+    const earlyOuts = monthAtt.filter(e => e.type?.startsWith('left-early')).length;
+    sdMap[n.id] = { callOuts, earlyOuts, badCallEvents: callOuts + earlyOuts, noteCount: notesSnap.size, badgeCount: badgesSnap.size };
+  });
+
+  const maxBadges = Math.max(1, ...nominees.map(n => sdMap[n.id].badgeCount));
+
+  // Vote tallies
   const assocVotes = votes.filter(v => v.voterType === 'associate');
   const leadVotes  = votes.filter(v => v.voterType === 'leadership');
-
   const avCount = {}, lvCount = {};
   nominees.forEach(n => { avCount[n.id] = 0; lvCount[n.id] = 0; });
   assocVotes.forEach(v => { if (avCount[v.nomineeId] !== undefined) avCount[v.nomineeId]++; });
   leadVotes.forEach(v => { if (lvCount[v.nomineeId] !== undefined) lvCount[v.nomineeId]++; });
-
   const maxAV = Math.max(1, ...Object.values(avCount));
   const maxLV = Math.max(1, ...Object.values(lvCount));
-  const maxEng = Math.max(1, ...nominees.map(n => Math.max(0, n.points||0)));
 
   return nominees.map(n => {
-    const attScore = (1 - Math.min((n.attendancePoints||0)/10, 1)) * 40;
-    const engScore = (Math.max(0, n.points||0) / maxEng) * 10;
-    const objScore = Math.min(50, attScore + engScore);
-    const avScore  = (avCount[n.id] / maxAV) * 25;
-    const lvScore  = (lvCount[n.id] / maxLV) * 25;
-    const total    = Math.round(objScore + avScore + lvScore);
+    const sd = sdMap[n.id];
+    // Objective 50pts (attendance-heavy):
+    const attScore   = (1 - Math.min((n.attendancePoints||0) / 10, 1)) * 20; // 0-20: low pts = better
+    const cleanScore = Math.max(0, 15 - sd.badCallEvents * 5);                // 15 if clean, -5 per call-out/early
+    const notesScore = Math.max(0, 10 - sd.noteCount * 2);                    // 10 if no notes, -2 each
+    const badgeScore = (sd.badgeCount / maxBadges) * 5;                       // 0-5 normalized
+    const objScore   = Math.min(50, attScore + cleanScore + notesScore + badgeScore);
+    const avScore    = (avCount[n.id] / maxAV) * 25;
+    const lvScore    = (lvCount[n.id] / maxLV) * 25;
+    const total      = Math.round(objScore + avScore + lvScore);
     return {
       id: n.id, name: n.name, total,
       objScore: Math.round(objScore), avScore: Math.round(avScore), lvScore: Math.round(lvScore),
+      attScore: Math.round(attScore), cleanScore: Math.round(cleanScore),
+      notesScore: Math.round(notesScore), badgeScore: Math.round(badgeScore),
       assocVoteCount: avCount[n.id], leadVoteCount: lvCount[n.id],
       votes: votes.filter(v => v.nomineeId === n.id),
-      attendancePoints: n.attendancePoints||0, engagementPoints: n.points||0,
+      attendancePoints: n.attendancePoints||0,
+      callOuts: sd.callOuts, earlyOuts: sd.earlyOuts, noteCount: sd.noteCount, badgeCount: sd.badgeCount,
     };
   }).sort((a,b) => b.total - a.total);
 }
@@ -8739,6 +8779,7 @@ window.renderEOMDashboard = async () => {
 
   const winner = winnerSnap.exists() ? winnerSnap.data() : null;
   const top3 = scores.slice(0,3);
+  const isFullAdmin = roleAtLeast('om');
 
   // Build history
   const historyRows = [];
@@ -8809,10 +8850,16 @@ window.renderEOMDashboard = async () => {
             <div style="font-weight:700;font-size:1rem;color:#1a2744;margin-top:4px">${escapeHtml(s.name)}</div>
             <div style="font-size:2rem;font-weight:800;color:${i===0?'#f97316':'#374151'}">${s.total}<span style="font-size:0.8rem;font-weight:400;color:#9ca3af">/100</span></div>
             <div style="font-size:0.72rem;color:#6b7280;margin-bottom:10px">
-              Objective: ${s.objScore} · Peers: ${s.avScore} · Leadership: ${s.lvScore}<br>
-              ${s.assocVoteCount} peer vote${s.assocVoteCount!==1?'s':''} · ${s.leadVoteCount} leadership vote${s.leadVoteCount!==1?'s':''}
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin-bottom:4px">
+                <span>Att. pts <strong>${s.attScore}/20</strong></span>
+                <span>Attendance <strong>${s.cleanScore}/15</strong></span>
+                <span>Notes <strong>${s.notesScore}/10</strong></span>
+                <span>Badges <strong>${s.badgeScore}/5</strong></span>
+              </div>
+              <div style="color:#9ca3af;font-size:0.68rem">${s.callOuts} call-out${s.callOuts!==1?'s':''} · ${s.earlyOuts} early out${s.earlyOuts!==1?'s':''} · ${s.noteCount} note${s.noteCount!==1?'s':''} · ${s.badgeCount} badge${s.badgeCount!==1?'s':''}</div>
+              <div style="margin-top:4px">${s.assocVoteCount} peer vote${s.assocVoteCount!==1?'s':''} · ${s.leadVoteCount} leadership vote${s.leadVoteCount!==1?'s':''}</div>
             </div>
-            ${!winner ? `<button class="btn btn-sm btn-orange w-100" onclick="confirmEOMWinner('${monthKey}','${s.id}','${escapeHtml(s.name).replace(/'/g,"\'")}')">
+            ${isFullAdmin && !winner ? `<button class="btn btn-sm btn-orange w-100" onclick="confirmEOMWinner('${monthKey}','${s.id}','${escapeHtml(s.name).replace(/'/g,"\'")}')">
               <i class="fas fa-check me-1"></i>Confirm as Winner
             </button>` : ''}
           </div>
@@ -8820,8 +8867,8 @@ window.renderEOMDashboard = async () => {
       </div>`}
     </div>
 
-    <!-- All Votes -->
-    <div class="admin-card mb-4">
+    <!-- All Votes (admin/OM only) -->
+    ${isFullAdmin ? `<div class="admin-card mb-4">
       <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-vote-yea me-2" style="color:var(--orange)"></i>All Nominations — ${escapeHtml(label)} <span class="text-muted fw-normal small">(${allVotes.length} total)</span></h6>
       ${allVotes.length === 0 ? '<p class="text-muted small">No votes recorded yet.</p>' : `
       <div style="overflow-x:auto">
@@ -8840,9 +8887,9 @@ window.renderEOMDashboard = async () => {
           </tbody>
         </table>
       </div>`}
-    </div>
+    </div>` : ''}
 
-    <!-- Month History -->
+    ${isFullAdmin ? `<!-- Month History -->
     <div class="admin-card">
       <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-history me-2" style="color:var(--orange)"></i>Month-to-Month History</h6>
       ${historyRows.length === 0 ? '<p class="text-muted small">No winners confirmed yet.</p>' : `
@@ -8857,7 +8904,7 @@ window.renderEOMDashboard = async () => {
           </tr>`).join('')}
         </tbody>
       </table>`}
-    </div>
+    </div>` : ''}
   `;
 };
 
