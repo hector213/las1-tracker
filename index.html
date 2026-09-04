@@ -8665,7 +8665,7 @@ async function computeEOMScores(monthKey) {
 
   const nominees = allAssociates.filter(a => {
     if (a.status !== 'active' || a.position) return false;
-    if (!a.hireDate) return true;
+    if (!a.hireDate) return false;
     return new Date(a.hireDate + 'T00:00:00') <= tenureCutoff;
   });
 
@@ -8762,12 +8762,13 @@ window.renderEOMDashboard = async () => {
 
   // Check if current user is leadership and can vote on the active month
   const activeMonthKey = eomVoteMonthKey();
-  const me = allAssociates.find(a => a.id === currentAssociateId);
+  const me = allAssociates.find(a => a.viewerUid === currentUser?.uid) || allAssociates.find(a => a.id === currentAssociateId);
+  const myAssocId = me?.id || currentAssociateId;
   const isLeadershipVoter = me && (me.position === 'lead' || me.position === 'supervisor' || me.position === 'ops-manager');
   const isVotingMonth = monthKey === activeMonthKey;
 
-  const extraFetches = (isLeadershipVoter && isVotingMonth && currentAssociateId)
-    ? [getDoc(doc(db, 'eom', monthKey, 'votes', currentAssociateId))]
+  const extraFetches = (isLeadershipVoter && isVotingMonth && myAssocId)
+    ? [getDoc(doc(db, 'eom', monthKey, 'votes', myAssocId))]
     : [Promise.resolve(null)];
 
   const [scores, winnerSnap, historySnaps, myVoteSnap] = await Promise.all([
@@ -8926,8 +8927,9 @@ window.submitLeaderEOMVote = async (monthKey) => {
   if (!nomineeId) { errEl.textContent = 'Please select a nominee.'; errEl.classList.remove('d-none'); return; }
   if (comment.length < 10) { errEl.textContent = 'Please write at least 10 characters for your reason.'; errEl.classList.remove('d-none'); return; }
   errEl.classList.add('d-none');
-  const me = allAssociates.find(a => a.id === currentAssociateId);
-  await setDoc(doc(db, 'eom', monthKey, 'votes', currentAssociateId), {
+  const me = allAssociates.find(a => a.viewerUid === currentUser?.uid) || allAssociates.find(a => a.id === currentAssociateId);
+  const myAssocId = me?.id || currentAssociateId || currentUser?.uid;
+  await setDoc(doc(db, 'eom', monthKey, 'votes', myAssocId), {
     nomineeId, nomineeName, comment, voterType: 'leadership',
     voterName: me?.name || currentUser?.email || 'Unknown',
     timestamp: new Date().toISOString(),
