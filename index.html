@@ -37,6 +37,24 @@ const BADGES = [
   { key: 'above-beyond',        label: 'Above & Beyond',            emoji: '🚀', tier: 'standard' },
   { key: 'leadership-qualities',label: 'Leadership Qualities',      emoji: '👑', tier: 'standard' },
   { key: 'always-helpful',      label: 'Always Helpful',            emoji: '🙌', tier: 'standard' },
+  // Recognition / Culture
+  { key: 'mentor-of-month',     label: 'Mentor of the Month',      emoji: '🧑‍🏫', tier: 'standard' },
+  { key: 'problem-solver',      label: 'Problem Solver',            emoji: '🔧', tier: 'standard' },
+  { key: 'positive-vibes',      label: 'Positive Vibes',           emoji: '✨', tier: 'standard' },
+  { key: 'never-late',          label: 'Never Late',                emoji: '⏰', tier: 'standard' },
+  // Reliability
+  { key: 'iron-associate',      label: 'Iron Associate',            emoji: '💪', tier: 'elite'    },
+  { key: 'full-house',          label: 'Full House',                emoji: '🏠', tier: 'standard' },
+  { key: 'weekend-warrior',     label: 'Weekend Warrior',           emoji: '🛡️', tier: 'standard' },
+  // Training / Growth
+  { key: 'cross-trainer',       label: 'Cross-Trainer',             emoji: '🔀', tier: 'standard' },
+  { key: 'fast-learner',        label: 'Fast Learner',              emoji: '⚡', tier: 'standard' },
+  { key: 'cert-streak',         label: 'Cert Streak',               emoji: '🔥', tier: 'standard' },
+  // Team / Special
+  { key: 'inventory-ace',       label: 'Inventory Ace',             emoji: '🎯', tier: 'standard' },
+  { key: 'damage-prevention',   label: 'Damage Prevention',         emoji: '🛑', tier: 'standard' },
+  { key: 'extra-mile',          label: 'Extra Mile',                emoji: '🌟', tier: 'standard' },
+  { key: 'speed-demon',         label: 'Speed Demon',               emoji: '💨', tier: 'standard' },
   { key: 'leadership-list',     label: 'Leadership List',           emoji: '⭐', tier: 'elite'    },
   { key: 'employee-of-month',   label: 'Employee of the Month',     emoji: '🏅', tier: 'elite-plus' },
   // Cycle Count milestones
@@ -550,7 +568,7 @@ window.loadAssociatePortal = async (assocId, assocData) => {
   if (approvedBadges.length === 0) {
     badgesEl.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">No badges earned yet.</span>';
   } else {
-    const BADGE_ICONS = { 'Top Performer':'🏆','Most Improved':'📈','Team Player':'🤝','Perfect Attendance':'📅','Safety Champion':'🦺','Training Leader':'🎓','Cycle Count MOD - 400':'🔢','Cycle Count MOD - 500':'🔢','Cycle Count MOD - 600':'🔢','Cycle Count Rack - 200':'🗄️','Cycle Count Rack - 300':'🗄️','Cycle Count Rack - 400':'🗄️' };
+    const BADGE_ICONS = Object.fromEntries(BADGES.map(b => [b.label, b.emoji]));
     badgesEl.innerHTML = approvedBadges.map(b => `<div class="ap-badge-chip">${BADGE_ICONS[b.badge]||'🏅'} ${b.badge}</div>`).join('');
   }
 
