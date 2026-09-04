@@ -8868,6 +8868,22 @@ window.renderEOMDashboard = async () => {
       </div>`}
     </div>
 
+    <!-- Admin Override (admin only) -->
+    ${roleAtLeast('admin') && !winner ? `
+    <div class="admin-card mb-4" style="border:2px dashed #f97316">
+      <h6 class="fw-bold mb-1" style="color:var(--navy)"><i class="fas fa-user-shield me-2" style="color:var(--orange)"></i>Admin Override — Select Any Associate</h6>
+      <p class="text-muted small mb-3">Choose someone outside the top 3 as winner.</p>
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        <select id="eomOverrideSelect" class="form-select form-select-sm" style="width:auto;min-width:220px">
+          <option value="">— Select associate —</option>
+          ${scores.map(s => `<option value="${s.id}" data-name="${escapeHtml(s.name)}">${escapeHtml(s.name)} (${s.total}/100)</option>`).join('')}
+        </select>
+        <button class="btn btn-sm btn-orange" onclick="adminEOMOverride('${monthKey}')">
+          <i class="fas fa-crown me-1"></i>Confirm Override
+        </button>
+      </div>
+    </div>` : ''}
+
     <!-- All Votes (admin/OM only) -->
     ${isFullAdmin ? `<div class="admin-card mb-4">
       <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-vote-yea me-2" style="color:var(--orange)"></i>All Nominations — ${escapeHtml(label)} <span class="text-muted fw-normal small">(${allVotes.length} total)</span></h6>
@@ -8914,6 +8930,19 @@ window.confirmEOMWinner = async (monthKey, winnerId, winnerName) => {
   const confirmedBy = currentUser?.email || 'Admin';
   await setDoc(doc(db, 'eom', monthKey, 'meta', 'winner'), {
     winnerId, winnerName, confirmedBy, confirmedAt: new Date().toISOString()
+  });
+  await renderEOMDashboard();
+};
+
+window.adminEOMOverride = async (monthKey) => {
+  const sel = document.getElementById('eomOverrideSelect');
+  const winnerId = sel?.value;
+  const winnerName = sel?.selectedOptions[0]?.dataset.name || '';
+  if (!winnerId) { alert('Please select an associate.'); return; }
+  if (!confirm(`Admin override: confirm ${winnerName} as Employee of the Month for ${eomMonthLabel(monthKey)}?`)) return;
+  const confirmedBy = currentUser?.email || 'Admin';
+  await setDoc(doc(db, 'eom', monthKey, 'meta', 'winner'), {
+    winnerId, winnerName, confirmedBy, confirmedAt: new Date().toISOString(), override: true
   });
   await renderEOMDashboard();
 };
