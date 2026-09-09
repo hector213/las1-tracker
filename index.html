@@ -4572,7 +4572,10 @@ const GENERAL_CORRECTIVE_TYPES = [
     sectionDesc: '§4.1 (Work Rules) and §3.15 (Corrective Action) both list theft, inappropriate removal or possession of property, and misappropriation of property as conduct subject to discipline up to and including immediate termination.' },
   { key: 'performance',       label: 'Performance - Failure to Meet Job Expectations',              short: 'Performance',                icon: 'fa-chart-line',  color: '#374151', bg: '#f3f4f6', offense: 'Failure to Meet Job Expectations',
     section: '§4.1 / §3.16',
-    sectionDesc: '§4.1 (Work Rules) lists unsatisfactory work performance as unacceptable conduct subject to discipline up to and including termination: "Employees who deviate from these rules and standards will be subject to discipline, up to and including termination of employment." §3.16 (Progressive Discipline) establishes the correction structure - Coaching & Counseling → Written Warning → Final Warning → Termination.' }
+    sectionDesc: '§4.1 (Work Rules) lists unsatisfactory work performance as unacceptable conduct subject to discipline up to and including termination: "Employees who deviate from these rules and standards will be subject to discipline, up to and including termination of employment." §3.16 (Progressive Discipline) establishes the correction structure - Coaching & Counseling → Written Warning → Final Warning → Termination.' },
+  { key: 'workplace-violence', label: 'Workplace Violence / Threatening Behavior',                  short: 'Workplace Violence',          icon: 'fa-exclamation-triangle', color: '#7c0000', bg: '#fee2e2', offense: 'Workplace Violence / Threatening Behavior',
+    section: '§3.18 / §4.1',
+    sectionDesc: '§3.18.1 — The Company does not tolerate violence or threats of violence of any kind in the workplace or in a work-related situation. Prohibited conduct includes any acts or threats of physical violence or the bringing, possessing, or threatening to bring guns, firearms, or weapons of any kind onto Company property. §3.18.2 — Workplace violence is defined as any intentional conduct sufficiently severe, offensive, or intimidating to cause someone to reasonably fear for their personal safety or the safety of their family, friends, and/or property. Covered conduct includes: threats or acts of physical/aggressive contact; threats of physical harm toward a person or their family/friends/property; threatened destruction of Company or employee property; harassing or threatening phone calls; surveillance or stalking; and veiled or implied threats of physical harm or intimidation. §3.18.3 — Any person who engages in a threat or violent act on Company property may be removed from the premises as quickly as safety permits and may be required to remain off-premises pending investigation. §4.1 (Work Rules) separately lists physical threats or acts of violence among behaviors subject to discipline up to and including immediate termination.' }
 ];
 
 window.openCorrectivePicker = () => {
@@ -4610,7 +4613,7 @@ window.selectCorrective = (key) => {
   document.getElementById('gcFormTitle').textContent = type.label;
   document.getElementById('gcTypeKey').value = key;
   document.getElementById('gcIncidentDate').value = new Date().toISOString().split('T')[0];
-  document.getElementById('gcTier').value = 'verbal';
+  document.getElementById('gcTier').value = (key === 'workplace-violence') ? 'final' : 'verbal';
   document.getElementById('gcDescription').value = '';
   document.getElementById('gcPriorHistory').value = '';
   document.getElementById('gcActionTaken').value = '';
