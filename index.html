@@ -8934,7 +8934,7 @@ window.renderEOMDashboard = async () => {
       <div style="overflow-x:auto">
         <table class="table table-sm table-hover" style="font-size:0.8rem">
           <thead><tr style="background:#f8fafc">
-            <th>Nominated</th><th>Type</th><th>From</th><th>Comment</th><th>Date</th>
+            <th>Nominated</th><th>Type</th><th>From</th><th>Comment</th><th>Date</th><th></th>
           </tr></thead>
           <tbody>
             ${allVotes.map(v => `<tr>
@@ -8943,6 +8943,7 @@ window.renderEOMDashboard = async () => {
               <td>${escapeHtml(v.voterName||'Anonymous')}</td>
               <td style="max-width:280px;white-space:normal">${escapeHtml(v.comment||'')}</td>
               <td style="white-space:nowrap">${v.timestamp ? new Date(v.timestamp).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—'}</td>
+              <td><button class="btn btn-link p-0 text-danger" style="font-size:0.75rem" onclick="deleteEOMVoteById('${monthKey}','${v.voterId}')" title="Delete vote"><i class="fas fa-trash-alt"></i></button></td>
             </tr>`).join('')}
           </tbody>
         </table>
@@ -8982,6 +8983,12 @@ window.deleteEOMVote = async (monthKey) => {
   const myAssocId = currentUserAssocId || currentUser?.uid;
   if (!myAssocId) return;
   await deleteDoc(doc(db, 'eom', monthKey, 'votes', myAssocId));
+  await renderEOMDashboard();
+};
+
+window.deleteEOMVoteById = async (monthKey, voterId) => {
+  if (!confirm('Delete this nomination? This cannot be undone.')) return;
+  await deleteDoc(doc(db, 'eom', monthKey, 'votes', voterId));
   await renderEOMDashboard();
 };
 
