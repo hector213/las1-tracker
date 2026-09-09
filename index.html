@@ -8798,8 +8798,8 @@ window.renderEOMDashboard = async () => {
 
   // Check if current user is leadership and can vote on the active month
   const activeMonthKey = eomVoteMonthKey();
-  const myAssocId = currentUserAssocId || currentAssociateId;
-  const me = myAssocId ? allAssociates.find(a => a.id === myAssocId) : null;
+  const myAssocId = currentUserAssocId || currentUser?.uid;
+  const me = currentUserAssocId ? allAssociates.find(a => a.id === currentUserAssocId) : null;
   const isLeadershipVoter = roleAtLeast('lead');
   const isVotingMonth = monthKey === activeMonthKey;
 
@@ -8838,12 +8838,19 @@ window.renderEOMDashboard = async () => {
     <div class="admin-card mb-4" style="border:2px solid #1a2744">
       <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-vote-yea me-2" style="color:var(--orange)"></i>Your Leadership Nomination — ${escapeHtml(label)}</h6>
       ${myVote ? `
-        <div style="text-align:center;padding:10px 0">
-          <div style="font-size:1.5rem;margin-bottom:6px">✅</div>
-          <div style="font-weight:700;color:#1a2744">You nominated <span style="color:#f97316">${escapeHtml(myVote.nomineeName)}</span></div>
-          <div style="background:#f8fafc;border-radius:8px;padding:10px;margin-top:10px;font-size:0.8rem;color:#374151;text-align:left">
-            <div style="font-size:0.7rem;color:#9ca3af;margin-bottom:4px">Your reason</div>
-            "${escapeHtml(myVote.comment)}"
+        <div style="padding:10px 0">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+            <div>
+              <div style="font-size:1.2rem;margin-bottom:4px">✅</div>
+              <div style="font-weight:700;color:#1a2744">You nominated <span style="color:#f97316">${escapeHtml(myVote.nomineeName)}</span></div>
+              <div style="background:#f8fafc;border-radius:8px;padding:10px;margin-top:10px;font-size:0.8rem;color:#374151">
+                <div style="font-size:0.7rem;color:#9ca3af;margin-bottom:4px">Your reason</div>
+                "${escapeHtml(myVote.comment)}"
+              </div>
+            </div>
+            <button class="btn btn-sm btn-outline-danger" style="white-space:nowrap;flex-shrink:0" onclick="deleteEOMVote('${monthKey}')">
+              <i class="fas fa-trash-alt me-1"></i>Delete &amp; Re-vote
+            </button>
           </div>
         </div>` : `
         <div class="row g-3">
@@ -8970,6 +8977,14 @@ window.confirmEOMWinner = async (monthKey, winnerId, winnerName) => {
   await renderEOMDashboard();
 };
 
+window.deleteEOMVote = async (monthKey) => {
+  if (!confirm('Delete your nomination? You can re-submit after.')) return;
+  const myAssocId = currentUserAssocId || currentUser?.uid;
+  if (!myAssocId) return;
+  await deleteDoc(doc(db, 'eom', monthKey, 'votes', myAssocId));
+  await renderEOMDashboard();
+};
+
 window.adminEOMOverride = async (monthKey) => {
   const sel = document.getElementById('eomOverrideSelect');
   const winnerId = sel?.value;
@@ -8992,11 +9007,12 @@ window.submitLeaderEOMVote = async (monthKey) => {
   if (!nomineeId) { errEl.textContent = 'Please select a nominee.'; errEl.classList.remove('d-none'); return; }
   if (comment.length < 10) { errEl.textContent = 'Please write at least 10 characters for your reason.'; errEl.classList.remove('d-none'); return; }
   errEl.classList.add('d-none');
-  const myAssocId = currentUserAssocId || currentAssociateId || currentUser?.uid;
-  const me = myAssocId ? allAssociates.find(a => a.id === myAssocId) : null;
+  const myAssocId = currentUserAssocId || currentUser?.uid;
+  const me = currentUserAssocId ? allAssociates.find(a => a.id === currentUserAssocId) : null;
+  const voterName = me?.name || currentUser?.displayName || currentUser?.email || 'Unknown';
   await setDoc(doc(db, 'eom', monthKey, 'votes', myAssocId), {
     nomineeId, nomineeName, comment, voterType: 'leadership',
-    voterName: me?.name || currentUser?.email || 'Unknown',
+    voterName,
     timestamp: new Date().toISOString(),
   });
   await renderEOMDashboard();
