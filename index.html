@@ -8957,27 +8957,26 @@ window.loadEOM = async () => {
     allAssociates = assocSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   }
 
-  // Build month options: active vote month first, then last 12 months
+  // Build month options: current month first, then last 13 months
   const sel = document.getElementById('eomMonthSelect');
   if (sel && !sel.options.length) {
     const now = new Date();
     const activeKey = eomVoteMonthKey();
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const votingCurrentMonth = now.getDate() >= lastDay - 3;
-    // If voting is open for current month, add it first
-    if (votingCurrentMonth) {
-      const opt = document.createElement('option');
-      opt.value = activeKey; opt.textContent = eomMonthLabel(activeKey) + ' (Voting Open)';
-      opt.selected = true;
-      sel.appendChild(opt);
-    }
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    // Always add current month at the top
+    const curOpt = document.createElement('option');
+    curOpt.value = currentMonthKey;
+    curOpt.textContent = eomMonthLabel(currentMonthKey) + (votingCurrentMonth ? ' (Voting Open)' : '');
+    curOpt.selected = true;
+    sel.appendChild(curOpt);
     // Add previous 13 months
     for (let i = 1; i <= 13; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
       const opt = document.createElement('option');
       opt.value = key; opt.textContent = eomMonthLabel(key);
-      if (!votingCurrentMonth && i === 1) opt.selected = true;
       sel.appendChild(opt);
     }
   }
