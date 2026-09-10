@@ -8875,13 +8875,35 @@ async function computeEOMScores(monthKey) {
   const sdMap = {};
   nominees.forEach((n, i) => {
     const [attSnap, notesSnap, badgesSnap] = assocData[i];
-    const monthAtt = attSnap.docs.map(d => d.data()).filter(e => e.date >= monthStart && e.date <= monthEnd);
-    const callOuts  = monthAtt.filter(e => e.type?.startsWith('call-out') || e.type === 'ncns' || e.type === 'doctors-note').length;
-    const earlyOuts = monthAtt.filter(e => e.type?.startsWith('left-early')).length;
-    sdMap[n.id] = { callOuts, earlyOuts, badCallEvents: callOuts + earlyOuts, noteCount: notesSnap.size, badgeCount: badgesSnap.size };
+    const monthAtt   = attSnap.docs.map(d => d.data()).filter(e => e.date >= monthStart && e.date <= monthEnd);
+    const callOuts   = monthAtt.filter(e => e.type?.startsWith('call-out') || e.type === 'ncns' || e.type === 'doctors-note').length;
+    const earlyOuts  = monthAtt.filter(e => e.type?.startsWith('left-early')).length;
+    // Sum actual attendance points accumulated this month only
+    const monthAttPts = monthAtt.reduce((sum, e) => sum + (e.points || 0), 0);
+    // Notes added this month only — split by type
+    const monthNotes = notesSnap.docs.map(d => d.data()).filter(e => {
+      const d = (e.createdAt || '').slice(0, 10);
+      return d >= monthStart && d <= monthEnd;
+    });
+    const badNotes   = monthNotes.filter(e => e.type !== 'Recognition');
+    const recogNotes = monthNotes.filter(e => e.type === 'Recognition');
+    // Approved badges earned this month only
+    const monthBadges = badgesSnap.docs.map(d => d.data()).filter(e => {
+      if (e.status !== 'approved') return false;
+      const d = (e.approvedAt || e.createdAt || '').slice(0, 10);
+      return d >= monthStart && d <= monthEnd;
+    });
+    sdMap[n.id] = {
+      callOuts, earlyOuts, badCallEvents: callOuts + earlyOuts,
+      monthAttPts,
+      noteCount: badNotes.length,
+      recogNoteCount: recogNotes.length,
+      badgeCount: monthBadges.length,
+    };
   });
 
   const maxBadges = Math.max(1, ...nominees.map(n => sdMap[n.id].badgeCount));
+  const maxRecog  = Math.max(1, ...nominees.map(n => sdMap[n.id].recogNoteCount));
 
   // Vote tallies
   const assocVotes = votes.filter(v => v.voterType === 'associate');
@@ -8895,12 +8917,13 @@ async function computeEOMScores(monthKey) {
 
   return nominees.map(n => {
     const sd = sdMap[n.id];
-    // Objective 50pts (attendance-heavy):
-    const attScore   = (1 - Math.min((n.attendancePoints||0) / 10, 1)) * 20; // 0-20: low pts = better
-    const cleanScore = Math.max(0, 15 - sd.badCallEvents * 5);                // 15 if clean, -5 per call-out/early
-    const notesScore = Math.max(0, 10 - sd.noteCount * 2);                    // 10 if no notes, -2 each
-    const badgeScore = (sd.badgeCount / maxBadges) * 5;                       // 0-5 normalized
-    const objScore   = Math.min(50, attScore + cleanScore + notesScore + badgeScore);
+    // Objective 55pts (all signals scoped to EOM month only):
+    const attScore   = (1 - Math.min(sd.monthAttPts / 4, 1)) * 20; // 0-20: 0 pts this month = 20, 4+ pts = 0
+    const cleanScore = Math.max(0, 15 - sd.badCallEvents * 5);      // 15 if clean, -5 per call-out/early
+    const notesScore = Math.max(0, 10 - sd.noteCount * 2);          // 10 if no coaching/perf notes, -2 each
+    const badgeScore = (sd.badgeCount / maxBadges) * 5;             // 0-5 normalized to top badge earner this month
+    const recogScore = (sd.recogNoteCount / maxRecog) * 5;          // 0-5 normalized to top recognition earner this month
+    const objScore   = Math.min(55, attScore + cleanScore + notesScore + badgeScore + recogScore);
     const avScore    = (avCount[n.id] / maxAV) * 25;
     const lvScore    = (lvCount[n.id] / maxLV) * 25;
     const total      = Math.round(objScore + avScore + lvScore);
@@ -8908,11 +8931,11 @@ async function computeEOMScores(monthKey) {
       id: n.id, name: n.name, total,
       objScore: Math.round(objScore), avScore: Math.round(avScore), lvScore: Math.round(lvScore),
       attScore: Math.round(attScore), cleanScore: Math.round(cleanScore),
-      notesScore: Math.round(notesScore), badgeScore: Math.round(badgeScore),
+      notesScore: Math.round(notesScore), badgeScore: Math.round(badgeScore), recogScore: Math.round(recogScore),
       assocVoteCount: avCount[n.id], leadVoteCount: lvCount[n.id],
       votes: votes.filter(v => v.nomineeId === n.id),
-      attendancePoints: n.attendancePoints||0,
-      callOuts: sd.callOuts, earlyOuts: sd.earlyOuts, noteCount: sd.noteCount, badgeCount: sd.badgeCount,
+      attendancePoints: sd.monthAttPts,
+      callOuts: sd.callOuts, earlyOuts: sd.earlyOuts, noteCount: sd.noteCount, recogNoteCount: sd.recogNoteCount, badgeCount: sd.badgeCount,
     };
   }).sort((a,b) => b.total - a.total);
 }
@@ -9054,8 +9077,9 @@ window.renderEOMDashboard = async () => {
                 <span>Attendance <strong>${s.cleanScore}/15</strong></span>
                 <span>Notes <strong>${s.notesScore}/10</strong></span>
                 <span>Badges <strong>${s.badgeScore}/5</strong></span>
+                <span>Recognition <strong>${s.recogScore}/5</strong></span>
               </div>
-              <div style="color:#9ca3af;font-size:0.68rem">${s.callOuts} call-out${s.callOuts!==1?'s':''} · ${s.earlyOuts} early out${s.earlyOuts!==1?'s':''} · ${s.noteCount} note${s.noteCount!==1?'s':''} · ${s.badgeCount} badge${s.badgeCount!==1?'s':''}</div>
+              <div style="color:#9ca3af;font-size:0.68rem">${s.callOuts} call-out${s.callOuts!==1?'s':''} · ${s.earlyOuts} early out${s.earlyOuts!==1?'s':''} · ${s.noteCount} coaching note${s.noteCount!==1?'s':''} · ${s.recogNoteCount} recognition · ${s.badgeCount} badge${s.badgeCount!==1?'s':''}</div>
               <div style="margin-top:4px">${s.assocVoteCount} peer vote${s.assocVoteCount!==1?'s':''} · ${s.leadVoteCount} leadership vote${s.leadVoteCount!==1?'s':''}</div>
             </div>
             ${isFullAdmin && !winner ? `<button class="btn btn-sm btn-orange w-100" onclick="confirmEOMWinner('${monthKey}','${s.id}','${escapeHtml(s.name).replace(/'/g,"\'")}')">
