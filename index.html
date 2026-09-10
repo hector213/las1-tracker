@@ -1130,7 +1130,7 @@ function loadDashboard() {
       }
     });
     // autoExpirePoints() moved to Firebase Cloud Function (functions/index.js)
-    // Runs daily at 3 AM via Cloud Scheduler — no longer runs on every page load.
+    // Runs daily at 3 AM via Cloud Scheduler  -  no longer runs on every page load.
   });
 
   activeListeners['certsGlobal'] = onSnapshot(collection(db, 'certs'), (snap) => {
@@ -1257,7 +1257,7 @@ function renderDashboard() {
       else if (todayAtt === 'call-out')   banner = { label: 'OUT',        color: '#dc2626', bg: '#fee2e2', pending: false };
       else if (todayAtt === 'early') banner = { label: 'Early Out',       color: '#ea580c', bg: '#ffedd5', pending: false };
       else if (todayAtt === 'late')  banner = { label: 'Tardy',           color: '#d97706', bg: '#fef3c7', pending: false };
-      // Pending entries — still show as absent, add pending indicator
+      // Pending entries  -  still show as absent, add pending indicator
       if (banner && _todayPendingSet?.has(a.id)) banner.pending = true;
       else if (todayTO)              banner = { label: todayTO.label, color: todayTO.color, bg: todayTO.bg };
       return `<div class="col-xl-3 col-lg-4 col-md-6">
@@ -2405,7 +2405,7 @@ function renderGoals(goals) {
           (roleAtLeast('admin') ? '<button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deleteGoal(\'' + g.id + '\')"><i class="fas fa-trash-alt"></i></button>' : '') +
         '</div>'
       : '';
-    // Countdown widget — only for Active goals with a due date
+    // Countdown widget  -  only for Active goals with a due date
     let countdownHtml = '';
     if (g.dueDate && g.status === 'Active') {
       let cdNum, cdLabel, cdBg, cdColor;
@@ -3498,7 +3498,7 @@ window.showMatrixRoleList = (type) => {
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(a => `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f3f4f6">
         <span style="font-weight:500">${escapeHtml(a.name)}</span>
-        <span style="font-size:0.78rem;color:#6b7280">${a.role || '—'}</span>
+        <span style="font-size:0.78rem;color:#6b7280">${a.role || ' - '}</span>
       </div>`).join('');
   }
   bootstrap.Modal.getOrCreateInstance(document.getElementById('matrixRoleModal')).show();
@@ -3601,7 +3601,7 @@ function renderMatrix() {
     const healthColor = healthPct < 50 ? '#dc2626' : healthPct < 75 ? '#d97706' : '#059669';
 
     // Count PIT operators vs Material Handlers from associate profile role field
-    // Uses scoringAssociates (associates only — no leads, OMs, or supervisors)
+    // Uses scoringAssociates (associates only  -  no leads, OMs, or supervisors)
     // Excludes Inventory Control and Maintenance roles from MH/PIT buckets
     const EXCLUDED_ROLES = /inventory.control|maintenance/i;
     const pitList = scoringAssociates.filter(a => /pit/i.test(a.role || '') && !EXCLUDED_ROLES.test(a.role || ''));
@@ -3914,7 +3914,7 @@ function computeAttRisk(entries, assoc) {
     });
   }
 
-  // Mon/Thu clustering (>55% of events on Mon or Thu — shift bookends, min 4 events)
+  // Mon/Thu clustering (>55% of events on Mon or Thu  -  shift bookends, min 4 events)
   if (events90.length >= 4) {
     const monThu = events90.filter(e => { const d = new Date(e.date+'T00:00:00').getDay(); return d===1||d===4; }).length;
     if (monThu / events90.length >= 0.55) {
@@ -4721,7 +4721,7 @@ const GENERAL_CORRECTIVE_TYPES = [
     sectionDesc: '§4.1 (Work Rules) lists unsatisfactory work performance as unacceptable conduct subject to discipline up to and including termination: "Employees who deviate from these rules and standards will be subject to discipline, up to and including termination of employment." §3.16 (Progressive Discipline) establishes the correction structure - Coaching & Counseling → Written Warning → Final Warning → Termination.' },
   { key: 'workplace-violence', label: 'Workplace Violence / Threatening Behavior',                  short: 'Workplace Violence',          icon: 'fa-exclamation-triangle', color: '#7c0000', bg: '#fee2e2', offense: 'Workplace Violence / Threatening Behavior',
     section: '§3.18 / §4.1',
-    sectionDesc: '§3.18.1 — The Company does not tolerate violence or threats of violence of any kind in the workplace or in a work-related situation. Prohibited conduct includes any acts or threats of physical violence or the bringing, possessing, or threatening to bring guns, firearms, or weapons of any kind onto Company property. §3.18.2 — Workplace violence is defined as any intentional conduct sufficiently severe, offensive, or intimidating to cause someone to reasonably fear for their personal safety or the safety of their family, friends, and/or property. Covered conduct includes: threats or acts of physical/aggressive contact; threats of physical harm toward a person or their family/friends/property; threatened destruction of Company or employee property; harassing or threatening phone calls; surveillance or stalking; and veiled or implied threats of physical harm or intimidation. §3.18.3 — Any person who engages in a threat or violent act on Company property may be removed from the premises as quickly as safety permits and may be required to remain off-premises pending investigation. §4.1 (Work Rules) separately lists physical threats or acts of violence among behaviors subject to discipline up to and including immediate termination.' }
+    sectionDesc: '§3.18.1  -  The Company does not tolerate violence or threats of violence of any kind in the workplace or in a work-related situation. Prohibited conduct includes any acts or threats of physical violence or the bringing, possessing, or threatening to bring guns, firearms, or weapons of any kind onto Company property. §3.18.2  -  Workplace violence is defined as any intentional conduct sufficiently severe, offensive, or intimidating to cause someone to reasonably fear for their personal safety or the safety of their family, friends, and/or property. Covered conduct includes: threats or acts of physical/aggressive contact; threats of physical harm toward a person or their family/friends/property; threatened destruction of Company or employee property; harassing or threatening phone calls; surveillance or stalking; and veiled or implied threats of physical harm or intimidation. §3.18.3  -  Any person who engages in a threat or violent act on Company property may be removed from the premises as quickly as safety permits and may be required to remain off-premises pending investigation. §4.1 (Work Rules) separately lists physical threats or acts of violence among behaviors subject to discipline up to and including immediate termination.' }
 ];
 
 window.openCorrectivePicker = () => {
@@ -5358,7 +5358,7 @@ async function loadTodayAttendanceStats() {
       const snap = await getDocs(q);
       snap.docs.forEach(d => {
         const e = d.data();
-        // Pending entries still count as absent — point/doc status is separate from attendance status
+        // Pending entries still count as absent  -  point/doc status is separate from attendance status
         if (e.type === 'ncns' || e.type === 'ncns-pending')        ncnsIds.add(assocId);
         else if (e.type === 'call-out-pending')                    callOutIds.add(assocId);
         else if (callOutTypes.has(e.type))                         callOutIds.add(assocId);
@@ -5627,7 +5627,7 @@ window.applyAttendancePoint = async (entryId) => {
 
 window.applyNcnsPoints = async (entryId) => {
   if (!roleAtLeast('lead')) return;
-  if (!confirm('Confirm NCNS — apply 2 attendance points? This cannot be undone.')) return;
+  if (!confirm('Confirm NCNS  -  apply 2 attendance points? This cannot be undone.')) return;
   const resolvedBy = await _getActorName();
   await updateDoc(doc(db, 'attendance', currentAssociateId, 'entries', entryId), {
     type: 'ncns', points: 2, pending: false,
@@ -5746,7 +5746,7 @@ function renderAttPredictor() {
   const isWorkDay     = e => { if (!e.date) return false; const d = new Date(e.date+'T00:00:00').getDay(); return WORK_DAYS.has(d); };
   // Half-life 28 days: an event 4 weeks ago counts half as much as one today
   const DECAY_LAMBDA  = Math.log(2) / 28;
-  // Event type weights — NCNS is qualitatively different from a regular call-out
+  // Event type weights  -  NCNS is qualitatively different from a regular call-out
   const eventWeight   = e => e.type === 'ncns' ? 3.0 : e.type?.startsWith('call-out') ? 1.0 : e.type?.startsWith('left-early') ? 0.8 : 0.3;
   const TERM_THRESHOLD = 10;
 
@@ -5887,7 +5887,7 @@ function renderAttPredictor() {
       return `${(days/365).toFixed(1)}yr`;
     };
 
-    let expectancyLabel = '—', expectancyColor = '#6b7280', expectancyRange = '';
+    let expectancyLabel = ' - ', expectancyColor = '#6b7280', expectancyRange = '';
     if (ptsRemaining === 0) {
       expectancyLabel = 'At limit'; expectancyColor = '#7c0000';
     } else if (ratePerDay > 0) {
@@ -5983,7 +5983,7 @@ function renderAttPredictor() {
       </div>`;
     }).join('') +
     `<div style="margin-top:8px;padding:6px 8px;background:#f8fafc;border-radius:6px;font-size:0.6rem;color:#9ca3af;text-align:center">
-      Probabilities use Beta-Binomial estimation (team-calibrated prior + individual decay-weighted history). Emp. Life uses Gamma survival model — range shown is 80% confidence interval. Risk = attrition score 0–100.
+      Probabilities use Beta-Binomial estimation (team-calibrated prior + individual decay-weighted history). Emp. Life uses Gamma survival model  -  range shown is 80% confidence interval. Risk = attrition score 0–100.
     </div>`
   ;
 }
@@ -6031,7 +6031,7 @@ window.loadCoverage = async () => {
     _coverageThresholds = snap.exists() ? (snap.data().thresholds || {}) : {};
   } catch(e) { _coverageThresholds = {}; }
 
-  // Ensure associates + attendance entries are loaded — reuse cache if available
+  // Ensure associates + attendance entries are loaded  -  reuse cache if available
   if (!allAssociates.length || !_allAttEntries.length) {
     const cached = getCached('attendance');
     if (cached) {
@@ -6165,10 +6165,10 @@ async function renderCoverageTab() {
     const ratePerDay = totalDenom > 0 ? wtdPts / totalDenom : 0;
     const meanDays   = ratePerDay > 0 && ptsRemaining > 0 ? ptsRemaining / ratePerDay : Infinity;
     const stdDays    = ratePerDay > 0 && ptsRemaining > 0 ? Math.sqrt(ptsRemaining) / ratePerDay : Infinity;
-    // loDays = pessimistic 80% CI lower bound — only used for secondary display note.
+    // loDays = pessimistic 80% CI lower bound  -  only used for secondary display note.
     // The Gamma normal approx breaks down for small k (ptsRemaining < 2), so don't use it for severity.
     const loDays     = meanDays < Infinity ? Math.max(1, Math.round(meanDays - 1.28 * stdDays)) : Infinity;
-    // meanDaysRnd is what we classify severity against — matches what the predictor highlights.
+    // meanDaysRnd is what we classify severity against  -  matches what the predictor highlights.
     const meanDaysRnd = meanDays < Infinity ? Math.round(meanDays) : Infinity;
 
     const risk = computeAttRisk(entries, assoc);
@@ -6219,7 +6219,7 @@ async function renderCoverageTab() {
     // How many certified remain if critical+high depart
     const remaining = Math.max(0, total - critRisk.length - highRisk.length);
 
-    // Threshold check — if a minimum is set, use it; otherwise fall back to smart defaults
+    // Threshold check  -  if a minimum is set, use it; otherwise fall back to smart defaults
     const threshold = _coverageThresholds[certKey] || 0;
     const belowThreshold = threshold > 0 ? remaining < threshold : (total <= 2 || remaining <= 1);
     const nearThreshold  = threshold > 0 ? remaining < threshold + 1 : pctRisk >= 0.5;
@@ -8887,7 +8887,7 @@ async function computeEOMScores(monthKey) {
     const earlyOuts  = monthAtt.filter(e => e.type?.startsWith('left-early')).length;
     // Sum actual attendance points accumulated this month only
     const monthAttPts = monthAtt.reduce((sum, e) => sum + (e.points || 0), 0);
-    // Notes added this month only — split by type
+    // Notes added this month only  -  split by type
     const monthNotes = notesSnap.docs.map(d => d.data()).filter(e => {
       const d = (e.createdAt || '').slice(0, 10);
       return d >= monthStart && d <= monthEnd;
@@ -9032,7 +9032,7 @@ window.renderEOMDashboard = async () => {
   const nominees = allAssociates.filter(a => a.status === 'active' && !a.position).sort((a,b) => a.name.localeCompare(b.name));
   const leadershipVoteCard = (isLeadershipVoter && isVotingMonth) ? `
     <div class="admin-card mb-4" style="border:2px solid #1a2744">
-      <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-vote-yea me-2" style="color:var(--orange)"></i>Your Leadership Nomination — ${escapeHtml(label)}</h6>
+      <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-vote-yea me-2" style="color:var(--orange)"></i>Your Leadership Nomination  -  ${escapeHtml(label)}</h6>
       ${myVote ? `
         <div style="padding:10px 0">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
@@ -9053,7 +9053,7 @@ window.renderEOMDashboard = async () => {
           <div class="col-md-5">
             <label style="font-size:0.75rem;font-weight:600;color:#374151;margin-bottom:4px;display:block">Nominee</label>
             <select id="eomLeadNomineeSelect" class="form-select form-select-sm">
-              <option value="">— Select an associate —</option>
+              <option value=""> -  Select an associate  - </option>
               ${nominees.map(n => `<option value="${n.id}" data-name="${escapeHtml(n.name)}">${escapeHtml(n.name)}</option>`).join('')}
             </select>
           </div>
@@ -9080,7 +9080,7 @@ window.renderEOMDashboard = async () => {
 
     <!-- Top 3 -->
     <div class="admin-card mb-4">
-      <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-medal me-2" style="color:var(--orange)"></i>Top Candidates — ${escapeHtml(label)}</h6>
+      <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-medal me-2" style="color:var(--orange)"></i>Top Candidates  -  ${escapeHtml(label)}</h6>
       ${scores.filter(s => s.assocVoteCount > 0 || s.leadVoteCount > 0 || s.objScore > 20).length === 0 ? '<p class="text-muted small">No votes recorded yet for this month.</p>' :
       `<div class="row g-3">
         ${top3.map((s,i) => `
@@ -9111,11 +9111,11 @@ window.renderEOMDashboard = async () => {
     <!-- Admin Override (admin only) -->
     ${roleAtLeast('admin') && !winner ? `
     <div class="admin-card mb-4" style="border:2px dashed #f97316">
-      <h6 class="fw-bold mb-1" style="color:var(--navy)"><i class="fas fa-user-shield me-2" style="color:var(--orange)"></i>Admin Override — Select Any Associate</h6>
+      <h6 class="fw-bold mb-1" style="color:var(--navy)"><i class="fas fa-user-shield me-2" style="color:var(--orange)"></i>Admin Override  -  Select Any Associate</h6>
       <p class="text-muted small mb-3">Choose someone outside the top 3 as winner.</p>
       <div class="d-flex gap-2 align-items-center flex-wrap">
         <select id="eomOverrideSelect" class="form-select form-select-sm" style="width:auto;min-width:220px">
-          <option value="">— Select associate —</option>
+          <option value=""> -  Select associate  - </option>
           ${scores.map(s => `<option value="${s.id}" data-name="${escapeHtml(s.name)}">${escapeHtml(s.name)} (${s.total}/100)</option>`).join('')}
         </select>
         <button class="btn btn-sm btn-orange" onclick="adminEOMOverride('${monthKey}')">
@@ -9126,7 +9126,7 @@ window.renderEOMDashboard = async () => {
 
     <!-- All Votes (admin/OM only) -->
     ${isFullAdmin ? `<div class="admin-card mb-4">
-      <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-vote-yea me-2" style="color:var(--orange)"></i>All Nominations — ${escapeHtml(label)} <span class="text-muted fw-normal small">(${allVotes.length} total)</span></h6>
+      <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-vote-yea me-2" style="color:var(--orange)"></i>All Nominations  -  ${escapeHtml(label)} <span class="text-muted fw-normal small">(${allVotes.length} total)</span></h6>
       ${allVotes.length === 0 ? '<p class="text-muted small">No votes recorded yet.</p>' : `
       <div style="overflow-x:auto">
         <table class="table table-sm table-hover" style="font-size:0.8rem">
@@ -9139,7 +9139,7 @@ window.renderEOMDashboard = async () => {
               <td><span class="badge" style="background:${v.voterType==='leadership'?'#1a2744':'#f97316'}">${v.voterType==='leadership'?'Leadership':'Associate'}</span></td>
               <td>${escapeHtml(v.voterName||'Anonymous')}</td>
               <td style="max-width:280px;white-space:normal">${escapeHtml(v.comment||'')}</td>
-              <td style="white-space:nowrap">${v.timestamp ? new Date(v.timestamp).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—'}</td>
+              <td style="white-space:nowrap">${v.timestamp ? new Date(v.timestamp).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ' - '}</td>
               <td><button class="btn btn-link p-0 text-danger" style="font-size:0.75rem" onclick="deleteEOMVoteById('${monthKey}','${v.voterId}')" title="Delete vote"><i class="fas fa-trash-alt"></i></button></td>
             </tr>`).join('')}
           </tbody>
@@ -9274,7 +9274,7 @@ window.loadPortalNominate = async () => {
       <div style="margin-bottom:12px">
         <label style="font-size:0.75rem;font-weight:600;color:#374151;margin-bottom:4px;display:block">Who are you nominating?</label>
         <select id="eomNomineeSelect" class="form-select form-select-sm">
-          <option value="">— Select an associate —</option>
+          <option value=""> -  Select an associate  - </option>
           ${nominees.map(n => `<option value="${n.id}" data-name="${escapeHtml(n.name)}">${escapeHtml(n.name)}</option>`).join('')}
         </select>
       </div>
@@ -10503,8 +10503,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
                     <tr><td colspan="2" class="fw-semibold small" style="color:var(--navy)">Standard Badges (+25 pts each)</td></tr>
                     <tr><td style="padding-left:1rem">Top Performer of the Week, Most Improved, Team Player, Great Attendance, Perfect Attendance, Safety Champion, Above &amp; Beyond, Leadership Qualities, Always Helpful, Trainer, Mentor of the Month, Problem Solver, Positive Vibes, Never Late, Full House, Weekend Warrior, Cross-Trainer, Fast Learner, Cert Streak, Inventory Ace, Damage Prevention, Extra Mile, Speed Demon</td><td class="text-end fw-bold text-success align-top">+25</td></tr>
                     <tr><td colspan="2" class="pt-2 fw-semibold small" style="color:var(--navy)">Auto-Awarded Attendance Badges</td></tr>
-                    <tr><td style="padding-left:1rem">📆 Weekly Perfect Attendance — No call-outs, NCNS, or early-outs for the week (auto-assigned by admin)</td><td class="text-end fw-bold text-success">+25</td></tr>
-                    <tr><td style="padding-left:1rem">🗓️ Perfect Month Attendance — 4 consecutive weeks of perfect attendance (auto-assigned by admin)</td><td class="text-end fw-bold text-success">+100</td></tr>
+                    <tr><td style="padding-left:1rem">📆 Weekly Perfect Attendance  -  No call-outs, NCNS, or early-outs for the week (auto-assigned by admin)</td><td class="text-end fw-bold text-success">+25</td></tr>
+                    <tr><td style="padding-left:1rem">🗓️ Perfect Month Attendance  -  4 consecutive weeks of perfect attendance (auto-assigned by admin)</td><td class="text-end fw-bold text-success">+100</td></tr>
                     <tr><td colspan="2" class="pt-2 fw-semibold small" style="color:var(--navy)">Elite Badges</td></tr>
                     <tr><td style="padding-left:1rem">Elite Trainer 🏅</td><td class="text-end fw-bold text-success">+200</td></tr>
                     <tr><td style="padding-left:1rem">Lean Six Sigma ⚙️</td><td class="text-end fw-bold text-success">+200</td></tr>
@@ -10584,7 +10584,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-trophy me-2" style="color:var(--orange)"></i>Achievement Badges</h6>
             <p class="small text-muted">Leads, Supervisors, and Admins can nominate associates for badges. Each nomination requires a reason and goes to an Admin for approval. Once approved, points are awarded automatically. Badges stack - an associate can earn the same badge multiple times.</p>
             <p class="small text-muted mb-1"><strong>Standard badges (25 pts each):</strong> Top Performer of the Week, Most Improved, Team Player, Great Attendance, Perfect Attendance, Safety Champion, Above &amp; Beyond, Leadership Qualities, Always Helpful, Trainer, Mentor of the Month, Problem Solver, Positive Vibes, Never Late, Full House, Weekend Warrior, Cross-Trainer, Fast Learner, Cert Streak, Inventory Ace, Damage Prevention, Extra Mile, Speed Demon.</p>
-            <p class="small text-muted mb-1"><strong>Auto-awarded attendance badges:</strong> 📆 Weekly Perfect Attendance (25 pts) — auto-assigned by admin each week for associates with zero call-outs, NCNS, or early-outs. 🗓️ Perfect Month Attendance (100 pts) — auto-assigned when 4 consecutive weeks of perfect attendance are earned. Run from the Admin Panel → "Run Attendance Badge Check."</p>
+            <p class="small text-muted mb-1"><strong>Auto-awarded attendance badges:</strong> 📆 Weekly Perfect Attendance (25 pts)  -  auto-assigned by admin each week for associates with zero call-outs, NCNS, or early-outs. 🗓️ Perfect Month Attendance (100 pts)  -  auto-assigned when 4 consecutive weeks of perfect attendance are earned. Run from the Admin Panel → "Run Attendance Badge Check."</p>
             <p class="small text-muted mb-1"><strong>Elite badges:</strong> Elite Trainer (🏅 200 pts) · Lean Six Sigma (⚙️ 200 pts) · Iron Associate (💪 200 pts) · Leadership List (⭐ 200 pts) · Employee of the Month (🏅 300 pts).</p>
             <p class="small text-muted mb-0"><strong>Productivity badges:</strong> Large Pack (300–500 units, 60–100 pts) · Small Pack (600–1000 units, 120–200 pts) · Replen Pick/Put (500–1000 units, 100–200 pts) · OP Pick 600 (120 pts) · Box Master (400–700 units, 80–140 pts) · Cycle Count MOD (400–600, 40–60 pts) · Cycle Count Rack (200–400, 40–80 pts).</p>
           </div>
