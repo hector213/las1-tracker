@@ -8775,6 +8775,12 @@ window.loadEOM = async () => {
   showView('eom');
   detachAll();
 
+  // Ensure associates are loaded (may be empty if EOM is the first tab opened)
+  if (!allAssociates.length) {
+    const assocSnap = await getDocs(collection(db, 'associates'));
+    allAssociates = assocSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+
   // Build month options: current vote month + last 12 months
   const sel = document.getElementById('eomMonthSelect');
   if (sel && !sel.options.length) {
