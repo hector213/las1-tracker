@@ -38,6 +38,10 @@ const BADGES = [
   { key: 'leadership-qualities',label: 'Leadership Qualities',      emoji: '👑', tier: 'standard' },
   { key: 'always-helpful',      label: 'Always Helpful',            emoji: '🙌', tier: 'standard' },
   // Recognition / Culture
+  { key: 'trainer',             label: 'Trainer',                   emoji: '🎓', tier: 'standard' },
+  { key: 'elite-trainer',       label: 'Elite Trainer',             emoji: '🏅', tier: 'elite'    },
+  { key: 'lean-six-sigma',      label: 'Lean Six Sigma',            emoji: '⚙️', tier: 'elite'    },
+  { key: 'perfect-attendance',  label: 'Perfect Attendance',        emoji: '📅', tier: 'standard' },
   { key: 'mentor-of-month',     label: 'Mentor of the Month',      emoji: '🧑‍🏫', tier: 'standard' },
   { key: 'problem-solver',      label: 'Problem Solver',            emoji: '🔧', tier: 'standard' },
   { key: 'positive-vibes',      label: 'Positive Vibes',           emoji: '✨', tier: 'standard' },
@@ -86,6 +90,9 @@ const BADGES = [
   { key: 'box-master-500',  label: 'Box Master - 500 Units',   emoji: '📦', tier: 'productivity', points: 100 },
   { key: 'box-master-600',  label: 'Box Master - 600 Units',   emoji: '📦', tier: 'productivity', points: 120 },
   { key: 'box-master-700',  label: 'Box Master - 700 Units',   emoji: '📦', tier: 'productivity', points: 140 },
+  // Auto-awarded attendance badges
+  { key: 'weekly-perfect-att',  label: 'Weekly Perfect Attendance',  emoji: '📆', tier: 'standard', points: 25,  autoOnly: true },
+  { key: 'perfect-month-att',   label: 'Perfect Month Attendance',   emoji: '🗓️', tier: 'elite',    points: 100, autoOnly: true },
   // Cert milestone badges - auto-awarded, not available for manual nomination
   { key: 'cert-25',  label: '25% Foundations Badge',  aliases: ['Training Starter','Foundations Badge'],  emoji: '📗', tier: 'milestone', autoOnly: true },
   { key: 'cert-50',  label: '50% Core Practitioner', aliases: ['Half Trained','Core Practitioner'],      emoji: '📘', tier: 'milestone', autoOnly: true },
@@ -201,6 +208,145 @@ async function logPoints(associateId, type, reason, pts) {
   recalcPointExpiry(associateId);
 }
 window.logPoints = logPoints;
+
+// ── Auto-assign Perfect Attendance badges ─────────────────────────────
+// weekKey = Monday date string "YYYY-MM-DD" for the last completed Mon-Sun week
+function _lastCompletedWeekMonday() {
+  const today = new Date();
+  // day of week: 0=Sun,1=Mon,...,6=Sat
+  const dow = today.getDay();
+  // Days since last Sunday
+  const daysSinceSun = dow; // 0 if today is Sunday
+  // Last completed week ended last Saturday (or two Saturdays ago if today is Sunday)
+  // We want the Monday of last completed Mon–Sun week
+  // Last Sunday = today - dow days
+  // Last Mon = Last Sunday - 6 days
+  const lastSun = new Date(today);
+  lastSun.setDate(today.getDate() - dow);
+  const lastMon = new Date(lastSun);
+  lastMon.setDate(lastSun.getDate() - 6);
+  return lastMon.toISOString().slice(0, 10);
+}
+
+function _weekDates(mondayStr) {
+  const dates = [];
+  const d = new Date(mondayStr + 'T00:00:00');
+  for (let i = 0; i < 7; i++) {
+    dates.push(d.toISOString().slice(0, 10));
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
+}
+
+const BAD_ATT_TYPES = ['call-out', 'ncns', 'left-early', 'doctors-note'];
+function _isBadType(t) {
+  if (!t) return false;
+  const lower = t.toLowerCase();
+  return BAD_ATT_TYPES.some(b => lower.startsWith(b));
+}
+
+window.autoCheckPerfectAttendance = async function(showAlert = true) {
+  const btn = document.getElementById('runAttCheckBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Running…'; }
+  try {
+    if (!allAssociates.length) {
+      const snap = await getDocs(collection(db, 'associates'));
+      allAssociates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+
+    const weekMon = _lastCompletedWeekMonday();
+    const weekDates = new Set(_weekDates(weekMon));
+
+    // Build last 4 week Mondays (oldest first)
+    const fourWeeks = [];
+    for (let i = 3; i >= 0; i--) {
+      const d = new Date(weekMon + 'T00:00:00');
+      d.setDate(d.getDate() - i * 7);
+      fourWeeks.push(d.toISOString().slice(0, 10));
+    }
+
+    const eligibleAssociates = allAssociates.filter(a => a.status === 'active' && !a.position);
+    let weeklyAwarded = 0, monthlyAwarded = 0;
+
+    for (const assoc of eligibleAssociates) {
+      // Load attendance + badge entries
+      const [attSnap, badgeSnap] = await Promise.all([
+        getDocs(collection(db, 'attendance', assoc.id, 'entries')),
+        getDocs(collection(db, 'badges', assoc.id, 'entries')),
+      ]);
+
+      const attEntries = attSnap.docs.map(d => d.data());
+      const badgeEntries = badgeSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // ── Weekly badge ──
+      const alreadyHasWeekly = badgeEntries.some(b =>
+        b.badge === 'Weekly Perfect Attendance' && b.weekKey === weekMon && b.status === 'approved'
+      );
+      if (!alreadyHasWeekly) {
+        const hasBadAtt = attEntries.some(e => weekDates.has(e.date) && _isBadType(e.type));
+        if (!hasBadAtt) {
+          // Award weekly badge
+          const newBadgeRef = await addDoc(collection(db, 'badges', assoc.id, 'entries'), {
+            badge: 'Weekly Perfect Attendance',
+            emoji: '📆',
+            weekKey: weekMon,
+            status: 'approved',
+            autoAwarded: true,
+            approvedBy: 'System',
+            approvedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+          });
+          await updateDoc(doc(db, 'associates', assoc.id), { points: increment(25) });
+          await logPoints(assoc.id, 'Badge', 'Badge approved: Weekly Perfect Attendance', 25);
+          const cached = allAssociates.find(a => a.id === assoc.id);
+          if (cached) cached.points = (cached.points || 0) + 25;
+          weeklyAwarded++;
+          // Reload badge entries for month check
+          badgeEntries.push({ badge: 'Weekly Perfect Attendance', weekKey: weekMon, status: 'approved' });
+        }
+      }
+
+      // ── Perfect Month badge: 4 consecutive weekly badges ──
+      const alreadyHasMonth = badgeEntries.some(b =>
+        b.badge === 'Perfect Month Attendance' && b.weekKey === weekMon && b.status === 'approved'
+      );
+      if (!alreadyHasMonth) {
+        const hasAll4 = fourWeeks.every(wk =>
+          badgeEntries.some(b =>
+            b.badge === 'Weekly Perfect Attendance' && b.weekKey === wk && b.status === 'approved'
+          )
+        );
+        if (hasAll4) {
+          await addDoc(collection(db, 'badges', assoc.id, 'entries'), {
+            badge: 'Perfect Month Attendance',
+            emoji: '🗓️',
+            weekKey: weekMon,
+            status: 'approved',
+            autoAwarded: true,
+            approvedBy: 'System',
+            approvedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+          });
+          await updateDoc(doc(db, 'associates', assoc.id), { points: increment(100) });
+          await logPoints(assoc.id, 'Badge', 'Badge approved: Perfect Month Attendance', 100);
+          const cached = allAssociates.find(a => a.id === assoc.id);
+          if (cached) cached.points = (cached.points || 0) + 100;
+          monthlyAwarded++;
+        }
+      }
+    }
+
+    if (showAlert) {
+      alert(`✅ Attendance check complete for week of ${weekMon}.\n\nWeekly badges awarded: ${weeklyAwarded}\nPerfect Month badges awarded: ${monthlyAwarded}`);
+    }
+    return { weeklyAwarded, monthlyAwarded };
+  } catch (err) {
+    console.error('autoCheckPerfectAttendance error:', err);
+    if (showAlert) alert('Error running attendance check: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-calendar-check me-1"></i>Run Attendance Badge Check'; }
+  }
+};
 
 // ── Recalculate nextPointExpiry on associate doc ──────────────────────
 // Called after any pointslog write so renderMilestones can read it from memory
@@ -10312,10 +10458,18 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
                 <table class="table table-sm small mb-0">
                   <thead class="table-light"><tr><th>Badge</th><th class="text-end">Points</th></tr></thead>
                   <tbody>
-                    <tr><td>Standard Badge (Top Performer, Team Player, etc.)</td><td class="text-end fw-bold text-success">+25</td></tr>
-                    <tr><td>Leadership List <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:0.65rem">Elite</span></td><td class="text-end fw-bold text-success">+200</td></tr>
-                    <tr><td>Employee of the Month <span class="badge" style="background:#fef3c7;color:#92400e;font-size:0.65rem">Elite+</span></td><td class="text-end fw-bold text-success">+300</td></tr>
-                    <tr><td colspan="2" class="pt-2 fw-semibold small" style="color:var(--navy)">Productivity Badges <span class="text-muted fw-normal">(20 pts per 100 units)</span></td></tr>
+                    <tr><td colspan="2" class="fw-semibold small" style="color:var(--navy)">Standard Badges (+25 pts each)</td></tr>
+                    <tr><td style="padding-left:1rem">Top Performer of the Week, Most Improved, Team Player, Great Attendance, Perfect Attendance, Safety Champion, Above &amp; Beyond, Leadership Qualities, Always Helpful, Trainer, Mentor of the Month, Problem Solver, Positive Vibes, Never Late, Full House, Weekend Warrior, Cross-Trainer, Fast Learner, Cert Streak, Inventory Ace, Damage Prevention, Extra Mile, Speed Demon</td><td class="text-end fw-bold text-success align-top">+25</td></tr>
+                    <tr><td colspan="2" class="pt-2 fw-semibold small" style="color:var(--navy)">Auto-Awarded Attendance Badges</td></tr>
+                    <tr><td style="padding-left:1rem">📆 Weekly Perfect Attendance — No call-outs, NCNS, or early-outs for the week (auto-assigned by admin)</td><td class="text-end fw-bold text-success">+25</td></tr>
+                    <tr><td style="padding-left:1rem">🗓️ Perfect Month Attendance — 4 consecutive weeks of perfect attendance (auto-assigned by admin)</td><td class="text-end fw-bold text-success">+100</td></tr>
+                    <tr><td colspan="2" class="pt-2 fw-semibold small" style="color:var(--navy)">Elite Badges</td></tr>
+                    <tr><td style="padding-left:1rem">Elite Trainer 🏅</td><td class="text-end fw-bold text-success">+200</td></tr>
+                    <tr><td style="padding-left:1rem">Lean Six Sigma ⚙️</td><td class="text-end fw-bold text-success">+200</td></tr>
+                    <tr><td style="padding-left:1rem">Iron Associate 💪</td><td class="text-end fw-bold text-success">+200</td></tr>
+                    <tr><td style="padding-left:1rem">Leadership List ⭐</td><td class="text-end fw-bold text-success">+200</td></tr>
+                    <tr><td style="padding-left:1rem">Employee of the Month 🏅</td><td class="text-end fw-bold text-success">+300</td></tr>
+                    <tr><td colspan="2" class="pt-2 fw-semibold small" style="color:var(--navy)">Productivity Badges</td></tr>
                     <tr><td>Large Pack - 300 Units 📦</td><td class="text-end fw-bold text-success">+60</td></tr>
                     <tr><td>Large Pack - 400 Units 📦</td><td class="text-end fw-bold text-success">+80</td></tr>
                     <tr><td>Large Pack - 500 Units 📦</td><td class="text-end fw-bold text-success">+100</td></tr>
@@ -10325,7 +10479,23 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
                     <tr><td>Small Pack - 900 Units 📬</td><td class="text-end fw-bold text-success">+180</td></tr>
                     <tr><td>Small Pack - 1000 Units 📬</td><td class="text-end fw-bold text-success">+200</td></tr>
                     <tr><td>Replen Pick - 1000 Units 🔄</td><td class="text-end fw-bold text-success">+200</td></tr>
+                    <tr><td>Replen Put - 500 Units 📥</td><td class="text-end fw-bold text-success">+100</td></tr>
+                    <tr><td>Replen Put - 600 Units 📥</td><td class="text-end fw-bold text-success">+120</td></tr>
+                    <tr><td>Replen Put - 700 Units 📥</td><td class="text-end fw-bold text-success">+140</td></tr>
+                    <tr><td>Replen Put - 800 Units 📥</td><td class="text-end fw-bold text-success">+160</td></tr>
+                    <tr><td>Replen Put - 900 Units 📥</td><td class="text-end fw-bold text-success">+180</td></tr>
+                    <tr><td>Replen Put - 1000 Units 📥</td><td class="text-end fw-bold text-success">+200</td></tr>
                     <tr><td>OP Pick - 600 Units 🎯</td><td class="text-end fw-bold text-success">+120</td></tr>
+                    <tr><td>Box Master - 400 Units 📦</td><td class="text-end fw-bold text-success">+80</td></tr>
+                    <tr><td>Box Master - 500 Units 📦</td><td class="text-end fw-bold text-success">+100</td></tr>
+                    <tr><td>Box Master - 600 Units 📦</td><td class="text-end fw-bold text-success">+120</td></tr>
+                    <tr><td>Box Master - 700 Units 📦</td><td class="text-end fw-bold text-success">+140</td></tr>
+                    <tr><td>Cycle Count MOD - 400 🔢</td><td class="text-end fw-bold text-success">+40</td></tr>
+                    <tr><td>Cycle Count MOD - 500 🔢</td><td class="text-end fw-bold text-success">+50</td></tr>
+                    <tr><td>Cycle Count MOD - 600 🔢</td><td class="text-end fw-bold text-success">+60</td></tr>
+                    <tr><td>Cycle Count Rack - 200 🗄️</td><td class="text-end fw-bold text-success">+40</td></tr>
+                    <tr><td>Cycle Count Rack - 300 🗄️</td><td class="text-end fw-bold text-success">+60</td></tr>
+                    <tr><td>Cycle Count Rack - 400 🗄️</td><td class="text-end fw-bold text-success">+80</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -10371,7 +10541,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="admin-card">
             <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-trophy me-2" style="color:var(--orange)"></i>Achievement Badges</h6>
             <p class="small text-muted">Leads, Supervisors, and Admins can nominate associates for badges. Each nomination requires a reason and goes to an Admin for approval. Once approved, points are awarded automatically. Badges stack - an associate can earn the same badge multiple times.</p>
-            <p class="small text-muted mb-0"><strong>Tiers:</strong> Standard (25 pts) · Productivity (60–200 pts based on units) · Elite/Leadership List (200 pts) · Employee of the Month (300 pts). Productivity badges cover Large Pack (300–500 units), Small Pack (600–1000 units), Replen Pick (1000 units), and OP Pick (600 units).</p>
+            <p class="small text-muted mb-1"><strong>Standard badges (25 pts each):</strong> Top Performer of the Week, Most Improved, Team Player, Great Attendance, Perfect Attendance, Safety Champion, Above &amp; Beyond, Leadership Qualities, Always Helpful, Trainer, Mentor of the Month, Problem Solver, Positive Vibes, Never Late, Full House, Weekend Warrior, Cross-Trainer, Fast Learner, Cert Streak, Inventory Ace, Damage Prevention, Extra Mile, Speed Demon.</p>
+            <p class="small text-muted mb-1"><strong>Auto-awarded attendance badges:</strong> 📆 Weekly Perfect Attendance (25 pts) — auto-assigned by admin each week for associates with zero call-outs, NCNS, or early-outs. 🗓️ Perfect Month Attendance (100 pts) — auto-assigned when 4 consecutive weeks of perfect attendance are earned. Run from the Admin Panel → "Run Attendance Badge Check."</p>
+            <p class="small text-muted mb-1"><strong>Elite badges:</strong> Elite Trainer (🏅 200 pts) · Lean Six Sigma (⚙️ 200 pts) · Iron Associate (💪 200 pts) · Leadership List (⭐ 200 pts) · Employee of the Month (🏅 300 pts).</p>
+            <p class="small text-muted mb-0"><strong>Productivity badges:</strong> Large Pack (300–500 units, 60–100 pts) · Small Pack (600–1000 units, 120–200 pts) · Replen Pick/Put (500–1000 units, 100–200 pts) · OP Pick 600 (120 pts) · Box Master (400–700 units, 80–140 pts) · Cycle Count MOD (400–600, 40–60 pts) · Cycle Count Rack (200–400, 40–80 pts).</p>
           </div>
         </div>
 
@@ -10856,6 +11029,17 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <h1 class="page-title"><i class="fas fa-shield-alt me-2" style="color:var(--orange)"></i>Admin Panel</h1>
         <button class="btn btn-sm btn-orange admin-only-section" onclick="openCreateUser()"><i class="fas fa-user-plus me-1"></i>Create Account</button>
+      </div>
+
+      <!-- Attendance Badge Auto-Check -->
+      <div class="admin-card mb-4 admin-only-section" style="border-left:4px solid var(--orange)">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-calendar-check me-2" style="color:var(--orange)"></i>Attendance Badge Auto-Check</h6>
+        </div>
+        <p class="text-muted small mb-3">Awards <strong>Weekly Perfect Attendance</strong> (📆 25 pts) to associates with no call-outs, NCNS, or early-outs last week. Awards <strong>Perfect Month Attendance</strong> (🗓️ 100 pts) when 4 consecutive weekly badges are earned. Run once each week after the week closes.</p>
+        <button id="runAttCheckBtn" class="btn btn-sm btn-orange" onclick="autoCheckPerfectAttendance(true)">
+          <i class="fas fa-calendar-check me-1"></i>Run Attendance Badge Check
+        </button>
       </div>
 
       <!-- Tab Visibility -->
