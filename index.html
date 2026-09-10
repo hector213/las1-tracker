@@ -8835,6 +8835,13 @@ window.kbBack = () => {
 
 function eomVoteMonthKey() {
   const d = new Date();
+  // Last day of current month
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  // Open voting for the current month if we're within 4 days of the end
+  if (d.getDate() >= lastDay - 3) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  }
+  // Otherwise vote on the previous (just-closed) month
   const prev = new Date(d.getFullYear(), d.getMonth() - 1, 1);
   return `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}`;
 }
@@ -8950,16 +8957,27 @@ window.loadEOM = async () => {
     allAssociates = assocSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   }
 
-  // Build month options: current vote month + last 12 months
+  // Build month options: active vote month first, then last 12 months
   const sel = document.getElementById('eomMonthSelect');
   if (sel && !sel.options.length) {
     const now = new Date();
+    const activeKey = eomVoteMonthKey();
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const votingCurrentMonth = now.getDate() >= lastDay - 3;
+    // If voting is open for current month, add it first
+    if (votingCurrentMonth) {
+      const opt = document.createElement('option');
+      opt.value = activeKey; opt.textContent = eomMonthLabel(activeKey) + ' (Voting Open)';
+      opt.selected = true;
+      sel.appendChild(opt);
+    }
+    // Add previous 13 months
     for (let i = 1; i <= 13; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
       const opt = document.createElement('option');
       opt.value = key; opt.textContent = eomMonthLabel(key);
-      if (i === 1) opt.selected = true;
+      if (!votingCurrentMonth && i === 1) opt.selected = true;
       sel.appendChild(opt);
     }
   }
