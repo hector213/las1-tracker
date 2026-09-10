@@ -9002,25 +9002,34 @@ window.renderEOMDashboard = async () => {
     ? [getDoc(doc(db, 'eom', monthKey, 'votes', myAssocId))]
     : [Promise.resolve(null)];
 
-  const [scores, winnerSnap, historySnaps, myVoteSnap] = await Promise.all([
+  // Build last 13 month keys to check for history (doesn't require parent doc to exist)
+  const now = new Date();
+  const historyKeys = [];
+  for (let i = 0; i <= 13; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    historyKeys.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  }
+
+  const [scores, winnerSnap, ...historyAndVoteSnaps] = await Promise.all([
     computeEOMScores(monthKey),
     getDoc(doc(db, 'eom', monthKey, 'meta', 'winner')),
-    getDocs(collection(db, 'eom')),
+    ...historyKeys.map(k => getDoc(doc(db, 'eom', k, 'meta', 'winner'))),
     ...extraFetches,
   ]);
 
+  const myVoteSnap = historyAndVoteSnaps[historyKeys.length] || null;
   const winner = winnerSnap.exists() ? winnerSnap.data() : null;
   const top3 = scores.slice(0,3);
   const isFullAdmin = roleAtLeast('om');
 
-  // Build history
+  // Build history from direct lookups
   const historyRows = [];
-  for (const hDoc of historySnaps.docs) {
-    const wSnap = await getDoc(doc(db, 'eom', hDoc.id, 'meta', 'winner'));
-    if (wSnap.exists()) {
-      historyRows.push({ month: hDoc.id, ...wSnap.data() });
+  historyKeys.forEach((k, i) => {
+    const wSnap = historyAndVoteSnaps[i];
+    if (wSnap && wSnap.exists()) {
+      historyRows.push({ month: k, ...wSnap.data() });
     }
-  }
+  });
   historyRows.sort((a,b) => b.month.localeCompare(a.month));
 
   // All votes for this month
