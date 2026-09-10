@@ -9168,9 +9168,10 @@ window.renderEOMDashboard = async () => {
 window.confirmEOMWinner = async (monthKey, winnerId, winnerName) => {
   if (!confirm(`Confirm ${winnerName} as Employee of the Month for ${eomMonthLabel(monthKey)}?`)) return;
   const confirmedBy = currentUser?.email || 'Admin';
-  await setDoc(doc(db, 'eom', monthKey, 'meta', 'winner'), {
-    winnerId, winnerName, confirmedBy, confirmedAt: new Date().toISOString()
-  });
+  const winnerData = { winnerId, winnerName, confirmedBy, confirmedAt: new Date().toISOString() };
+  // Write parent doc so getDocs(collection('eom')) can list it for history
+  await setDoc(doc(db, 'eom', monthKey), { month: monthKey }, { merge: true });
+  await setDoc(doc(db, 'eom', monthKey, 'meta', 'winner'), winnerData);
   await renderEOMDashboard();
 };
 
@@ -9195,6 +9196,8 @@ window.adminEOMOverride = async (monthKey) => {
   if (!winnerId) { alert('Please select an associate.'); return; }
   if (!confirm(`Admin override: confirm ${winnerName} as Employee of the Month for ${eomMonthLabel(monthKey)}?`)) return;
   const confirmedBy = currentUser?.email || 'Admin';
+  // Write parent doc so getDocs(collection('eom')) can list it for history
+  await setDoc(doc(db, 'eom', monthKey), { month: monthKey }, { merge: true });
   await setDoc(doc(db, 'eom', monthKey, 'meta', 'winner'), {
     winnerId, winnerName, confirmedBy, confirmedAt: new Date().toISOString(), override: true
   });
