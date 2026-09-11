@@ -1900,17 +1900,19 @@ const ONBOARDING_DEFAULTS = {
     { text: 'Orientation complete' },
     { text: 'Badge & access issued' },
     { text: 'First certification started' },
+    { text: 'First certification earned' },
     { text: 'Met with supervisor/lead' },
+    { text: '1:1 with OM - shift expectations' },
     { text: 'Attendance policy reviewed' }
   ],
   '60': [
-    { text: 'First certification earned' },
+    { text: 'Second certification earned' },
+    { text: 'First 1:1 with supervisor' },
     { text: 'Shift routine understood' },
-    { text: 'Peer relationship established' },
-    { text: '​First 1:1 complete' }
+    { text: 'Peer relationship established' }
   ],
   '90': [
-    { text: 'Second certification earned' },
+    { text: 'Third certification earned' },
     { text: 'Working independently' },
     { text: 'Performance discussion complete' },
     { text: 'Added to coverage rotation' }
@@ -1937,6 +1939,19 @@ window.initOnboarding = async (associateId) => {
   loadOnboarding(associateId);
 };
 
+window.resetOnboarding = async (associateId) => {
+  if (!roleAtLeast('admin')) return;
+  const assoc = allAssociates.find(a => a.id === associateId);
+  if (!confirm(`Reset the onboarding checklist for ${assoc?.name || 'this associate'}? All progress will be cleared and defaults restored.`)) return;
+  const phases = {};
+  Object.entries(ONBOARDING_DEFAULTS).forEach(([phase, tasks]) => {
+    phases[phase] = { tasks: tasks.map((t, i) => ({ id: `default_${phase}_${i}`, text: t.text, done: false, doneAt: null, doneBy: null, custom: false })) };
+  });
+  const startDate = assoc?.hireDate || new Date().toISOString().slice(0,10);
+  await setDoc(doc(db, 'onboarding', associateId), { phases, startDate });
+  loadOnboarding(associateId);
+};
+
 window.loadOnboarding = async (associateId) => {
   const section = document.getElementById('onboardingSection');
   const content = document.getElementById('onboardingContent');
@@ -1944,14 +1959,7 @@ window.loadOnboarding = async (associateId) => {
   const assoc = allAssociates.find(a => a.id === associateId);
   const hireDate = assoc?.hireDate;
   const snap = await getDoc(doc(db, 'onboarding', associateId));
-  // Show section if within 90 days of hire or checklist exists
-  let shouldShow = snap.exists();
-  if (!shouldShow && hireDate) {
-    const hired = new Date(hireDate + 'T00:00:00');
-    const daysSince = (Date.now() - hired.getTime()) / 86400000;
-    if (daysSince <= 90) shouldShow = true;
-  }
-  if (!shouldShow) { section.classList.add('d-none'); return; }
+  // Always show the onboarding section for all associates
   section.classList.remove('d-none');
   if (!snap.exists()) {
     content.innerHTML = roleAtLeast('lead')
@@ -1967,7 +1975,8 @@ window.loadOnboarding = async (associateId) => {
   const pct = totalTasks ? Math.round(doneTasks / totalTasks * 100) : 0;
   document.getElementById('onboardingProgressBadge').textContent = pct + '%';
   const phaseLabels = { '30': '30 Days', '60': '60 Days', '90': '90 Days' };
-  content.innerHTML = ['30','60','90'].map(phase => {
+  const resetBtn = roleAtLeast('admin') ? `<div class="text-end mb-2"><button class="btn btn-sm btn-outline-danger" style="font-size:0.72rem" onclick="resetOnboarding('${associateId}')"><i class="fas fa-redo me-1"></i>Reset Checklist</button></div>` : '';
+  content.innerHTML = resetBtn + ['30','60','90'].map(phase => {
     const p = phases[phase] || { tasks: [] };
     const tasks = p.tasks || [];
     const done = tasks.filter(t => t.done).length;
@@ -10241,9 +10250,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <a class="nav-link d-none" data-view="eom" onclick="loadEOM()">
         <i class="fas fa-trophy"></i><span>Emp. of Month</span>
       </a>
-      <a class="nav-link d-none" data-view="discipline" onclick="loadDiscipline()">
-        <i class="fas fa-gavel"></i><span>Discipline</span>
-      </a>
       <a class="nav-link" data-view="timeoff" onclick="loadTimeOff()">
         <i class="fas fa-calendar-minus"></i><span>Time Off</span>
       </a>
@@ -10529,6 +10535,23 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         </div>
       </div>
 
+      <!-- Onboarding Checklist -->
+      <div id="onboardingSection" class="d-none mt-4">
+        <div style="border:1px solid #bbf7d0;border-radius:10px;overflow:hidden">
+          <div class="d-flex align-items-center justify-content-between" style="background:linear-gradient(90deg,#f0fdf4 0%,#ecfdf5 100%);padding:12px 16px;cursor:pointer" onclick="toggleOnboardingPanel()">
+            <div class="d-flex align-items-center gap-2">
+              <i class="fas fa-clipboard-list" style="color:#16a34a;font-size:0.9rem"></i>
+              <span class="fw-bold" style="color:#15803d">Onboarding Checklist</span>
+              <span class="badge ms-1" style="background:#dcfce7;color:#15803d;font-size:0.7rem" id="onboardingProgressBadge">0%</span>
+            </div>
+            <i class="fas fa-chevron-down" id="onboardingChevron" style="color:#16a34a;transition:transform 0.2s"></i>
+          </div>
+          <div id="onboardingBody" class="d-none" style="padding:14px 16px 16px">
+            <div id="onboardingContent"><div class="text-center text-muted py-3 small">Loading…</div></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Certifications section -->
       <div class="chips-section">
         <h6><i class="fas fa-certificate me-1" style="color:#f97316"></i>Cross-Training Certifications
@@ -10555,23 +10578,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </div>
           <div id="goalsBody" class="d-none" style="padding:14px 16px 16px">
             <div id="goalsContainer"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Onboarding Checklist -->
-      <div id="onboardingSection" class="d-none mt-4">
-        <div style="border:1px solid #bbf7d0;border-radius:10px;overflow:hidden">
-          <div class="d-flex align-items-center justify-content-between" style="background:linear-gradient(90deg,#f0fdf4 0%,#ecfdf5 100%);padding:12px 16px;cursor:pointer" onclick="toggleOnboardingPanel()">
-            <div class="d-flex align-items-center gap-2">
-              <i class="fas fa-clipboard-list" style="color:#16a34a;font-size:0.9rem"></i>
-              <span class="fw-bold" style="color:#15803d">Onboarding Checklist</span>
-              <span class="badge ms-1" style="background:#dcfce7;color:#15803d;font-size:0.7rem" id="onboardingProgressBadge">0%</span>
-            </div>
-            <i class="fas fa-chevron-down" id="onboardingChevron" style="color:#16a34a;transition:transform 0.2s"></i>
-          </div>
-          <div id="onboardingBody" class="d-none" style="padding:14px 16px 16px">
-            <div id="onboardingContent"><div class="text-center text-muted py-3 small">Loading…</div></div>
           </div>
         </div>
       </div>
@@ -11727,14 +11733,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <span class="badge bg-secondary ms-1">Viewer</span> read-only. Click the role dropdown to change.
         </div>
       </div>
-    </div>
-
-    <!-- DISCIPLINE VIEW -->
-    <div id="disciplineView" class="view d-none">
-      <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-        <h1 class="page-title"><i class="fas fa-gavel me-2" style="color:var(--orange)"></i>Progressive Discipline</h1>
-      </div>
-      <div id="disciplineContent"></div>
     </div>
 
   </main>
