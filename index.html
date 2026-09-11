@@ -1098,6 +1098,7 @@ async function restoreLastView() {
   if (view === 'attendance'){ loadAttendance(); return; }
   if (view === 'coverage')  { loadCoverage();  return; }
   if (view === 'eom') { loadEOM(); return; }
+  if (view === 'discipline') { loadDiscipline(); return; }
   if (view === 'pointslog') { loadPointsLog(); return; }
   if (view === 'admin')     { loadAdminPanel(); return; }
   if (view === 'timeoff')   { loadTimeOff();    return; }
@@ -1127,6 +1128,7 @@ function loadDashboard() {
         _dashFirstLoad = false;
         renderMilestones(); // only on initial load - expensive subcollection reads
         loadKanbanCounts(); // load once per dashboard visit; applyKanbanCounts() restores after redraws
+        checkOverdueActionItems(); // check for overdue action items (leads+)
       }
     });
     // autoExpirePoints() moved to Firebase Cloud Function (functions/index.js)
@@ -1717,6 +1719,10 @@ window.openProfile = async (id) => {
   listenCreds(id);
   listenWatchNotes(id);
   listenGoals(id);
+  onboardingPanelOpen = false;
+  document.getElementById('onboardingBody')?.classList.add('d-none');
+  document.getElementById('onboardingChevron')?.classList.remove('open');
+  loadOnboarding(id);
   listenAttendance(id);
   listenWarnings(id);
   listenOneOnOnes(id);
@@ -1888,6 +1894,129 @@ window.saveFlag = async () => {
 };
 
 // ─── Notes ───────────────────────────────────────────────────────────
+// ─── Onboarding Checklist ─────────────────────────────────────────────────
+const ONBOARDING_DEFAULTS = {
+  '30': [
+    { text: 'Orientation complete' },
+    { text: 'Badge & access issued' },
+    { text: 'First certification started' },
+    { text: 'Met with supervisor/lead' },
+    { text: 'Attendance policy reviewed' }
+  ],
+  '60': [
+    { text: 'First certification earned' },
+    { text: 'Shift routine understood' },
+    { text: 'Peer relationship established' },
+    { text: '​First 1:1 complete' }
+  ],
+  '90': [
+    { text: 'Second certification earned' },
+    { text: 'Working independently' },
+    { text: 'Performance discussion complete' },
+    { text: 'Added to coverage rotation' }
+  ]
+};
+
+let onboardingPanelOpen = false;
+
+window.toggleOnboardingPanel = () => {
+  onboardingPanelOpen = !onboardingPanelOpen;
+  document.getElementById('onboardingBody').classList.toggle('d-none', !onboardingPanelOpen);
+  document.getElementById('onboardingChevron').classList.toggle('open', onboardingPanelOpen);
+  if (onboardingPanelOpen && currentAssociateId) loadOnboarding(currentAssociateId);
+};
+
+window.initOnboarding = async (associateId) => {
+  const assoc = allAssociates.find(a => a.id === associateId);
+  const startDate = assoc?.hireDate || new Date().toISOString().slice(0,10);
+  const phases = {};
+  Object.entries(ONBOARDING_DEFAULTS).forEach(([phase, tasks]) => {
+    phases[phase] = { tasks: tasks.map((t, i) => ({ id: `default_${phase}_${i}`, text: t.text, done: false, doneAt: null, doneBy: null, custom: false })) };
+  });
+  await setDoc(doc(db, 'onboarding', associateId), { phases, startDate });
+  loadOnboarding(associateId);
+};
+
+window.loadOnboarding = async (associateId) => {
+  const section = document.getElementById('onboardingSection');
+  const content = document.getElementById('onboardingContent');
+  if (!section || !content) return;
+  const assoc = allAssociates.find(a => a.id === associateId);
+  const hireDate = assoc?.hireDate;
+  const snap = await getDoc(doc(db, 'onboarding', associateId));
+  // Show section if within 90 days of hire or checklist exists
+  let shouldShow = snap.exists();
+  if (!shouldShow && hireDate) {
+    const hired = new Date(hireDate + 'T00:00:00');
+    const daysSince = (Date.now() - hired.getTime()) / 86400000;
+    if (daysSince <= 90) shouldShow = true;
+  }
+  if (!shouldShow) { section.classList.add('d-none'); return; }
+  section.classList.remove('d-none');
+  if (!snap.exists()) {
+    content.innerHTML = roleAtLeast('lead')
+      ? `<div class="text-center py-3"><p class="small text-muted mb-2">No checklist yet.</p><button class="btn btn-sm btn-outline-success" onclick="initOnboarding('${associateId}')"><i class="fas fa-plus me-1"></i>Initialize Checklist</button></div>`
+      : '<div class="text-center text-muted py-3 small">No checklist initialized yet.</div>';
+    document.getElementById('onboardingProgressBadge').textContent = '0%';
+    return;
+  }
+  const data = snap.data();
+  const phases = data.phases || {};
+  let totalTasks = 0, doneTasks = 0;
+  Object.values(phases).forEach(p => { (p.tasks||[]).forEach(t => { totalTasks++; if (t.done) doneTasks++; }); });
+  const pct = totalTasks ? Math.round(doneTasks / totalTasks * 100) : 0;
+  document.getElementById('onboardingProgressBadge').textContent = pct + '%';
+  const phaseLabels = { '30': '30 Days', '60': '60 Days', '90': '90 Days' };
+  content.innerHTML = ['30','60','90'].map(phase => {
+    const p = phases[phase] || { tasks: [] };
+    const tasks = p.tasks || [];
+    const done = tasks.filter(t => t.done).length;
+    const phasePct = tasks.length ? Math.round(done / tasks.length * 100) : 0;
+    return `<div class="mb-3 p-3 rounded" style="background:#f8fafc;border:1px solid #e2e8f0">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="fw-semibold small" style="color:#15803d"><i class="fas fa-flag me-1"></i>${phaseLabels[phase]}</span>
+        <span class="badge" style="background:#dcfce7;color:#15803d;font-size:0.7rem">${done}/${tasks.length}</span>
+      </div>
+      <div class="progress mb-2" style="height:6px"><div class="progress-bar" style="width:${phasePct}%;background:#22c55e"></div></div>
+      ${tasks.map(t => `<div class="d-flex align-items-center gap-2 py-1" style="border-bottom:1px solid #f1f5f9">
+        <input type="checkbox" class="form-check-input mt-0" ${t.done ? 'checked' : ''} ${roleAtLeast('lead') ? '' : 'disabled'} onchange="toggleOnboardingTask('${associateId}','${phase}','${t.id}')">
+        <span class="small ${t.done ? 'text-muted text-decoration-line-through' : ''}">${escapeHtml(t.text)}</span>
+        ${t.done && t.doneBy ? `<span class="ms-auto text-muted" style="font-size:0.68rem">${escapeHtml(t.doneBy)}</span>` : ''}
+      </div>`).join('')}
+      ${roleAtLeast('lead') ? `<div class="d-flex gap-2 mt-2">
+        <input type="text" id="newTaskInput_${phase}" class="form-control form-control-sm" placeholder="Add task…" style="font-size:0.8rem">
+        <button class="btn btn-sm btn-outline-success" style="white-space:nowrap;font-size:0.78rem" onclick="addOnboardingTask('${associateId}','${phase}')"><i class="fas fa-plus"></i></button>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+};
+
+window.toggleOnboardingTask = async (associateId, phase, taskId) => {
+  const snap = await getDoc(doc(db, 'onboarding', associateId));
+  if (!snap.exists()) return;
+  const data = snap.data();
+  const tasks = (data.phases?.[phase]?.tasks || []).map(t => {
+    if (t.id !== taskId) return t;
+    const nowDone = !t.done;
+    return { ...t, done: nowDone, doneAt: nowDone ? new Date().toISOString() : null, doneBy: nowDone ? (window._cachedActorName || 'Lead') : null };
+  });
+  await updateDoc(doc(db, 'onboarding', associateId), { [`phases.${phase}.tasks`]: tasks });
+  _getActorName().then(name => { window._cachedActorName = name; });
+  loadOnboarding(associateId);
+};
+
+window.addOnboardingTask = async (associateId, phase) => {
+  const input = document.getElementById(`newTaskInput_${phase}`);
+  const text = input?.value.trim();
+  if (!text) return;
+  const snap = await getDoc(doc(db, 'onboarding', associateId));
+  if (!snap.exists()) return;
+  const data = snap.data();
+  const tasks = [...(data.phases?.[phase]?.tasks || []), { id: `custom_${Date.now()}`, text, done: false, doneAt: null, doneBy: null, custom: true }];
+  await updateDoc(doc(db, 'onboarding', associateId), { [`phases.${phase}.tasks`]: tasks });
+  loadOnboarding(associateId);
+};
+
 function listenNotes(associateId) {
   getDocs(collection(db, 'notes', associateId, 'entries')).then(snap => {
     lastNotes = [];
@@ -1929,6 +2058,7 @@ function renderNotes(notes) {
       </div>
       <div class="note-text">${escapeHtml(n.text)}</div>
       ${n.screenshotData ? `<div class="mt-2"><img src="${n.screenshotData}" alt="Performance screenshot" style="max-width:100%;max-height:320px;border-radius:6px;border:1px solid #e2e8f0;cursor:zoom-in;" onclick="openScreenshotLightbox(this.src)"></div>` : ''}
+      ${n.actionItem ? `<div class="mt-2 p-2 rounded" style="background:#fff7ed;border:1px solid #fed7aa;font-size:0.78rem"><div class="d-flex justify-content-between align-items-start"><div><span style="color:#c2410c;font-weight:600"><i class="fas fa-tasks me-1"></i>Action Item:</span> <span>${escapeHtml(n.actionItem.text)}</span>${n.actionItem.dueDate ? `<span class="ms-2 text-muted">· Due ${new Date(n.actionItem.dueDate+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>` : ''}${n.actionItem.owner ? `<span class="ms-2 text-muted">· ${escapeHtml(n.actionItem.owner)}</span>` : ''}</div>${n.actionItem.status === 'open' && roleAtLeast('lead') ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:#22c55e;color:#fff;border:none" onclick="resolveActionItem('${n.id}')">Mark Resolved</button>` : '<span style="color:#16a34a;font-size:0.72rem;font-weight:600"><i class="fas fa-check-circle me-1"></i>Resolved</span>'}</div></div>` : ''}
     </div>`).join('');
 }
 
@@ -1945,6 +2075,8 @@ window.onNoteTypeChange = (sel) => {
     document.getElementById('noteScreenshot').value = '';
     document.getElementById('screenshotPreview').innerHTML = '';
   }
+  const section = document.getElementById('actionItemSection');
+  if (section) section.classList.toggle('d-none', !['Coaching','Performance'].includes(sel.value));
 };
 window.openScreenshotLightbox = (src) => {
   // Remove any existing lightbox
@@ -2086,6 +2218,12 @@ window.saveNote = async () => {
       createdAt: new Date().toISOString()
     };
     if (screenshotData) noteData.screenshotData = screenshotData;
+    const aiText = document.getElementById('actionItemText')?.value.trim();
+    const aiDue  = document.getElementById('actionItemDue')?.value;
+    const aiOwner = document.getElementById('actionItemOwner')?.value.trim();
+    if (aiText) {
+      noteData.actionItem = { text: aiText, dueDate: aiDue || null, owner: aiOwner || null, status: 'open' };
+    }
     await addDoc(collection(db, 'notes', currentAssociateId, 'entries'), noteData);
     recordActivity(currentAssociateId);
     const pts = notePoints(type);
@@ -2099,6 +2237,12 @@ window.saveNote = async () => {
       const curAssoc = allAssociates.find(a => a.id === currentAssociateId);
       if (curAssoc) curAssoc.points = newPts;
     }
+    const aiTextEl = document.getElementById('actionItemText');
+    const aiDueEl  = document.getElementById('actionItemDue');
+    const aiOwnerEl = document.getElementById('actionItemOwner');
+    if (aiTextEl) aiTextEl.value = '';
+    if (aiDueEl)  aiDueEl.value = '';
+    if (aiOwnerEl) aiOwnerEl.value = '';
     bootstrap.Modal.getInstance(document.getElementById('noteModal')).hide();
     listenNotes(currentAssociateId);
   } finally {
@@ -2129,6 +2273,45 @@ window.deleteNote = async (noteId) => {
   }
   listenNotes(currentAssociateId);
 };
+
+window.resolveActionItem = async (noteId) => {
+  const displayName = await _getActorName();
+  await updateDoc(doc(db, 'notes', currentAssociateId, 'entries', noteId), {
+    'actionItem.status': 'resolved',
+    'actionItem.resolvedBy': displayName,
+    'actionItem.resolvedAt': new Date().toISOString()
+  });
+  listenNotes(currentAssociateId);
+};
+
+// ─── Overdue Action Items Alert (dashboard) ────────────────────────────
+async function checkOverdueActionItems() {
+  const alertEl = document.getElementById('overdueActionItemsAlert');
+  if (!alertEl || !roleAtLeast('lead')) return;
+  alertEl.innerHTML = '';
+  const today = new Date().toISOString().slice(0,10);
+  const active = allAssociates.filter(a => a.status === 'active' && !a.position);
+  const results = [];
+  await Promise.all(active.map(async a => {
+    const snap = await getDocs(collection(db, 'notes', a.id, 'entries'));
+    snap.forEach(d => {
+      const n = d.data();
+      if (n.actionItem?.status === 'open' && n.actionItem.dueDate && n.actionItem.dueDate < today) {
+        results.push({ assocName: a.name, assocId: a.id, text: n.actionItem.text, dueDate: n.actionItem.dueDate });
+      }
+    });
+  }));
+  if (!results.length) return;
+  results.sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+  alertEl.innerHTML = `<div class="mb-3 p-3 rounded" style="background:#fff7ed;border:1px solid #fed7aa">
+    <div class="fw-semibold mb-2" style="color:#c2410c"><i class="fas fa-exclamation-triangle me-2"></i>Overdue Action Items (${results.length})</div>
+    ${results.map(r => `<div class="d-flex align-items-center justify-content-between py-1" style="border-bottom:1px solid #fed7aa">
+      <div class="small"><span class="fw-semibold" style="cursor:pointer;color:#ea580c" onclick="openProfile('${r.assocId}')">${escapeHtml(r.assocName)}</span> — ${escapeHtml(r.text)}</div>
+      <span class="ms-3 text-muted small" style="white-space:nowrap">Due ${new Date(r.dueDate+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>
+    </div>`).join('')}
+  </div>`;
+}
+window.checkOverdueActionItems = checkOverdueActionItems;
 
 // ─── Login Credentials (admin only) ───────────────────────────────────
 let lastCreds = [];
@@ -7372,6 +7555,8 @@ async function applyTabVisibility() {
     });
     const eomLink = document.querySelector('.nav-link[data-view="eom"]');
     if (eomLink) eomLink.classList.remove('d-none');
+    const discLink = document.querySelector('.nav-link[data-view="discipline"]');
+    if (discLink) discLink.classList.remove('d-none');
     return;
   }
   const snap = await getDoc(doc(db, 'settings', 'tabs'));
@@ -7389,6 +7574,8 @@ async function applyTabVisibility() {
   });
   const eomLink = document.querySelector('.nav-link[data-view="eom"]');
   if (eomLink) eomLink.classList.toggle('d-none', !roleAtLeast('lead'));
+  const disciplineLink = document.querySelector('.nav-link[data-view="discipline"]');
+  if (disciplineLink) disciplineLink.classList.toggle('d-none', !roleAtLeast('lead'));
 }
 
 // ─── Login Tracker ────────────────────────────────────────────────────
@@ -8947,6 +9134,117 @@ async function computeEOMScores(monthKey) {
   }).sort((a,b) => b.total - a.total);
 }
 
+// ─── Progressive Discipline Dashboard ─────────────────────────────────────
+window.loadDiscipline = async () => {
+  showView('discipline');
+  const el = document.getElementById('disciplineContent');
+  if (!el) return;
+  el.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Loading…</div>';
+
+  if (!allAssociates.length) {
+    const snap = await getDocs(collection(db, 'associates'));
+    allAssociates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+
+  const active = allAssociates.filter(a => a.status === 'active' && !a.position);
+  const ninetyDaysAgo = new Date(); ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  const cutoff = ninetyDaysAgo.toISOString().slice(0,10);
+  const today = new Date().toISOString().slice(0,10);
+
+  const notesData = await Promise.all(active.map(a => getDocs(collection(db, 'notes', a.id, 'entries'))));
+
+  let allRows = active.map((a, i) => {
+    const notes = notesData[i].docs.map(d => ({ id: d.id, ...d.data() }));
+    const recentBadNotes = notes.filter(n => ['Coaching','Performance'].includes(n.type) && (n.createdAt||'').slice(0,10) >= cutoff);
+    const openActionItems = notes.filter(n => n.actionItem?.status === 'open');
+    const overdueItems = openActionItems.filter(n => n.actionItem.dueDate && n.actionItem.dueDate < today);
+    const attPts = a.attendancePoints || 0;
+    const tier = WARNING_TIERS.slice().reverse().find(t => attPts >= t.threshold) || null;
+    // Last corrective from warnings subcollection - look in notes for Performance type as proxy
+    const lastCoaching = recentBadNotes.length ? recentBadNotes.sort((a,b) => b.createdAt.localeCompare(a.createdAt))[0]?.createdAt?.slice(0,10) : null;
+    return { ...a, attPts, tier, recentBadNotes: recentBadNotes.length, openActionItems: openActionItems.length, overdueItems: overdueItems.length, lastCoaching };
+  }).filter(r => r.attPts > 0 || r.recentBadNotes > 0 || r.overdueItems > 0)
+    .sort((a,b) => b.attPts - a.attPts || b.recentBadNotes - a.recentBadNotes);
+
+  window._disciplineRows = allRows;
+  window._disciplineFilter = 'all';
+  renderDisciplineTable(allRows);
+};
+
+function renderDisciplineTable(rows, filter) {
+  filter = filter || window._disciplineFilter || 'all';
+  window._disciplineFilter = filter;
+  const el = document.getElementById('disciplineContent');
+  if (!el) return;
+  const all = window._disciplineRows || rows;
+
+  let filtered = all;
+  if (filter === 'attendance') filtered = all.filter(r => r.attPts > 0);
+  else if (filter === 'open-actions') filtered = all.filter(r => r.openActionItems > 0);
+  else if (filter === 'overdue') filtered = all.filter(r => r.overdueItems > 0);
+
+  const totalFlagged = all.length;
+  const avgPts = all.length ? (all.reduce((s,r) => s + r.attPts, 0) / all.length).toFixed(1) : 0;
+  const totalOpenActions = all.reduce((s,r) => s + r.openActionItems, 0);
+
+  const filterBtns = ['all','attendance','open-actions','overdue'].map(f => {
+    const labels = { all:'All', attendance:'Attendance Issue', 'open-actions':'Has Open Action Items', overdue:'Overdue Items' };
+    return `<button class="btn btn-sm ${filter===f?'btn-orange':'btn-outline-secondary'} me-1 mb-1" onclick="renderDisciplineTable(null,'${f}')">${labels[f]}</button>`;
+  }).join('');
+
+  const rows_html = filtered.length ? filtered.map(r => {
+    const tierBadge = r.tier
+      ? `<span class="badge" style="background:${r.tier.bg};color:${r.tier.color};border:1px solid ${r.tier.color}">${r.tier.label}</span>`
+      : '<span class="text-muted small">—</span>';
+    const overdueTag = r.overdueItems > 0 ? `<span class="badge bg-danger ms-1">${r.overdueItems} overdue</span>` : '';
+    return `<tr style="cursor:pointer" onclick="openProfile('${r.id}')">
+      <td class="fw-semibold">${escapeHtml(r.name)}</td>
+      <td>${escapeHtml(r.shift || '—')}</td>
+      <td><span class="${r.attPts >= 9 ? 'text-danger fw-bold' : r.attPts >= 6 ? 'text-warning fw-bold' : ''}">${r.attPts}</span></td>
+      <td>${tierBadge}</td>
+      <td>${r.lastCoaching ? `<span class="small text-muted">${new Date(r.lastCoaching+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>` : '—'}</td>
+      <td>${r.recentBadNotes > 0 ? `<span class="badge bg-warning text-dark">${r.recentBadNotes}</span>` : '0'}</td>
+      <td>${r.openActionItems > 0 ? `<span class="badge" style="background:#fed7aa;color:#c2410c">${r.openActionItems}</span>${overdueTag}` : '0'}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7" class="text-center text-muted py-4">No associates match this filter.</td></tr>`;
+
+  el.innerHTML = `
+    <div class="row g-3 mb-4">
+      <div class="col-12 col-md-4">
+        <div class="stat-card h-100" style="background:linear-gradient(135deg,#1a2744 0%,#2d3e6f 100%)">
+          <div class="val" style="font-size:2.5rem">${totalFlagged}</div>
+          <div class="lbl">Associates Flagged</div>
+        </div>
+      </div>
+      <div class="col-12 col-md-4">
+        <div class="stat-card h-100" style="background:linear-gradient(135deg,#ea580c 0%,#f97316 100%)">
+          <div class="val" style="font-size:2.5rem">${avgPts}</div>
+          <div class="lbl">Avg Attendance Points</div>
+        </div>
+      </div>
+      <div class="col-12 col-md-4">
+        <div class="stat-card h-100" style="background:linear-gradient(135deg,#c2410c 0%,#ea580c 100%)">
+          <div class="val" style="font-size:2.5rem">${totalOpenActions}</div>
+          <div class="lbl">Open Action Items</div>
+        </div>
+      </div>
+    </div>
+    <div class="mb-3">${filterBtns}</div>
+    <div class="table-responsive">
+      <table class="table table-hover small">
+        <thead class="table-light">
+          <tr>
+            <th>Associate</th><th>Shift</th><th>Att. Points</th><th>Tier</th><th>Last Coaching</th><th>Coaching Notes (90d)</th><th>Open Actions</th>
+          </tr>
+        </thead>
+        <tbody>${rows_html}</tbody>
+      </table>
+    </div>
+    ${!all.length ? '<div class="text-center text-muted py-5"><i class="fas fa-check-circle fa-3x mb-3 d-block" style="color:#22c55e"></i>No active associates with discipline concerns.</div>' : ''}
+  `;
+}
+window.renderDisciplineTable = renderDisciplineTable;
+
 window.loadEOM = async () => {
   showView('eom');
   detachAll();
@@ -9943,6 +10241,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <a class="nav-link d-none" data-view="eom" onclick="loadEOM()">
         <i class="fas fa-trophy"></i><span>Emp. of Month</span>
       </a>
+      <a class="nav-link d-none" data-view="discipline" onclick="loadDiscipline()">
+        <i class="fas fa-gavel"></i><span>Discipline</span>
+      </a>
       <a class="nav-link" data-view="timeoff" onclick="loadTimeOff()">
         <i class="fas fa-calendar-minus"></i><span>Time Off</span>
       </a>
@@ -10018,6 +10319,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           <div class="leadership-roster" id="leadershipRoster"></div>
         </div>
       </div>
+
+      <!-- Overdue Action Items Alert (leads+) -->
+      <div id="overdueActionItemsAlert"></div>
 
       <!-- Hidden stat placeholders (kept for JS compatibility, outside grid row) -->
       <div id="statHeadcount" class="d-none"></div>
@@ -10251,6 +10555,23 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </div>
           <div id="goalsBody" class="d-none" style="padding:14px 16px 16px">
             <div id="goalsContainer"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Onboarding Checklist -->
+      <div id="onboardingSection" class="d-none mt-4">
+        <div style="border:1px solid #bbf7d0;border-radius:10px;overflow:hidden">
+          <div class="d-flex align-items-center justify-content-between" style="background:linear-gradient(90deg,#f0fdf4 0%,#ecfdf5 100%);padding:12px 16px;cursor:pointer" onclick="toggleOnboardingPanel()">
+            <div class="d-flex align-items-center gap-2">
+              <i class="fas fa-clipboard-list" style="color:#16a34a;font-size:0.9rem"></i>
+              <span class="fw-bold" style="color:#15803d">Onboarding Checklist</span>
+              <span class="badge ms-1" style="background:#dcfce7;color:#15803d;font-size:0.7rem" id="onboardingProgressBadge">0%</span>
+            </div>
+            <i class="fas fa-chevron-down" id="onboardingChevron" style="color:#16a34a;transition:transform 0.2s"></i>
+          </div>
+          <div id="onboardingBody" class="d-none" style="padding:14px 16px 16px">
+            <div id="onboardingContent"><div class="text-center text-muted py-3 small">Loading…</div></div>
           </div>
         </div>
       </div>
@@ -11408,6 +11729,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       </div>
     </div>
 
+    <!-- DISCIPLINE VIEW -->
+    <div id="disciplineView" class="view d-none">
+      <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h1 class="page-title"><i class="fas fa-gavel me-2" style="color:var(--orange)"></i>Progressive Discipline</h1>
+      </div>
+      <div id="disciplineContent"></div>
+    </div>
+
   </main>
 </div>
 
@@ -11738,6 +12067,20 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
           </div>
           <input type="file" class="d-none" id="noteScreenshot" accept="image/*" onchange="previewScreenshot(this)">
           <div id="screenshotPreview" class="mt-2"></div>
+        </div>
+        <div id="actionItemSection" class="d-none mt-3 p-3 rounded" style="background:#fff7ed;border:1px solid #fed7aa">
+          <div class="fw-semibold small mb-2" style="color:#c2410c"><i class="fas fa-tasks me-1"></i>Action Item (optional)</div>
+          <input type="text" id="actionItemText" class="form-control form-control-sm mb-2" placeholder="What needs to happen?">
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="small text-muted">Due Date</label>
+              <input type="date" id="actionItemDue" class="form-control form-control-sm">
+            </div>
+            <div class="col-6">
+              <label class="small text-muted">Assigned To</label>
+              <input type="text" id="actionItemOwner" class="form-control form-control-sm" placeholder="Name or role">
+            </div>
+          </div>
         </div>
       </form>
     </div>
