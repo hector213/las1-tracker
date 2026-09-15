@@ -213,18 +213,20 @@ window.logPoints = logPoints;
 // weekKey = Monday date string "YYYY-MM-DD" for the last completed Mon-Sun week
 function _lastCompletedWeekMonday() {
   const today = new Date();
-  // day of week: 0=Sun,1=Mon,...,6=Sat
-  const dow = today.getDay();
-  // Days since last Sunday
-  const daysSinceSun = dow; // 0 if today is Sunday
-  // Last completed week ended last Saturday (or two Saturdays ago if today is Sunday)
-  // We want the Monday of last completed Mon–Sun week
-  // Last Sunday = today - dow days
-  // Last Mon = Last Sunday - 6 days
-  const lastSun = new Date(today);
-  lastSun.setDate(today.getDate() - dow);
-  const lastMon = new Date(lastSun);
-  lastMon.setDate(lastSun.getDate() - 6);
+  const dow = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  // A week (Mon–Sun) is only "complete" once we are past Sunday.
+  // If today IS Sunday, people may still be on shift, so treat the
+  // current week as incomplete and check the previous one.
+  const lastCompletedSun = new Date(today);
+  if (dow === 0) {
+    // Today is Sunday — last completed Sunday was 7 days ago
+    lastCompletedSun.setDate(today.getDate() - 7);
+  } else {
+    // Today is Mon–Sat — last completed Sunday was 'dow' days ago
+    lastCompletedSun.setDate(today.getDate() - dow);
+  }
+  const lastMon = new Date(lastCompletedSun);
+  lastMon.setDate(lastCompletedSun.getDate() - 6);
   return lastMon.toISOString().slice(0, 10);
 }
 
@@ -1087,6 +1089,31 @@ function showView(view) {
 }
 window.showView = showView;
 
+// ── Auto-run attendance badge check once per week for admins ─────────
+async function autoRunAttendanceCheckIfNeeded() {
+  if (!roleAtLeast('admin')) return;
+  const weekMon = _lastCompletedWeekMonday();
+  try {
+    const snap = await getDoc(doc(db, 'system', 'attCheckLastRun'));
+    if (snap.exists() && snap.data().weekKey === weekMon) return; // already ran this week
+    // Run silently
+    const result = await window.autoCheckPerfectAttendance(false);
+    if (!result) return;
+    await setDoc(doc(db, 'system', 'attCheckLastRun'), {
+      weekKey: weekMon, ranAt: new Date().toISOString(), ranBy: currentUser?.email || 'System'
+    });
+    // Show toast
+    if (result.weeklyAwarded > 0 || result.monthlyAwarded > 0) {
+      const toast = document.createElement('div');
+      toast.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;background:#1a2744;color:#fff;padding:12px 18px;border-radius:10px;font-size:0.82rem;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-width:300px';
+      toast.innerHTML = `<div style="font-weight:700;margin-bottom:4px"><i class="fas fa-calendar-check me-2" style="color:#f97316"></i>Attendance Badges Auto-Awarded</div>
+        <div style="color:rgba(255,255,255,0.8)">Week of ${weekMon}<br>📆 ${result.weeklyAwarded} weekly · 🗓️ ${result.monthlyAwarded} perfect month</div>`;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 6000);
+    }
+  } catch(e) { console.warn('Auto attendance check failed:', e); }
+}
+
 async function restoreLastView() {
   const view = sessionStorage.getItem('lastView') || 'dashboard';
   if (view === 'profile') {
@@ -1105,6 +1132,8 @@ async function restoreLastView() {
   if (view === 'hrrecords') { loadHRRecords(); return; }
   if (view === 'help')      { showView('help'); return; }
   loadDashboard();
+  // Auto-run attendance badge check in background after view loads
+  setTimeout(autoRunAttendanceCheckIfNeeded, 3000);
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────
