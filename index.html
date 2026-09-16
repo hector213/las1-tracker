@@ -479,6 +479,8 @@ async function autoExpirePoints() {
       });
       if (expired > 0) {
         anyChanges = true;
+        const oldAttPts = a.attendancePoints || 0;
+        const newAttPts = Math.max(0, oldAttPts - expired);
         // Recompute all future expiry dates from remaining non-expired entries
         const attUniqueDates = [...new Set(
           allAttEntries
@@ -489,13 +491,21 @@ async function autoExpirePoints() {
             .map(d => d.toISOString().slice(0,10))
         )];
         const nextAttStr = attUniqueDates[0] || '';
-        writes.push(updateDoc(doc(db, 'associates', assocId), {
+        // Clear threshold dismissals for tiers crossed downward by expiry
+        const toClear = WARNING_TIERS.filter(t => oldAttPts >= t.threshold && newAttPts < t.threshold);
+        const expiryUpdate = {
           attendancePoints: increment(-expired),
           nextAttExpiry: nextAttStr,
           attExpiryDates: attUniqueDates
-        }));
+        };
+        toClear.forEach(t => { expiryUpdate[`attAlertDismissed.${t.key}`] = deleteField(); });
+        writes.push(updateDoc(doc(db, 'associates', assocId), expiryUpdate));
         const mem = allAssociates.find(x => x.id === assocId);
-        if (mem) { mem.nextAttExpiry = nextAttStr; mem.attExpiryDates = attUniqueDates; }
+        if (mem) {
+          mem.nextAttExpiry = nextAttStr;
+          mem.attExpiryDates = attUniqueDates;
+          if (mem.attAlertDismissed) toClear.forEach(t => delete mem.attAlertDismissed[t.key]);
+        }
       }
     }));
     if (writes.length) await Promise.all(writes);
@@ -4296,6 +4306,9 @@ const WARNING_TIERS = [
 let lastWarnings = [];
 
 // ─── Threshold Alert Notifications ────────────────────────────────────────────
+// Dismissals are stored in Firestore on the associate doc (attAlertDismissed map)
+// so they reset automatically when points drop back below a threshold.
+// Direct-report alerts still use localStorage (they re-fire correctly via the DR's doc).
 function _taLsKey(uid, assocId, tierKey) { return `ta_${uid}_${assocId}_${tierKey}`; }
 
 function renderThresholdAlerts(viewedAssocId, viewedAssoc, attPts) {
@@ -4304,12 +4317,13 @@ function renderThresholdAlerts(viewedAssocId, viewedAssoc, attPts) {
   const uid = currentUser?.uid || 'anon';
   let html = '';
 
-  // Alerts on the viewed associate's profile
+  // Alerts on the viewed associate's profile — dismissed state lives in Firestore
   WARNING_TIERS.slice().reverse().forEach(tier => {
-    if (attPts >= tier.threshold && !localStorage.getItem(_taLsKey(uid, viewedAssocId, tier.key))) {
+    const dismissed = viewedAssoc.attAlertDismissed?.[tier.key];
+    if (attPts >= tier.threshold && !dismissed) {
       html += `<div class="d-flex align-items-center justify-content-between px-3 py-2 mb-2 rounded" style="background:${tier.bg};border-left:4px solid ${tier.color}">
         <span style="color:${tier.color};font-size:0.88rem;font-weight:600"><i class="fas fa-${tier.icon} me-2"></i><strong>${escapeHtml(viewedAssoc.name)}</strong> has reached the <strong>${tier.label}</strong> threshold (${attPts} attendance pt${attPts !== 1 ? 's' : ''})</span>
-        <button style="background:none;border:none;font-size:1.3rem;line-height:1;padding:0 0 0 12px;color:${tier.color};cursor:pointer;opacity:0.7" onclick="dismissThresholdAlert('${uid}','${viewedAssocId}','${tier.key}')" title="Dismiss">&times;</button>
+        <button style="background:none;border:none;font-size:1.3rem;line-height:1;padding:0 0 0 12px;color:${tier.color};cursor:pointer;opacity:0.7" onclick="dismissThresholdAlert('${viewedAssocId}','${tier.key}',${attPts})" title="Dismiss">&times;</button>
       </div>`;
     }
   });
@@ -4320,11 +4334,12 @@ function renderThresholdAlerts(viewedAssocId, viewedAssoc, attPts) {
     directReports.forEach(dr => {
       const drPts = dr.attendancePoints || 0;
       WARNING_TIERS.slice().reverse().forEach(tier => {
-        const alertId = `dr_${dr.id}_${tier.key}`;
-        if (drPts >= tier.threshold && !localStorage.getItem(_taLsKey(uid, viewedAssocId, alertId))) {
+        // DR alerts: use the DR's own Firestore dismissal record
+        const drDismissed = dr.attAlertDismissed?.[tier.key];
+        if (drPts >= tier.threshold && !drDismissed) {
           html += `<div class="d-flex align-items-center justify-content-between px-3 py-2 mb-2 rounded" style="background:${tier.bg};border-left:4px solid ${tier.color}">
             <span style="color:${tier.color};font-size:0.88rem;font-weight:600"><i class="fas fa-${tier.icon} me-2"></i>Direct report <strong>${escapeHtml(dr.name)}</strong> has reached the <strong>${tier.label}</strong> threshold (${drPts} attendance pt${drPts !== 1 ? 's' : ''})</span>
-            <button style="background:none;border:none;font-size:1.3rem;line-height:1;padding:0 0 0 12px;color:${tier.color};cursor:pointer;opacity:0.7" onclick="dismissThresholdAlert('${uid}','${viewedAssocId}','${alertId}')" title="Dismiss">&times;</button>
+            <button style="background:none;border:none;font-size:1.3rem;line-height:1;padding:0 0 0 12px;color:${tier.color};cursor:pointer;opacity:0.7" onclick="dismissThresholdAlert('${dr.id}','${tier.key}',${drPts})" title="Dismiss">&times;</button>
           </div>`;
         }
       });
@@ -4334,11 +4349,36 @@ function renderThresholdAlerts(viewedAssocId, viewedAssoc, attPts) {
   container.innerHTML = html;
 }
 
-window.dismissThresholdAlert = (uid, assocId, tierKey) => {
-  localStorage.setItem(_taLsKey(uid, assocId, tierKey), '1');
+// Dismiss a threshold alert — writes to Firestore so it's cross-device
+// and so it can be automatically cleared when points drop below the threshold again.
+window.dismissThresholdAlert = async (assocId, tierKey, ptsAtDismissal) => {
+  try {
+    await updateDoc(doc(db, 'associates', assocId), {
+      [`attAlertDismissed.${tierKey}`]: ptsAtDismissal
+    });
+    const mem = allAssociates.find(x => x.id === assocId);
+    if (mem) {
+      if (!mem.attAlertDismissed) mem.attAlertDismissed = {};
+      mem.attAlertDismissed[tierKey] = ptsAtDismissal;
+    }
+  } catch(e) { console.warn('dismissThresholdAlert error:', e); }
   const a = allAssociates.find(x => x.id === currentAssociateId);
   if (a) renderThresholdAlerts(currentAssociateId, a, a.attendancePoints || 0);
 };
+
+// Called whenever attendance points decrease — clears Firestore dismissals for any
+// threshold that was crossed downward, so the alert re-fires on the next crossing.
+async function clearAttThresholdDismissals(assocId, oldPts, newPts) {
+  const toClear = WARNING_TIERS.filter(t => oldPts >= t.threshold && newPts < t.threshold);
+  if (!toClear.length) return;
+  const updates = {};
+  toClear.forEach(t => { updates[`attAlertDismissed.${t.key}`] = deleteField(); });
+  try {
+    await updateDoc(doc(db, 'associates', assocId), updates);
+    const mem = allAssociates.find(x => x.id === assocId);
+    if (mem && mem.attAlertDismissed) toClear.forEach(t => delete mem.attAlertDismissed[t.key]);
+  } catch(e) { console.warn('clearAttThresholdDismissals error:', e); }
+}
 
 function listenWarnings(associateId) {
   getDocs(collection(db, 'warnings', associateId, 'entries')).then(snap => {
@@ -5820,8 +5860,12 @@ window.saveAttendance = async () => {
 window.deleteAttendance = async (entryId, type, pts) => {
   if (!roleAtLeast('admin')) return;
   if (!confirm('Remove this attendance entry?')) return;
+  const oldPts = _apAttendancePts;
+  const newPts = Math.max(0, oldPts - pts);
   await deleteDoc(doc(db, 'attendance', currentAssociateId, 'entries', entryId));
   await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(-pts) });
+  // Clear threshold dismissals for any tier the associate dropped back below
+  await clearAttThresholdDismissals(currentAssociateId, oldPts, newPts);
   clearCache('attendance');
   clearCache('milestones_firestore');
   clearCache('todayAttStats'); // force re-read on next dashboard render
