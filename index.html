@@ -159,6 +159,7 @@ const ATTENDANCE_TYPES = [
   { key: 'call-out-pending',    label: 'Call Out - Pending (awaiting documentation)',              points: 0,   icon: 'fa-hourglass-half', color: '#d97706' },
   { key: 'call-out-excused',    label: 'Call Out - Excused (documentation provided)',              points: 0,   icon: 'fa-file-medical',   color: '#059669' },
   { key: 'late-arrival',        label: 'Late Arrival',                                points: 0.5, icon: 'fa-clock',         color: '#d97706' },
+  { key: 'late-arrival-excused',label: 'Late Arrival - OM/HR Excused (no point)',     points: 0,   icon: 'fa-clock',         color: '#059669' },
   { key: 'late-arrival-half',   label: 'Late Arrival (after half shift)',              points: 1.0, icon: 'fa-clock',         color: '#dc2626' },
   { key: 'left-early-before',   label: 'Left Early (before half shift)',               points: 1.0, icon: 'fa-sign-out-alt',  color: '#dc2626' },
   { key: 'left-early-after',    label: 'Left Early (after half shift)',                points: 0.5, icon: 'fa-sign-out-alt',  color: '#d97706' },
@@ -167,6 +168,7 @@ const ATTENDANCE_TYPES = [
   { key: 'fmla-approved',       label: 'Approved FMLA',                                points: 0,   icon: 'fa-file-medical',   color: '#2563eb' },
   { key: 'bereavement',         label: 'Bereavement',                                  points: 0,   icon: 'fa-heart',          color: '#64748b' },
   { key: 'doctors-note',        label: "Called Out - Doctor's Note",                   points: 0,   icon: 'fa-file-medical',   color: '#0891b2' },
+  { key: 'vuto',                label: 'VUTO (Voluntary Unpaid Time Off)',              points: 0,   icon: 'fa-hand-paper',     color: '#6366f1' },
 ];
 const POINT_VALUES = {
   badge:  { standard: 25, productivity: 50, elite: 200, 'elite-plus': 300 },
@@ -9659,6 +9661,7 @@ window.submitEOMVote = async (monthKey, voterType) => {
 
   await loadPortalNominate();
 };
+
 
 </script>
 
