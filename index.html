@@ -12118,6 +12118,578 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       </div>
     </div>
 
+
+    <!-- PRODUCTION VIEW (Labor Allocation Board) -->
+    <div id="productionView" class="view d-none">
+<div class="lb-header">
+    <h1>LAS1 Labor Allocation</h1>
+    <div class="lb-subnav">
+      <button id="lb-nav-board" class="active">Board</button>
+      <button id="lb-nav-trend">Pick &amp; Pack Trend</button>
+      <button id="lb-nav-inbound">Inbound Rates</button>
+      <button id="lb-nav-assoc-trend">Associate UPH</button>
+      <button id="lb-nav-assoc-numbers">Outbound Rates</button>
+      <button id="lb-nav-import">Import Data</button>
+      <button id="lb-nav-admin">Admin</button>
+    </div><!-- /.lb-subnav -->
+    
+  </div><!-- /.lb-header -->
+
+  <main>
+    <!-- ---------- BOARD VIEW ---------- -->
+    <section id="lb-board-view">
+      <div id="shift-bar">
+        <div class="title-row">
+          <h2 class="hero-title">Labor Pivot Planner <span class="hero-sub" id="shift-period-label"></span></h2>
+          <div class="field">
+            <label for="shift-date">Shift date</label>
+            <input type="date" id="shift-date">
+          </div>
+          <button class="btn secondary" id="clear-assignments-btn" title="Fixes anyone stuck 'assigned' from the duplicate-segment bug">Reset today's assignments</button>
+        </div>
+
+        <div id="shift-schedule-bar-wrap">
+          <div class="sched-title" id="sched-title">Shift Schedule</div>
+          <div class="sched-bar" id="sched-bar"></div>
+          <div class="sched-labels" id="sched-labels"></div>
+        </div>
+
+        <div id="pivot-status-banner" class="no-shift">LOADING&hellip;</div>
+
+        <div class="pivot-section-title">Live - From Last Import</div>
+        <div id="pivot-card-grid">
+          <div class="pivot-card">
+            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Actual (out so far)</div>
+            <div class="pivot-card-value white" id="pv-actual">-</div>
+            <div class="pivot-card-sub" id="pv-actual-sub">From last import</div>
+          </div>
+          <div class="pivot-card">
+            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Ideal Target (Now)</div>
+            <div class="pivot-card-value accent" id="pv-ideal">-</div>
+            <div class="pivot-card-sub" id="pv-ideal-sub">- prod min elapsed</div>
+          </div>
+          <div class="pivot-card">
+            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Variance</div>
+            <div class="pivot-card-value white" id="pv-variance">-</div>
+            <div class="pivot-card-sub" id="pv-variance-sub">units vs ideal</div>
+          </div>
+          <div class="pivot-card">
+            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Current UPH</div>
+            <div class="pivot-card-value white" id="pv-uph">-</div>
+            <div class="pivot-card-sub" id="pv-uph-sub">Target: -</div>
+          </div>
+          <div class="pivot-card">
+            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Prod Min Left</div>
+            <div class="pivot-card-value white" id="pv-prodleft">-</div>
+            <div class="pivot-card-sub" id="pv-prodleft-sub">of - total</div>
+          </div>
+        </div>
+
+        <div class="pivot-section-title">Live - From Last Import (Pick)</div>
+        <div id="pivot-card-grid-pick">
+          <div class="pivot-card">
+            <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Actual (so far)</div>
+            <div class="pivot-card-value white" id="pv-pick-actual">-</div>
+            <div class="pivot-card-sub" id="pv-pick-actual-sub">From last import</div>
+          </div>
+          <div class="pivot-card">
+            <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Ideal Target (Now)</div>
+            <div class="pivot-card-value accent" id="pv-pick-ideal">-</div>
+            <div class="pivot-card-sub" id="pv-pick-ideal-sub">- prod min elapsed</div>
+          </div>
+          <div class="pivot-card">
+            <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Variance</div>
+            <div class="pivot-card-value white" id="pv-pick-variance">-</div>
+            <div class="pivot-card-sub" id="pv-pick-variance-sub">units vs ideal</div>
+          </div>
+          <div class="pivot-card">
+            <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Current UPH</div>
+            <div class="pivot-card-value white" id="pv-pick-uph">-</div>
+            <div class="pivot-card-sub" id="pv-pick-uph-sub">Target: -</div>
+          </div>
+          <div class="pivot-card">
+            <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Prod Min Left</div>
+            <div class="pivot-card-value white" id="pv-pick-prodleft">-</div>
+            <div class="pivot-card-sub" id="pv-pick-prodleft-sub">of - total</div>
+          </div>
+        </div>
+
+        <div class="pivot-section-title">Projected End-of-Shift</div>
+        <div id="pivot-projection-grid">
+          <div class="pivot-card">
+            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Projected (Live Pace)</div>
+            <div class="pivot-card-value white" id="pv-projected">-</div>
+            <div class="pivot-card-sub">At current live pace</div>
+          </div>
+          <div class="pivot-card">
+            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Goal</div>
+            <div class="pivot-card-value accent" id="pv-goal">-</div>
+            <div class="pivot-card-sub">Combined Pack target</div>
+          </div>
+          <div class="pivot-card pivot-card-wide">
+            <div class="pivot-card-split-row">
+              <div class="pivot-card-split-col">
+                <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Projected (Assigned UPH)</div>
+                <div class="pivot-card-value white" id="pv-projected-assigned">-</div>
+              </div>
+              <div class="pivot-card-split-col">
+                <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>At Rate</div>
+                <div class="pivot-card-value white" id="pv-at-rate">-</div>
+              </div>
+            </div>
+            <div class="pivot-card-sub" id="pv-projected-assigned-sub">Based on who's on the floor now</div>
+          </div>
+          <div class="pivot-card pivot-card-wide">
+            <div class="pivot-card-split-row">
+              <div class="pivot-card-split-col">
+                <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Projected (Assigned UPH)</div>
+                <div class="pivot-card-value white" id="pv-pick-projected-assigned">-</div>
+              </div>
+              <div class="pivot-card-split-col">
+                <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>At Rate</div>
+                <div class="pivot-card-value white" id="pv-pick-at-rate">-</div>
+              </div>
+            </div>
+            <div class="pivot-card-sub" id="pv-pick-projected-assigned-sub">Based on who's on the floor now</div>
+          </div>
+        </div>
+
+        <div id="pivot-analysis">
+          <div class="pivot-analysis-title">Labor Pivot Analysis (Combined Pack)</div>
+          <div class="pivot-analysis-grid">
+            <div class="pivot-item">
+              <div class="pivot-item-label">Units Behind / Ahead</div>
+              <div class="pivot-item-value white" id="pv-gap">-</div>
+            </div>
+            <div class="pivot-item">
+              <div class="pivot-item-label">People to Close Gap</div>
+              <div class="pivot-item-value accent" id="pv-people">-</div>
+            </div>
+            <div class="pivot-item">
+              <div class="pivot-item-label">Rate Needed (UPH)</div>
+              <div class="pivot-item-value white" id="pv-rate">-</div>
+            </div>
+            <div class="pivot-item">
+              <div class="pivot-item-label">Current Headcount</div>
+              <div class="pivot-item-value white" id="pv-hc">-</div>
+            </div>
+          </div>
+          <div class="pivot-rec nodata" id="pv-rec">Waiting for shift data&hellip;</div>
+        </div>
+
+        <div id="labor-pivot-wrap" class="hidden">
+          <h3>By Function - recommended headcount moves</h3>
+          <table id="labor-pivot-table">
+            <thead>
+              <tr><th>Function</th><th>Assigned</th><th>Actual</th><th>Ideal (Now)</th><th>Variance</th><th>Current UPH</th><th>Projected EOS</th><th>Goal</th><th>Recommendation</th></tr>
+            </thead>
+            <tbody id="labor-pivot-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="board-grid">
+        <div class="panel" id="pool-panel">
+          <h2>Associate Talent Pool</h2>
+          <input id="pool-search" type="text" placeholder="Search name or Employee Id&hellip;">
+          <div id="pool-list"></div>
+          <div id="pool-empty-note" class="hidden">No one matches "<span id="pool-empty-term"></span>".</div>
+        </div>
+        <div class="panel">
+          <h2>Floor Grid</h2>
+          <div id="stations-wrap"></div>
+        </div>
+      </div>
+
+    </section>
+    <button id="ai-fab" title="AI Recommendation - planned for Phase 3">✦</button>
+
+    <!-- ---------- SHIFT TREND VIEW ---------- -->
+    <!-- Shift Trend: Actual vs Ideal Target cumulative units across the shift, like the
+         Packing_Trend sheet in your Shift Cost Sheet workbook, with a toggle between Pack
+         (315) and Pick (301) instead of a separate sheet per function. See renderTrendChart(). -->
+    <section id="lb-trend-view" class="hidden">
+      <div class="panel" id="trend-panel">
+        <div class="trend-header">
+          <div class="trend-title-row">
+            <h2 style="margin:0;">Shift Trend - Actual vs Ideal Target</h2>
+            <span class="pace-badge" id="trend-pace-badge">On Pace</span>
+          </div>
+          <div class="trend-toggle">
+            <button type="button" class="trend-toggle-btn active" data-trend-tran="315">Pack</button>
+            <button type="button" class="trend-toggle-btn" data-trend-tran="301">Pick</button>
+          </div>
+        </div>
+        <div class="trend-stats">
+          <div class="shift-stat">Actual so far <b id="trend-actual">0</b></div>
+          <div class="shift-stat">Ideal target so far <b id="trend-ideal">0</b></div>
+          <div class="shift-stat">Variance <b id="trend-variance">0</b></div>
+          <div class="shift-stat">Team avg UPH (live) <b id="trend-avg-uph">0.0</b></div>
+        </div>
+        <canvas id="trend-chart" height="90"></canvas>
+        <div class="note" id="trend-note" style="margin-top:10px;">
+          Ideal target line is the Combined goal for this function group, spread across production
+          minutes only - a 10-minute Startup, the 7:00 PM break (15 min), 10:30 PM lunch
+          (30 min), 1:45 AM break (15 min), and a 10-minute Cleanup before the shift's nominal end
+          are all excluded, so the line holds flat through each one, matching the Packing_Trend
+          sheet's own minute-by-minute schedule (630 nominal minutes &minus; 80 non-production
+          minutes = 550 production minutes, 9.1667h). It targets 100% at the end of the normal
+          shift length; if today's import shows units still coming in during the extra hour, it
+          automatically stretches the target window to match instead of assuming every day runs long.
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- INBOUND VIEW ---------- -->
+    <!-- Receiving (151) and Putaway (212), both always visible side by side (no toggle) - same
+         Actual vs Ideal Target cumulative-line idea as the Shift Trend tab, just two independent
+         charts instead of one with a toggle. Goals come from Admin > Shift Goals for the Inbound
+         Receiver / Inbound Putaway functions. See renderInboundCharts(). -->
+    <section id="lb-inbound-view" class="hidden">
+      <div class="inbound-grid">
+        <div class="panel">
+          <div class="trend-header">
+            <div class="trend-title-row">
+              <h2 style="margin:0;">Receiving</h2>
+              <span class="pace-badge none" id="inbound-receiving-pace-badge">No goal set</span>
+            </div>
+          </div>
+          <div class="trend-stats">
+            <div class="shift-stat">Shift goal <b id="inbound-receiving-goal">0</b></div>
+            <div class="shift-stat">Actual so far <b id="inbound-receiving-actual">0</b></div>
+            <div class="shift-stat">Ideal target so far <b id="inbound-receiving-ideal">0</b></div>
+            <div class="shift-stat">Variance <b id="inbound-receiving-variance">0</b></div>
+            <div class="shift-stat">Avg UPH (live) <b id="inbound-receiving-avg-uph">0.0</b></div>
+          </div>
+          <canvas id="inbound-receiving-chart" height="110"></canvas>
+          <div class="note" id="inbound-receiving-note" style="margin-top:10px;">
+            Actual units scanned today (Tran Type 151) vs the Ideal Target line, prorated across
+            production minutes from the Inbound Receiver goal set in Admin &gt; Shift Goals.
+          </div>
+        </div>
+        <div class="panel">
+          <div class="trend-header">
+            <div class="trend-title-row">
+              <h2 style="margin:0;">Putaway</h2>
+              <span class="pace-badge none" id="inbound-putaway-pace-badge">No goal set</span>
+            </div>
+          </div>
+          <div class="trend-stats">
+            <div class="shift-stat">Shift goal <b id="inbound-putaway-goal">0</b></div>
+            <div class="shift-stat">Actual so far <b id="inbound-putaway-actual">0</b></div>
+            <div class="shift-stat">Ideal target so far <b id="inbound-putaway-ideal">0</b></div>
+            <div class="shift-stat">Variance <b id="inbound-putaway-variance">0</b></div>
+            <div class="shift-stat">Avg UPH (live) <b id="inbound-putaway-avg-uph">0.0</b></div>
+          </div>
+          <canvas id="inbound-putaway-chart" height="110"></canvas>
+          <div class="note" id="inbound-putaway-note" style="margin-top:10px;">
+            Actual units scanned today (Tran Type 212) vs the Ideal Target line, prorated across
+            production minutes from the Inbound Putaway goal set in Admin &gt; Shift Goals.
+          </div>
+        </div>
+      </div>
+
+      <!-- Receiving/Inbound Putaway leaderboard, moved here from Associate Numbers so it sits
+           right under the matching graphs. See INBOUND_ASSOC_GROUPS/renderInboundAssocNumbers(). -->
+      <div class="fn-grid" id="inbound-assoc-numbers-grid" style="margin-top:16px;"></div>
+    </section>
+
+    <!-- ---------- ASSOCIATE UPH VIEW ---------- -->
+    <!-- Same Actual vs Ideal Target cumulative-line idea as the Shift Trend tab, scoped to one
+         associate + one function. Ideal here is a UPH RATE target (the function's Target UPH,
+         Admin > Stations), not a fixed daily unit goal, since there's no per-associate goal -
+         see renderAssocTrendChart(). -->
+    <section id="lb-assoc-trend-view" class="hidden">
+      <div class="panel" id="assoc-trend-panel">
+        <div class="trend-header">
+          <div class="trend-title-row">
+            <h2 style="margin:0;">Associate UPH Trend</h2>
+            <span class="pace-badge none" id="assoc-trend-pace-badge">Select associate &amp; function</span>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="assoc-trend-associate">Associate</label>
+            <select id="assoc-trend-associate">
+              <option value="">Select an associate&hellip;</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="assoc-trend-function">Function</label>
+            <select id="assoc-trend-function">
+              <option value="">Select a function&hellip;</option>
+            </select>
+          </div>
+        </div>
+        <div class="trend-stats">
+          <div class="shift-stat">Actual so far <b id="assoc-trend-actual">0</b></div>
+          <div class="shift-stat">Ideal (Target UPH) so far <b id="assoc-trend-ideal">0</b></div>
+          <div class="shift-stat">Variance <b id="assoc-trend-variance">0</b></div>
+          <div class="shift-stat">Actual UPH (live) <b id="assoc-trend-avg-uph">0.0</b></div>
+          <div class="shift-stat">Target UPH <b id="assoc-trend-target-uph">0</b></div>
+        </div>
+        <div class="assoc-trend-body">
+          <div class="assoc-trend-chart-wrap">
+            <canvas id="assoc-trend-chart" height="90"></canvas>
+          </div>
+          <!-- Hour-by-hour breakdown: actual units scanned in each clock hour, not an average -
+               same idea as the per-associate hourly columns in the Shift Cost Sheet. Built from
+               the same assocTrend bucket data as the chart, just summed in pairs of half-hour
+               buckets instead of accumulated. See renderAssocTrendChart(). -->
+          <div class="assoc-trend-hourly-wrap">
+            <table class="assoc-trend-hourly-table" id="assoc-trend-hourly-table">
+              <thead><tr><th>Hour</th><th>Units</th></tr></thead>
+              <tbody id="assoc-trend-hourly-body">
+                <tr><td colspan="2" class="assoc-trend-hourly-empty">Select associate &amp; function</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="note" id="assoc-trend-note" style="margin-top:10px;">
+          Pick an associate and a function above. Ideal is that function's Target UPH (Admin &gt;
+          Stations) spread across production minutes only, same Startup/break/lunch/Cleanup
+          handling as the Pick &amp; Pack Trend tab (630 nominal minutes &minus; 80 non-production
+          minutes = 550 production minutes, 9.1667h - matching the Shift Cost Sheet's own
+          schedule). It holds flat at that nominal-shift total unless this associate's own data
+          shows units still landing past the normal end - then it keeps accruing through the
+          extra hour, same auto-detect as the Pick &amp; Pack Trend tab, just per associate instead
+          of team-wide. Scan data can't tell apart functions that share a Tran Type (OP/MOD/Walkie/
+          WOS Pick all post as 301; Small/
+          Large/WOS Pack all post as 315) - picking any one of those shows that associate's
+          combined activity across all of them for that Tran Type. The table beside the chart is
+          the actual raw units scanned in each clock hour - not an average, not smoothed.
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- ASSOCIATE NUMBERS VIEW ---------- -->
+    <!-- Snapshot leaderboard meant to be screenshotted and sent to the team: every associate with
+         scanned units today, grouped by the 7 real Tran Types we track (not the 13 app functions -
+         several functions share a Tran Type and scan data can't tell them apart, e.g. OP/MOD/
+         Walkie/WOS Pick all post as 301), ranked highest actual units first within each group.
+         Built from the same reliable assocTrendDocsToday totals as the hero's "Pack-out so far"
+         stat - real scanned units, not a UPH×Hours projection. See renderAssocNumbers(). -->
+    <section id="lb-assoc-numbers-view" class="hidden">
+      <div class="panel">
+        <div class="assoc-numbers-title-row">
+          <h2 style="margin:0;">Associate Numbers</h2>
+          <span class="page-sub" id="assoc-numbers-sub"></span>
+        </div>
+        <div class="note" style="margin:6px 0 16px;">
+          Every associate with scanned units today, grouped by transaction type, highest actual units first - built to screenshot and send to the team.
+        </div>
+        <div class="fn-grid" id="assoc-numbers-grid"></div>
+        <div class="assoc-numbers-legend">
+          <span><span class="dot" style="background:#c9960c"></span> Gold = #1 in group</span>
+          <span><span class="dot" style="background:#9aa4b2"></span> Silver = #2</span>
+          <span><span class="dot" style="background:#b3701f"></span> Bronze = #3</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- IMPORT DATA VIEW ---------- -->
+    <!-- Moved out of Admin's sub-tabs to its own top-level tab, right before Admin, since it's
+         used every shift (not a one-time setup task like the rest of Admin). -->
+    <section id="lb-import-view" class="hidden">
+      <div class="panel">
+        <h2>Import Transaction Data</h2>
+        <div class="note">
+          Replicates the Shift_Cost_Sheet Power Query cleaning: skips the junk header row, promotes real headers,
+          derives ShiftDate (rolls to the prior day for scans before 4:30 AM), keeps only overnight scans
+          (5:00 PM&ndash;4:30 AM), dedupes, then averages UPH per associate per Tran Type per day.
+          <br><br>
+          <b>Note on Pick codes:</b> Tran Type 301 covers MOD/OP/Walkie Pick alike - the raw scan data can't
+          tell those apart on its own (same as in the Excel sheet, where you pick the Role manually). Historical
+          UPH for any Pick bucket sharing a Tran Type will use the same underlying data until that's refined.
+        </div>
+        <input type="file" id="import-file" accept=".xlsx,.xls,.csv">
+        <button class="btn" id="import-btn">Parse &amp; Preview</button>
+        <button class="btn secondary hidden" id="commit-btn">Write to History</button>
+        <div id="import-log"></div>
+
+        <h2 style="margin-top:24px">Clear records for a shift date</h2>
+        <div class="note">
+          One-time cleanup tool. Deletes every uphHistory record for the date you pick - use this to
+          wipe out bad data from a test/broken import before re-importing the corrected file, so old and
+          new records for that night don't both sit there and look like a "split."
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Shift date to clear</label><input type="date" id="clear-shiftdate"></div>
+        </div>
+        <button class="btn secondary" id="clear-shiftdate-btn">Delete all records for this date</button>
+        <div id="clear-shiftdate-log"></div>
+      </div>
+    </section>
+
+    <!-- ---------- ADMIN VIEW ---------- -->
+    <section id="lb-admin-view" class="hidden">
+      <div id="admin-tabs">
+        <button class="admin-tab-btn active" data-tab="stations">Stations</button>
+        <button class="admin-tab-btn" data-tab="associates">Associates</button>
+        <button class="admin-tab-btn" data-tab="goals">Shift Goals</button>
+        <button class="admin-tab-btn" data-tab="settings">Settings</button>
+      </div>
+
+      <!-- Stations tab -->
+      <div class="admin-pane admin-tab" data-tab="stations">
+        <h2>Stations &amp; UPH Targets</h2>
+        <div class="note">
+          "Bucket" functions (Small Pack, Large Pack, Pick/Replen/Consolidation) hold any number of associates up
+          to a configurable capacity. "Slot" stations hold exactly one associate each - not used by default
+          anymore, but still supported if you ever want a physically fixed one-person station again. Counts and
+          targets here are starting points - adjust freely.
+        </div>
+        <button class="btn secondary" id="seed-btn">Seed default stations (run once)</button>
+        <button class="btn secondary" id="migrate-pack-btn" title="One-time: converts the individual Small/Large Pack slot stations into two buckets">Convert Pack to bucket-style (run once)</button>
+        <table class="admin-table" id="stations-table" style="margin-top:12px;">
+          <thead><tr><th>Name</th><th>Function</th><th>Type</th><th>Tran Type</th><th>Set UPH</th><th>Capacity</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Associates tab -->
+      <div class="admin-pane admin-tab hidden" data-tab="associates">
+        <h2>Associates</h2>
+        <div class="field-row">
+          <div class="field"><label>Employee Id (login/handle)</label><input id="new-assoc-eid"></div>
+          <div class="field"><label>Display name</label><input id="new-assoc-name"></div>
+          <div class="field"><label>Associate Id (IE#)</label><input id="new-assoc-code"></div>
+          <div class="field">
+            <label>Certifications</label>
+            <button type="button" class="certs-btn" id="new-assoc-certs-btn">+ Add Certs</button>
+            <div class="certs-summary" id="new-assoc-certs-summary">None selected</div>
+          </div>
+          <div class="field"><label><input type="checkbox" id="new-assoc-automated"> Automated (not a person)</label></div>
+          <button class="btn" id="add-assoc-btn">Add associate</button>
+        </div>
+        <div class="note">
+          Trained roles control how someone's card is grouped in the Talent Pool sidebar - a cross-trained
+          associate shows up under every role they're trained in (e.g. both "OP Pickers" and "Replen Put"). This
+          doesn't limit where you can actually drag them, it's just for finding who's available. Leave blank and
+          they'll show under "Unassigned."
+        </div>
+        <div class="note">
+          <b>Automated:</b> for Employee Ids in the transaction export that aren't a person - e.g. RSItem
+          (print-and-apply, straight to conveyor) or inVia. Checking this hides the card from the Talent Pool
+          (nothing to staff/drag), but its scanned units still flow into UPH history and shift totals normally
+          - e.g. RSItem's Tran Type 315 scans still count toward "Pack-out so far."
+        </div>
+        <div class="note">
+          <b>Bulk add:</b> paste one Employee Id per line (matching the "Employee Id" column in your transaction
+          export exactly). Display name defaults to the Employee Id - rename any of them in the table below.
+          Existing Employee Ids are skipped, so this is safe to re-run.
+        </div>
+        <div class="field-row">
+          <textarea id="bulk-assoc-input" rows="6" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;" placeholder="NVABENFORD&#10;NVADELGADO&#10;..."></textarea>
+        </div>
+        <button class="btn secondary" id="bulk-add-assoc-btn">Bulk add</button>
+        <div id="bulk-assoc-log" class="note hidden"></div>
+        <table class="admin-table" id="assoc-table">
+          <thead><tr><th>Employee Id</th><th>Name</th><th>Associate Id</th><th>Certs</th><th>OJT</th><th>Active</th><th>Automated</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Shift Goals tab -->
+      <div class="admin-pane admin-tab hidden" data-tab="goals">
+        <h2>Shift Goals</h2>
+        <div class="note">Goals change day to day - set them fresh each shift for whichever functions matter tonight.</div>
+        <div class="field-row">
+          <div class="field"><label>Date</label><input type="date" id="goal-date"></div>
+          <div class="field"><label>Function</label><select id="goal-function"></select></div>
+          <div class="field"><label>Target units</label><input type="number" id="goal-units"></div>
+          <div class="field"><label>Planned hours</label><input type="number" id="goal-hours" step="0.25"></div>
+          <button class="btn" id="save-goal-btn">Save goal</button>
+        </div>
+        <table class="admin-table" id="goals-table">
+          <thead><tr><th>Function</th><th>Target Units</th><th>Planned Hours</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Settings tab -->
+      <div class="admin-pane admin-tab hidden" data-tab="settings">
+        <h2>Calculation Settings</h2>
+        <div class="field-row">
+          <div class="field"><label>Average UPH window (# of shifts)</label><input type="number" id="set-window"></div>
+          <div class="field"><label>Trend: recent period (days)</label><input type="number" id="set-recent"></div>
+          <div class="field"><label>Trend: prior period (days)</label><input type="number" id="set-prior"></div>
+          <div class="field"><label>Shift start (24h, e.g. 17 = 5 PM)</label><input type="number" id="set-shift-start"></div>
+          <div class="field"><label>Core shift length (hours)</label><input type="number" step="0.25" id="set-shift-length"></div>
+          <div class="field"><label>Extra-hour grace window (hours)</label><input type="number" step="0.25" id="set-shift-grace"></div>
+          <div class="field"><label>Total production hours (for split auto-balance)</label><input type="number" step="0.01" id="set-production-hours"></div>
+          <button class="btn" id="save-settings-btn">Save settings</button>
+        </div>
+        <div class="note">
+          These drive the Board's "Shift progress" stat AND the import's overnight filter/ShiftDate logic.
+          Core window (e.g. 5:00 PM&ndash;3:30 AM) is always imported. The grace window after that (e.g. up to
+          4:30 AM) is only imported on nights that actually have Pack activity in it - auto-detected per
+          night from the file, same idea as your sheet's "Extra Hour Running?" check, so a normal 3:30 AM
+          cutoff night doesn't accidentally pull in the next shift's early scans.
+        </div>
+        <div class="note">
+          <b>Total production hours:</b> when someone is split across 2 functions (the "⑂ Split" button
+          on their occupant card), editing one function's hours auto-fills the other so the two add up
+          to this number - e.g. 4 hours in one function auto-sets the other to 5.16 if this is set
+          to 9.16. Only auto-balances when they're split into exactly 2 functions; with 3+ it leaves the
+          others alone since there's no single right way to split the remainder.
+        </div>
+      </div>
+    </section>
+  </main>
+<!-- Certs picker modal: reused by both "Add associate" and each row's Certs button in the
+     Associates admin table. See openCertsModal() in the script. -->
+<div class="modal-overlay hidden" id="certs-modal">
+  <div class="modal-box">
+    <h3>Certifications / trained functions</h3>
+    <div class="note">Check every function this associate is certified/trained on.</div>
+    <div class="certs-list" id="certs-list"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="certs-cancel-btn">Cancel</button>
+      <button class="btn" id="certs-save-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- OJT ramp picker modal: each row's OJT button in the Associates admin table opens this to set
+     which training week an associate is in. Only one week is ever checked at a time (checking one
+     unchecks the others) - it scales that associate's EXPECTED UPH on station/hero cards down to
+     the matching percentage, since a trainee's real UPH shouldn't be judged against full rate.
+     See openOjtModal() in the script. -->
+<div class="modal-overlay hidden" id="ojt-modal">
+  <div class="modal-box">
+    <h3>OJT Rates</h3>
+    <div class="note">Check the associate's current training week to scale their expected UPH. Uncheck all once they're at full rate.</div>
+    <div class="certs-list" id="ojt-list">
+      <label><input type="checkbox" data-week="1"> Week 1 - 20% of rate</label>
+      <label><input type="checkbox" data-week="2"> Week 2 - 50% of rate</label>
+      <label><input type="checkbox" data-week="3"> Week 3 - 75% of rate</label>
+      <label><input type="checkbox" data-week="4"> Week 4 - 100% of rate</label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="ojt-cancel-btn">Cancel</button>
+      <button class="btn" id="ojt-save-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Split picker modal: an occupant's "Split" button opens this to add a SECOND, concurrent
+     station assignment for them without closing their current one(s) - both stay active at
+     once, each with its own editable hours, and each station's count/UPH stays separate since
+     they're just two independent segments. See openSplitModal() in the script. -->
+<div class="modal-overlay hidden" id="split-modal">
+  <div class="modal-box">
+    <h3>Split into another function</h3>
+    <div class="note" id="split-note">Adds a second, concurrent assignment - their current one stays active too. Set each function's hours afterward on its own card.</div>
+    <div class="certs-list" id="split-list"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="split-cancel-btn">Cancel</button>
+      <button class="btn" id="split-confirm-btn">Add split</button>
+    </div>
+  </div>
+</div>
+    </div><!-- /#productionView -->
+
   </main>
 </div>
 
@@ -12932,576 +13504,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
 
 
-    <!-- PRODUCTION VIEW (Labor Allocation Board) -->
-    <div id="productionView" class="view d-none">
-<div class="lb-header">
-    <h1>LAS1 Labor Allocation</h1>
-    <div class="lb-subnav">
-      <button id="lb-nav-board" class="active">Board</button>
-      <button id="lb-nav-trend">Pick &amp; Pack Trend</button>
-      <button id="lb-nav-inbound">Inbound Rates</button>
-      <button id="lb-nav-assoc-trend">Associate UPH</button>
-      <button id="lb-nav-assoc-numbers">Outbound Rates</button>
-      <button id="lb-nav-import">Import Data</button>
-      <button id="lb-nav-admin">Admin</button>
-    </div><!-- /.lb-subnav -->
-    
-  </div><!-- /.lb-header -->
-
-  <main>
-    <!-- ---------- BOARD VIEW ---------- -->
-    <section id="lb-board-view">
-      <div id="shift-bar">
-        <div class="title-row">
-          <h2 class="hero-title">Labor Pivot Planner <span class="hero-sub" id="shift-period-label"></span></h2>
-          <div class="field">
-            <label for="shift-date">Shift date</label>
-            <input type="date" id="shift-date">
-          </div>
-          <button class="btn secondary" id="clear-assignments-btn" title="Fixes anyone stuck 'assigned' from the duplicate-segment bug">Reset today's assignments</button>
-        </div>
-
-        <div id="shift-schedule-bar-wrap">
-          <div class="sched-title" id="sched-title">Shift Schedule</div>
-          <div class="sched-bar" id="sched-bar"></div>
-          <div class="sched-labels" id="sched-labels"></div>
-        </div>
-
-        <div id="pivot-status-banner" class="no-shift">LOADING&hellip;</div>
-
-        <div class="pivot-section-title">Live - From Last Import</div>
-        <div id="pivot-card-grid">
-          <div class="pivot-card">
-            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Actual (out so far)</div>
-            <div class="pivot-card-value white" id="pv-actual">-</div>
-            <div class="pivot-card-sub" id="pv-actual-sub">From last import</div>
-          </div>
-          <div class="pivot-card">
-            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Ideal Target (Now)</div>
-            <div class="pivot-card-value accent" id="pv-ideal">-</div>
-            <div class="pivot-card-sub" id="pv-ideal-sub">- prod min elapsed</div>
-          </div>
-          <div class="pivot-card">
-            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Variance</div>
-            <div class="pivot-card-value white" id="pv-variance">-</div>
-            <div class="pivot-card-sub" id="pv-variance-sub">units vs ideal</div>
-          </div>
-          <div class="pivot-card">
-            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Current UPH</div>
-            <div class="pivot-card-value white" id="pv-uph">-</div>
-            <div class="pivot-card-sub" id="pv-uph-sub">Target: -</div>
-          </div>
-          <div class="pivot-card">
-            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Prod Min Left</div>
-            <div class="pivot-card-value white" id="pv-prodleft">-</div>
-            <div class="pivot-card-sub" id="pv-prodleft-sub">of - total</div>
-          </div>
-        </div>
-
-        <div class="pivot-section-title">Live - From Last Import (Pick)</div>
-        <div id="pivot-card-grid-pick">
-          <div class="pivot-card">
-            <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Actual (so far)</div>
-            <div class="pivot-card-value white" id="pv-pick-actual">-</div>
-            <div class="pivot-card-sub" id="pv-pick-actual-sub">From last import</div>
-          </div>
-          <div class="pivot-card">
-            <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Ideal Target (Now)</div>
-            <div class="pivot-card-value accent" id="pv-pick-ideal">-</div>
-            <div class="pivot-card-sub" id="pv-pick-ideal-sub">- prod min elapsed</div>
-          </div>
-          <div class="pivot-card">
-            <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Variance</div>
-            <div class="pivot-card-value white" id="pv-pick-variance">-</div>
-            <div class="pivot-card-sub" id="pv-pick-variance-sub">units vs ideal</div>
-          </div>
-          <div class="pivot-card">
-            <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Current UPH</div>
-            <div class="pivot-card-value white" id="pv-pick-uph">-</div>
-            <div class="pivot-card-sub" id="pv-pick-uph-sub">Target: -</div>
-          </div>
-          <div class="pivot-card">
-            <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Prod Min Left</div>
-            <div class="pivot-card-value white" id="pv-pick-prodleft">-</div>
-            <div class="pivot-card-sub" id="pv-pick-prodleft-sub">of - total</div>
-          </div>
-        </div>
-
-        <div class="pivot-section-title">Projected End-of-Shift</div>
-        <div id="pivot-projection-grid">
-          <div class="pivot-card">
-            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Projected (Live Pace)</div>
-            <div class="pivot-card-value white" id="pv-projected">-</div>
-            <div class="pivot-card-sub">At current live pace</div>
-          </div>
-          <div class="pivot-card">
-            <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Goal</div>
-            <div class="pivot-card-value accent" id="pv-goal">-</div>
-            <div class="pivot-card-sub">Combined Pack target</div>
-          </div>
-          <div class="pivot-card pivot-card-wide">
-            <div class="pivot-card-split-row">
-              <div class="pivot-card-split-col">
-                <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Projected (Assigned UPH)</div>
-                <div class="pivot-card-value white" id="pv-projected-assigned">-</div>
-              </div>
-              <div class="pivot-card-split-col">
-                <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>At Rate</div>
-                <div class="pivot-card-value white" id="pv-at-rate">-</div>
-              </div>
-            </div>
-            <div class="pivot-card-sub" id="pv-projected-assigned-sub">Based on who's on the floor now</div>
-          </div>
-          <div class="pivot-card pivot-card-wide">
-            <div class="pivot-card-split-row">
-              <div class="pivot-card-split-col">
-                <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Projected (Assigned UPH)</div>
-                <div class="pivot-card-value white" id="pv-pick-projected-assigned">-</div>
-              </div>
-              <div class="pivot-card-split-col">
-                <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>At Rate</div>
-                <div class="pivot-card-value white" id="pv-pick-at-rate">-</div>
-              </div>
-            </div>
-            <div class="pivot-card-sub" id="pv-pick-projected-assigned-sub">Based on who's on the floor now</div>
-          </div>
-        </div>
-
-        <div id="pivot-analysis">
-          <div class="pivot-analysis-title">Labor Pivot Analysis (Combined Pack)</div>
-          <div class="pivot-analysis-grid">
-            <div class="pivot-item">
-              <div class="pivot-item-label">Units Behind / Ahead</div>
-              <div class="pivot-item-value white" id="pv-gap">-</div>
-            </div>
-            <div class="pivot-item">
-              <div class="pivot-item-label">People to Close Gap</div>
-              <div class="pivot-item-value accent" id="pv-people">-</div>
-            </div>
-            <div class="pivot-item">
-              <div class="pivot-item-label">Rate Needed (UPH)</div>
-              <div class="pivot-item-value white" id="pv-rate">-</div>
-            </div>
-            <div class="pivot-item">
-              <div class="pivot-item-label">Current Headcount</div>
-              <div class="pivot-item-value white" id="pv-hc">-</div>
-            </div>
-          </div>
-          <div class="pivot-rec nodata" id="pv-rec">Waiting for shift data&hellip;</div>
-        </div>
-
-        <div id="labor-pivot-wrap" class="hidden">
-          <h3>By Function - recommended headcount moves</h3>
-          <table id="labor-pivot-table">
-            <thead>
-              <tr><th>Function</th><th>Assigned</th><th>Actual</th><th>Ideal (Now)</th><th>Variance</th><th>Current UPH</th><th>Projected EOS</th><th>Goal</th><th>Recommendation</th></tr>
-            </thead>
-            <tbody id="labor-pivot-body"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div id="board-grid">
-        <div class="panel" id="pool-panel">
-          <h2>Associate Talent Pool</h2>
-          <input id="pool-search" type="text" placeholder="Search name or Employee Id&hellip;">
-          <div id="pool-list"></div>
-          <div id="pool-empty-note" class="hidden">No one matches "<span id="pool-empty-term"></span>".</div>
-        </div>
-        <div class="panel">
-          <h2>Floor Grid</h2>
-          <div id="stations-wrap"></div>
-        </div>
-      </div>
-
-    </section>
-    <button id="ai-fab" title="AI Recommendation - planned for Phase 3">✦</button>
-
-    <!-- ---------- SHIFT TREND VIEW ---------- -->
-    <!-- Shift Trend: Actual vs Ideal Target cumulative units across the shift, like the
-         Packing_Trend sheet in your Shift Cost Sheet workbook, with a toggle between Pack
-         (315) and Pick (301) instead of a separate sheet per function. See renderTrendChart(). -->
-    <section id="lb-trend-view" class="hidden">
-      <div class="panel" id="trend-panel">
-        <div class="trend-header">
-          <div class="trend-title-row">
-            <h2 style="margin:0;">Shift Trend - Actual vs Ideal Target</h2>
-            <span class="pace-badge" id="trend-pace-badge">On Pace</span>
-          </div>
-          <div class="trend-toggle">
-            <button type="button" class="trend-toggle-btn active" data-trend-tran="315">Pack</button>
-            <button type="button" class="trend-toggle-btn" data-trend-tran="301">Pick</button>
-          </div>
-        </div>
-        <div class="trend-stats">
-          <div class="shift-stat">Actual so far <b id="trend-actual">0</b></div>
-          <div class="shift-stat">Ideal target so far <b id="trend-ideal">0</b></div>
-          <div class="shift-stat">Variance <b id="trend-variance">0</b></div>
-          <div class="shift-stat">Team avg UPH (live) <b id="trend-avg-uph">0.0</b></div>
-        </div>
-        <canvas id="trend-chart" height="90"></canvas>
-        <div class="note" id="trend-note" style="margin-top:10px;">
-          Ideal target line is the Combined goal for this function group, spread across production
-          minutes only - a 10-minute Startup, the 7:00 PM break (15 min), 10:30 PM lunch
-          (30 min), 1:45 AM break (15 min), and a 10-minute Cleanup before the shift's nominal end
-          are all excluded, so the line holds flat through each one, matching the Packing_Trend
-          sheet's own minute-by-minute schedule (630 nominal minutes &minus; 80 non-production
-          minutes = 550 production minutes, 9.1667h). It targets 100% at the end of the normal
-          shift length; if today's import shows units still coming in during the extra hour, it
-          automatically stretches the target window to match instead of assuming every day runs long.
-        </div>
-      </div>
-    </section>
-
-    <!-- ---------- INBOUND VIEW ---------- -->
-    <!-- Receiving (151) and Putaway (212), both always visible side by side (no toggle) - same
-         Actual vs Ideal Target cumulative-line idea as the Shift Trend tab, just two independent
-         charts instead of one with a toggle. Goals come from Admin > Shift Goals for the Inbound
-         Receiver / Inbound Putaway functions. See renderInboundCharts(). -->
-    <section id="lb-inbound-view" class="hidden">
-      <div class="inbound-grid">
-        <div class="panel">
-          <div class="trend-header">
-            <div class="trend-title-row">
-              <h2 style="margin:0;">Receiving</h2>
-              <span class="pace-badge none" id="inbound-receiving-pace-badge">No goal set</span>
-            </div>
-          </div>
-          <div class="trend-stats">
-            <div class="shift-stat">Shift goal <b id="inbound-receiving-goal">0</b></div>
-            <div class="shift-stat">Actual so far <b id="inbound-receiving-actual">0</b></div>
-            <div class="shift-stat">Ideal target so far <b id="inbound-receiving-ideal">0</b></div>
-            <div class="shift-stat">Variance <b id="inbound-receiving-variance">0</b></div>
-            <div class="shift-stat">Avg UPH (live) <b id="inbound-receiving-avg-uph">0.0</b></div>
-          </div>
-          <canvas id="inbound-receiving-chart" height="110"></canvas>
-          <div class="note" id="inbound-receiving-note" style="margin-top:10px;">
-            Actual units scanned today (Tran Type 151) vs the Ideal Target line, prorated across
-            production minutes from the Inbound Receiver goal set in Admin &gt; Shift Goals.
-          </div>
-        </div>
-        <div class="panel">
-          <div class="trend-header">
-            <div class="trend-title-row">
-              <h2 style="margin:0;">Putaway</h2>
-              <span class="pace-badge none" id="inbound-putaway-pace-badge">No goal set</span>
-            </div>
-          </div>
-          <div class="trend-stats">
-            <div class="shift-stat">Shift goal <b id="inbound-putaway-goal">0</b></div>
-            <div class="shift-stat">Actual so far <b id="inbound-putaway-actual">0</b></div>
-            <div class="shift-stat">Ideal target so far <b id="inbound-putaway-ideal">0</b></div>
-            <div class="shift-stat">Variance <b id="inbound-putaway-variance">0</b></div>
-            <div class="shift-stat">Avg UPH (live) <b id="inbound-putaway-avg-uph">0.0</b></div>
-          </div>
-          <canvas id="inbound-putaway-chart" height="110"></canvas>
-          <div class="note" id="inbound-putaway-note" style="margin-top:10px;">
-            Actual units scanned today (Tran Type 212) vs the Ideal Target line, prorated across
-            production minutes from the Inbound Putaway goal set in Admin &gt; Shift Goals.
-          </div>
-        </div>
-      </div>
-
-      <!-- Receiving/Inbound Putaway leaderboard, moved here from Associate Numbers so it sits
-           right under the matching graphs. See INBOUND_ASSOC_GROUPS/renderInboundAssocNumbers(). -->
-      <div class="fn-grid" id="inbound-assoc-numbers-grid" style="margin-top:16px;"></div>
-    </section>
-
-    <!-- ---------- ASSOCIATE UPH VIEW ---------- -->
-    <!-- Same Actual vs Ideal Target cumulative-line idea as the Shift Trend tab, scoped to one
-         associate + one function. Ideal here is a UPH RATE target (the function's Target UPH,
-         Admin > Stations), not a fixed daily unit goal, since there's no per-associate goal -
-         see renderAssocTrendChart(). -->
-    <section id="lb-assoc-trend-view" class="hidden">
-      <div class="panel" id="assoc-trend-panel">
-        <div class="trend-header">
-          <div class="trend-title-row">
-            <h2 style="margin:0;">Associate UPH Trend</h2>
-            <span class="pace-badge none" id="assoc-trend-pace-badge">Select associate &amp; function</span>
-          </div>
-        </div>
-        <div class="field-row">
-          <div class="field">
-            <label for="assoc-trend-associate">Associate</label>
-            <select id="assoc-trend-associate">
-              <option value="">Select an associate&hellip;</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="assoc-trend-function">Function</label>
-            <select id="assoc-trend-function">
-              <option value="">Select a function&hellip;</option>
-            </select>
-          </div>
-        </div>
-        <div class="trend-stats">
-          <div class="shift-stat">Actual so far <b id="assoc-trend-actual">0</b></div>
-          <div class="shift-stat">Ideal (Target UPH) so far <b id="assoc-trend-ideal">0</b></div>
-          <div class="shift-stat">Variance <b id="assoc-trend-variance">0</b></div>
-          <div class="shift-stat">Actual UPH (live) <b id="assoc-trend-avg-uph">0.0</b></div>
-          <div class="shift-stat">Target UPH <b id="assoc-trend-target-uph">0</b></div>
-        </div>
-        <div class="assoc-trend-body">
-          <div class="assoc-trend-chart-wrap">
-            <canvas id="assoc-trend-chart" height="90"></canvas>
-          </div>
-          <!-- Hour-by-hour breakdown: actual units scanned in each clock hour, not an average -
-               same idea as the per-associate hourly columns in the Shift Cost Sheet. Built from
-               the same assocTrend bucket data as the chart, just summed in pairs of half-hour
-               buckets instead of accumulated. See renderAssocTrendChart(). -->
-          <div class="assoc-trend-hourly-wrap">
-            <table class="assoc-trend-hourly-table" id="assoc-trend-hourly-table">
-              <thead><tr><th>Hour</th><th>Units</th></tr></thead>
-              <tbody id="assoc-trend-hourly-body">
-                <tr><td colspan="2" class="assoc-trend-hourly-empty">Select associate &amp; function</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="note" id="assoc-trend-note" style="margin-top:10px;">
-          Pick an associate and a function above. Ideal is that function's Target UPH (Admin &gt;
-          Stations) spread across production minutes only, same Startup/break/lunch/Cleanup
-          handling as the Pick &amp; Pack Trend tab (630 nominal minutes &minus; 80 non-production
-          minutes = 550 production minutes, 9.1667h - matching the Shift Cost Sheet's own
-          schedule). It holds flat at that nominal-shift total unless this associate's own data
-          shows units still landing past the normal end - then it keeps accruing through the
-          extra hour, same auto-detect as the Pick &amp; Pack Trend tab, just per associate instead
-          of team-wide. Scan data can't tell apart functions that share a Tran Type (OP/MOD/Walkie/
-          WOS Pick all post as 301; Small/
-          Large/WOS Pack all post as 315) - picking any one of those shows that associate's
-          combined activity across all of them for that Tran Type. The table beside the chart is
-          the actual raw units scanned in each clock hour - not an average, not smoothed.
-        </div>
-      </div>
-    </section>
-
-    <!-- ---------- ASSOCIATE NUMBERS VIEW ---------- -->
-    <!-- Snapshot leaderboard meant to be screenshotted and sent to the team: every associate with
-         scanned units today, grouped by the 7 real Tran Types we track (not the 13 app functions -
-         several functions share a Tran Type and scan data can't tell them apart, e.g. OP/MOD/
-         Walkie/WOS Pick all post as 301), ranked highest actual units first within each group.
-         Built from the same reliable assocTrendDocsToday totals as the hero's "Pack-out so far"
-         stat - real scanned units, not a UPH×Hours projection. See renderAssocNumbers(). -->
-    <section id="lb-assoc-numbers-view" class="hidden">
-      <div class="panel">
-        <div class="assoc-numbers-title-row">
-          <h2 style="margin:0;">Associate Numbers</h2>
-          <span class="page-sub" id="assoc-numbers-sub"></span>
-        </div>
-        <div class="note" style="margin:6px 0 16px;">
-          Every associate with scanned units today, grouped by transaction type, highest actual units first - built to screenshot and send to the team.
-        </div>
-        <div class="fn-grid" id="assoc-numbers-grid"></div>
-        <div class="assoc-numbers-legend">
-          <span><span class="dot" style="background:#c9960c"></span> Gold = #1 in group</span>
-          <span><span class="dot" style="background:#9aa4b2"></span> Silver = #2</span>
-          <span><span class="dot" style="background:#b3701f"></span> Bronze = #3</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- ---------- IMPORT DATA VIEW ---------- -->
-    <!-- Moved out of Admin's sub-tabs to its own top-level tab, right before Admin, since it's
-         used every shift (not a one-time setup task like the rest of Admin). -->
-    <section id="lb-import-view" class="hidden">
-      <div class="panel">
-        <h2>Import Transaction Data</h2>
-        <div class="note">
-          Replicates the Shift_Cost_Sheet Power Query cleaning: skips the junk header row, promotes real headers,
-          derives ShiftDate (rolls to the prior day for scans before 4:30 AM), keeps only overnight scans
-          (5:00 PM&ndash;4:30 AM), dedupes, then averages UPH per associate per Tran Type per day.
-          <br><br>
-          <b>Note on Pick codes:</b> Tran Type 301 covers MOD/OP/Walkie Pick alike - the raw scan data can't
-          tell those apart on its own (same as in the Excel sheet, where you pick the Role manually). Historical
-          UPH for any Pick bucket sharing a Tran Type will use the same underlying data until that's refined.
-        </div>
-        <input type="file" id="import-file" accept=".xlsx,.xls,.csv">
-        <button class="btn" id="import-btn">Parse &amp; Preview</button>
-        <button class="btn secondary hidden" id="commit-btn">Write to History</button>
-        <div id="import-log"></div>
-
-        <h2 style="margin-top:24px">Clear records for a shift date</h2>
-        <div class="note">
-          One-time cleanup tool. Deletes every uphHistory record for the date you pick - use this to
-          wipe out bad data from a test/broken import before re-importing the corrected file, so old and
-          new records for that night don't both sit there and look like a "split."
-        </div>
-        <div class="field-row">
-          <div class="field"><label>Shift date to clear</label><input type="date" id="clear-shiftdate"></div>
-        </div>
-        <button class="btn secondary" id="clear-shiftdate-btn">Delete all records for this date</button>
-        <div id="clear-shiftdate-log"></div>
-      </div>
-    </section>
-
-    <!-- ---------- ADMIN VIEW ---------- -->
-    <section id="lb-admin-view" class="hidden">
-      <div id="admin-tabs">
-        <button class="admin-tab-btn active" data-tab="stations">Stations</button>
-        <button class="admin-tab-btn" data-tab="associates">Associates</button>
-        <button class="admin-tab-btn" data-tab="goals">Shift Goals</button>
-        <button class="admin-tab-btn" data-tab="settings">Settings</button>
-      </div>
-
-      <!-- Stations tab -->
-      <div class="admin-pane admin-tab" data-tab="stations">
-        <h2>Stations &amp; UPH Targets</h2>
-        <div class="note">
-          "Bucket" functions (Small Pack, Large Pack, Pick/Replen/Consolidation) hold any number of associates up
-          to a configurable capacity. "Slot" stations hold exactly one associate each - not used by default
-          anymore, but still supported if you ever want a physically fixed one-person station again. Counts and
-          targets here are starting points - adjust freely.
-        </div>
-        <button class="btn secondary" id="seed-btn">Seed default stations (run once)</button>
-        <button class="btn secondary" id="migrate-pack-btn" title="One-time: converts the individual Small/Large Pack slot stations into two buckets">Convert Pack to bucket-style (run once)</button>
-        <table class="admin-table" id="stations-table" style="margin-top:12px;">
-          <thead><tr><th>Name</th><th>Function</th><th>Type</th><th>Tran Type</th><th>Set UPH</th><th>Capacity</th><th></th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <!-- Associates tab -->
-      <div class="admin-pane admin-tab hidden" data-tab="associates">
-        <h2>Associates</h2>
-        <div class="field-row">
-          <div class="field"><label>Employee Id (login/handle)</label><input id="new-assoc-eid"></div>
-          <div class="field"><label>Display name</label><input id="new-assoc-name"></div>
-          <div class="field"><label>Associate Id (IE#)</label><input id="new-assoc-code"></div>
-          <div class="field">
-            <label>Certifications</label>
-            <button type="button" class="certs-btn" id="new-assoc-certs-btn">+ Add Certs</button>
-            <div class="certs-summary" id="new-assoc-certs-summary">None selected</div>
-          </div>
-          <div class="field"><label><input type="checkbox" id="new-assoc-automated"> Automated (not a person)</label></div>
-          <button class="btn" id="add-assoc-btn">Add associate</button>
-        </div>
-        <div class="note">
-          Trained roles control how someone's card is grouped in the Talent Pool sidebar - a cross-trained
-          associate shows up under every role they're trained in (e.g. both "OP Pickers" and "Replen Put"). This
-          doesn't limit where you can actually drag them, it's just for finding who's available. Leave blank and
-          they'll show under "Unassigned."
-        </div>
-        <div class="note">
-          <b>Automated:</b> for Employee Ids in the transaction export that aren't a person - e.g. RSItem
-          (print-and-apply, straight to conveyor) or inVia. Checking this hides the card from the Talent Pool
-          (nothing to staff/drag), but its scanned units still flow into UPH history and shift totals normally
-          - e.g. RSItem's Tran Type 315 scans still count toward "Pack-out so far."
-        </div>
-        <div class="note">
-          <b>Bulk add:</b> paste one Employee Id per line (matching the "Employee Id" column in your transaction
-          export exactly). Display name defaults to the Employee Id - rename any of them in the table below.
-          Existing Employee Ids are skipped, so this is safe to re-run.
-        </div>
-        <div class="field-row">
-          <textarea id="bulk-assoc-input" rows="6" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;" placeholder="NVABENFORD&#10;NVADELGADO&#10;..."></textarea>
-        </div>
-        <button class="btn secondary" id="bulk-add-assoc-btn">Bulk add</button>
-        <div id="bulk-assoc-log" class="note hidden"></div>
-        <table class="admin-table" id="assoc-table">
-          <thead><tr><th>Employee Id</th><th>Name</th><th>Associate Id</th><th>Certs</th><th>OJT</th><th>Active</th><th>Automated</th><th></th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <!-- Shift Goals tab -->
-      <div class="admin-pane admin-tab hidden" data-tab="goals">
-        <h2>Shift Goals</h2>
-        <div class="note">Goals change day to day - set them fresh each shift for whichever functions matter tonight.</div>
-        <div class="field-row">
-          <div class="field"><label>Date</label><input type="date" id="goal-date"></div>
-          <div class="field"><label>Function</label><select id="goal-function"></select></div>
-          <div class="field"><label>Target units</label><input type="number" id="goal-units"></div>
-          <div class="field"><label>Planned hours</label><input type="number" id="goal-hours" step="0.25"></div>
-          <button class="btn" id="save-goal-btn">Save goal</button>
-        </div>
-        <table class="admin-table" id="goals-table">
-          <thead><tr><th>Function</th><th>Target Units</th><th>Planned Hours</th><th></th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <!-- Settings tab -->
-      <div class="admin-pane admin-tab hidden" data-tab="settings">
-        <h2>Calculation Settings</h2>
-        <div class="field-row">
-          <div class="field"><label>Average UPH window (# of shifts)</label><input type="number" id="set-window"></div>
-          <div class="field"><label>Trend: recent period (days)</label><input type="number" id="set-recent"></div>
-          <div class="field"><label>Trend: prior period (days)</label><input type="number" id="set-prior"></div>
-          <div class="field"><label>Shift start (24h, e.g. 17 = 5 PM)</label><input type="number" id="set-shift-start"></div>
-          <div class="field"><label>Core shift length (hours)</label><input type="number" step="0.25" id="set-shift-length"></div>
-          <div class="field"><label>Extra-hour grace window (hours)</label><input type="number" step="0.25" id="set-shift-grace"></div>
-          <div class="field"><label>Total production hours (for split auto-balance)</label><input type="number" step="0.01" id="set-production-hours"></div>
-          <button class="btn" id="save-settings-btn">Save settings</button>
-        </div>
-        <div class="note">
-          These drive the Board's "Shift progress" stat AND the import's overnight filter/ShiftDate logic.
-          Core window (e.g. 5:00 PM&ndash;3:30 AM) is always imported. The grace window after that (e.g. up to
-          4:30 AM) is only imported on nights that actually have Pack activity in it - auto-detected per
-          night from the file, same idea as your sheet's "Extra Hour Running?" check, so a normal 3:30 AM
-          cutoff night doesn't accidentally pull in the next shift's early scans.
-        </div>
-        <div class="note">
-          <b>Total production hours:</b> when someone is split across 2 functions (the "⑂ Split" button
-          on their occupant card), editing one function's hours auto-fills the other so the two add up
-          to this number - e.g. 4 hours in one function auto-sets the other to 5.16 if this is set
-          to 9.16. Only auto-balances when they're split into exactly 2 functions; with 3+ it leaves the
-          others alone since there's no single right way to split the remainder.
-        </div>
-      </div>
-    </section>
-  </main>
-<!-- Certs picker modal: reused by both "Add associate" and each row's Certs button in the
-     Associates admin table. See openCertsModal() in the script. -->
-<div class="modal-overlay hidden" id="certs-modal">
-  <div class="modal-box">
-    <h3>Certifications / trained functions</h3>
-    <div class="note">Check every function this associate is certified/trained on.</div>
-    <div class="certs-list" id="certs-list"></div>
-    <div class="modal-actions">
-      <button class="btn secondary" id="certs-cancel-btn">Cancel</button>
-      <button class="btn" id="certs-save-btn">Save</button>
-    </div>
-  </div>
-</div>
-
-<!-- OJT ramp picker modal: each row's OJT button in the Associates admin table opens this to set
-     which training week an associate is in. Only one week is ever checked at a time (checking one
-     unchecks the others) - it scales that associate's EXPECTED UPH on station/hero cards down to
-     the matching percentage, since a trainee's real UPH shouldn't be judged against full rate.
-     See openOjtModal() in the script. -->
-<div class="modal-overlay hidden" id="ojt-modal">
-  <div class="modal-box">
-    <h3>OJT Rates</h3>
-    <div class="note">Check the associate's current training week to scale their expected UPH. Uncheck all once they're at full rate.</div>
-    <div class="certs-list" id="ojt-list">
-      <label><input type="checkbox" data-week="1"> Week 1 - 20% of rate</label>
-      <label><input type="checkbox" data-week="2"> Week 2 - 50% of rate</label>
-      <label><input type="checkbox" data-week="3"> Week 3 - 75% of rate</label>
-      <label><input type="checkbox" data-week="4"> Week 4 - 100% of rate</label>
-    </div>
-    <div class="modal-actions">
-      <button class="btn secondary" id="ojt-cancel-btn">Cancel</button>
-      <button class="btn" id="ojt-save-btn">Save</button>
-    </div>
-  </div>
-</div>
-
-<!-- Split picker modal: an occupant's "Split" button opens this to add a SECOND, concurrent
-     station assignment for them without closing their current one(s) - both stay active at
-     once, each with its own editable hours, and each station's count/UPH stays separate since
-     they're just two independent segments. See openSplitModal() in the script. -->
-<div class="modal-overlay hidden" id="split-modal">
-  <div class="modal-box">
-    <h3>Split into another function</h3>
-    <div class="note" id="split-note">Adds a second, concurrent assignment - their current one stays active too. Set each function's hours afterward on its own card.</div>
-    <div class="certs-list" id="split-list"></div>
-    <div class="modal-actions">
-      <button class="btn secondary" id="split-cancel-btn">Cancel</button>
-      <button class="btn" id="split-confirm-btn">Add split</button>
-    </div>
-  </div>
-</div>
-    </div><!-- /#productionView -->
 
 <script>
 
@@ -13511,12 +13513,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 // Labor Board Firebase - lazy init via lb_init()
 let lb_db = null;
 const lb_firebaseConfig = {
-  apiKey: "AIzaSyAaNdlLoZRS0z-1ZflQBqt0rTYd9Njt5bU",
-  authDomain: "labor-allocation-tool-615a5.firebaseapp.com",
-  projectId: "labor-allocation-tool-615a5",
-  storageBucket: "labor-allocation-tool-615a5.firebasestorage.app",
-  messagingSenderId: "603347932638",
-  appId: "1:603347932638:web:d77b845fd1ba901d17b94f"
+  apiKey: "AIzaSyCMPDpzhZEWZjP9SptREKVSB4dmdhY5cpM",
+  authDomain: "las1-tracker.firebaseapp.com",
+  projectId: "las1-tracker",
+  storageBucket: "las1-tracker.firebasestorage.app",
+  messagingSenderId: "366160549791",
+  appId: "1:366160549791:web:b586a196cb8bf864aa0faa"
 };
 let lb_initialized = false;
 function lb_init() {
@@ -13757,7 +13759,7 @@ document.querySelectorAll(".admin-tab-btn").forEach(btn => {
    FIRESTORE LISTENERS
    ====================================================================== */
 function lb_startListeners() {
-  lb_db.collection("settings").doc("appSettings").onSnapshot(snap => {
+  lb_db.collection("lb_settings").doc("appSettings").onSnapshot(snap => {
     if (snap.exists) lb_appSettings = Object.assign(lb_appSettings, snap.data());
     document.getElementById("set-window").value = lb_appSettings.avgUphWindowShifts;
     document.getElementById("set-recent").value = lb_appSettings.trendRecentDays;
@@ -13769,13 +13771,13 @@ function lb_startListeners() {
     lb_renderBoard();
   });
 
-  lb_db.collection("stations").orderBy("order").onSnapshot(snap => {
+  lb_db.collection("lb_stations").orderBy("order").onSnapshot(snap => {
     lb_stations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     lb_renderStationsAdmin();
     lb_renderBoard();
   });
 
-  lb_db.collection("associates").orderBy("name").onSnapshot(snap => {
+  lb_db.collection("lb_associates").orderBy("name").onSnapshot(snap => {
     lb_associates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     lb_renderAssociatesAdmin();
     lb_renderBoard();
@@ -13788,7 +13790,7 @@ function lb_startListeners() {
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - 4);
   const cutoffStr = cutoff.toISOString().slice(0, 10);
-  lb_db.collection("uphHistory").where("shiftDate", ">=", cutoffStr).onSnapshot(snap => {
+  lb_db.collection("lb_uphHistory").where("shiftDate", ">=", cutoffStr).onSnapshot(snap => {
     lb_uphHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     lb_renderBoard();
   });
@@ -13805,12 +13807,12 @@ function lb_startListeners() {
 function lb_watchShift(shiftDate) {
   lb_currentShiftDate = shiftDate;
   if (lb_unsubSegments) lb_unsubSegments();
-  lb_unsubSegments = lb_db.collection("assignments").doc(shiftDate).collection("segments")
+  lb_unsubSegments = lb_db.collection("lb_assignments").doc(shiftDate).collection("segments")
     .onSnapshot(snap => {
       lb_segments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       lb_renderBoard();
     });
-  lb_db.collection("shiftGoals").where("shiftDate", "==", shiftDate).onSnapshot(snap => {
+  lb_db.collection("lb_shiftGoals").where("shiftDate", "==", shiftDate).onSnapshot(snap => {
     lb_shiftGoalsToday = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     lb_renderBoard();
     lb_renderGoalsAdmin();
@@ -13819,7 +13821,7 @@ function lb_watchShift(shiftDate) {
   });
   if (lb_unsubTrend) lb_unsubTrend();
   lb_shiftTrendDocs = {};
-  lb_unsubTrend = lb_db.collection("shiftTrend").where("shiftDate", "==", shiftDate).onSnapshot(snap => {
+  lb_unsubTrend = lb_db.collection("lb_shiftTrend").where("shiftDate", "==", shiftDate).onSnapshot(snap => {
     lb_shiftTrendDocs = {};
     snap.docs.forEach(d => { lb_shiftTrendDocs[d.data().tranType] = d.data(); });
     lb_renderTrendChart();
@@ -13831,7 +13833,7 @@ function lb_watchShift(shiftDate) {
   // Type total on every function card that shares it (e.g. Small Pack AND Large Pack, both 315).
   if (lb_unsubAssocTrendToday) lb_unsubAssocTrendToday();
   lb_assocTrendDocsToday = {};
-  lb_unsubAssocTrendToday = lb_db.collection("assocTrend").where("shiftDate", "==", shiftDate).onSnapshot(snap => {
+  lb_unsubAssocTrendToday = lb_db.collection("lb_assocTrend").where("shiftDate", "==", shiftDate).onSnapshot(snap => {
     lb_assocTrendDocsToday = {};
     snap.docs.forEach(d => {
       const data = d.data();
@@ -15065,7 +15067,7 @@ function lb_watchAssocTrend() {
   if (!associateId || !functionKey) { lb_renderAssocTrendChart(); return; }
   const fn = LB_FUNCTIONS[functionKey];
   const docId = `${lb_currentShiftDate}_${associateId}_${fn.tranType}`;
-  lb_unsubAssocTrend = lb_db.collection("assocTrend").doc(docId).onSnapshot(snap => {
+  lb_unsubAssocTrend = lb_db.collection("lb_assocTrend").doc(docId).onSnapshot(snap => {
     lb_assocTrendDoc = snap.exists ? snap.data() : null;
     lb_renderAssocTrendChart();
   });
@@ -15370,7 +15372,7 @@ function lb_occupantRow(seg, a, uph, hrs, functionKey) {
   });
   row.querySelector(".hrs").addEventListener("change", e => {
     const newHours = parseFloat(e.target.value) || 0;
-    const segRef = lb_db.collection("assignments").doc(lb_currentShiftDate).collection("segments");
+    const segRef = lb_db.collection("lb_assignments").doc(lb_currentShiftDate).collection("segments");
     segRef.doc(seg.id).update({ hoursInFunction: newHours });
 
     // Auto-balance: if this associate is split into exactly 2 concurrent functions right now,
@@ -15430,7 +15432,7 @@ async function handleDrop(associateId, station, fromSegId) {
   }
   if (activeSeg && station && activeSeg.stationId === station.id) return; // no-op, same spot
 
-  const segRef = lb_db.collection("assignments").doc(lb_currentShiftDate).collection("segments");
+  const segRef = lb_db.collection("lb_assignments").doc(lb_currentShiftDate).collection("segments");
   const batch = lb_db.batch();
   const now = firebase.firestore.Timestamp.now();
 
@@ -15454,7 +15456,7 @@ async function closeSegment(seg) {
   const now = firebase.firestore.Timestamp.now();
   const startMs = seg.startTime ? seg.startTime.toMillis() : now.toMillis();
   const hours = Math.max(0, (now.toMillis() - startMs) / 3600000);
-  await lb_db.collection("assignments").doc(lb_currentShiftDate).collection("segments").doc(seg.id)
+  await lb_db.collection("lb_assignments").doc(lb_currentShiftDate).collection("segments").doc(seg.id)
     .update({ endTime: now, hoursInFunction: Math.round(hours * 100) / 100 });
 }
 
@@ -15478,7 +15480,7 @@ async function splitSegment(associateId, station) {
 
   const goal = lb_goalFor(station.functionKey);
   const now = firebase.firestore.Timestamp.now();
-  await lb_db.collection("assignments").doc(lb_currentShiftDate).collection("segments").add({
+  await lb_db.collection("lb_assignments").doc(lb_currentShiftDate).collection("segments").add({
     associateId, stationId: station.id, functionKey: station.functionKey,
     startTime: now, endTime: null,
     hoursInFunction: goal ? goal.plannedHours : null
@@ -15547,7 +15549,7 @@ document.getElementById("clear-assignments-btn").addEventListener("click", async
   if (!openSegs.length) { alert("Nothing active to reset."); return; }
   const now = firebase.firestore.Timestamp.now();
   const batch = lb_db.batch();
-  const segRef = lb_db.collection("assignments").doc(lb_currentShiftDate).collection("segments");
+  const segRef = lb_db.collection("lb_assignments").doc(lb_currentShiftDate).collection("segments");
   openSegs.forEach(seg => batch.update(segRef.doc(seg.id), { endTime: now }));
   await batch.commit();
 });
@@ -15563,7 +15565,7 @@ document.getElementById("pool-search").addEventListener("input", e => {
    ADMIN: STATIONS
    ====================================================================== */
 document.getElementById("seed-btn").addEventListener("click", async () => {
-  const existing = await lb_db.collection("stations").limit(1).get();
+  const existing = await lb_db.collection("lb_stations").limit(1).get();
   if (!existing.empty) {
     if (!confirm("Stations already exist. Seed anyway (adds any missing default lb_stations)?")) return;
   }
@@ -15574,12 +15576,12 @@ document.getElementById("seed-btn").addEventListener("click", async () => {
       for (let i = 1; i <= fn.count; i++) {
         const id = `${key}_${i}`;
         const name = fn.count === 1 ? fn.name : `${fn.name} ${i}`;
-        batch.set(lb_db.collection("stations").doc(id), {
+        batch.set(lb_db.collection("lb_stations").doc(id), {
           name, functionKey: key, tranType: fn.tranType, setUPH: fn.defaultUPH, type: "slot", capacity: 1, order: order++
         }, { merge: true });
       }
     } else {
-      batch.set(lb_db.collection("stations").doc(key), {
+      batch.set(lb_db.collection("lb_stations").doc(key), {
         name: fn.name, functionKey: key, tranType: fn.tranType, setUPH: fn.defaultUPH, type: "bucket", capacity: fn.defaultCapacity || 4, order: order++
       }, { merge: true });
     }
@@ -15608,16 +15610,16 @@ document.getElementById("migrate-pack-btn").addEventListener("click", async () =
   const removedIds = new Set([...smallDocs, ...largeDocs].map(st => st.id));
   const openSegsOnRemoved = lb_segments.filter(s => !s.endTime && removedIds.has(s.stationId));
   const now = firebase.firestore.Timestamp.now();
-  const segRef = lb_db.collection("assignments").doc(lb_currentShiftDate).collection("segments");
+  const segRef = lb_db.collection("lb_assignments").doc(lb_currentShiftDate).collection("segments");
   const batch = lb_db.batch();
 
   openSegsOnRemoved.forEach(seg => batch.update(segRef.doc(seg.id), { endTime: now }));
-  smallDocs.forEach(st => batch.delete(lb_db.collection("stations").doc(st.id)));
-  largeDocs.forEach(st => batch.delete(lb_db.collection("stations").doc(st.id)));
+  smallDocs.forEach(st => batch.delete(lb_db.collection("lb_stations").doc(st.id)));
+  largeDocs.forEach(st => batch.delete(lb_db.collection("lb_stations").doc(st.id)));
 
   if (smallDocs.length) {
     const setUPH = smallDocs[0].setUPH || LB_FUNCTIONS.SMALL_PACK.defaultUPH;
-    batch.set(lb_db.collection("stations").doc("SMALL_PACK"), {
+    batch.set(lb_db.collection("lb_stations").doc("SMALL_PACK"), {
       name: LB_FUNCTIONS.SMALL_PACK.name, functionKey: "SMALL_PACK", tranType: LB_FUNCTIONS.SMALL_PACK.tranType,
       setUPH, type: "bucket", capacity: smallDocs.length, order: smallDocs[0].order ?? 0
     }, { merge: true });
@@ -15625,7 +15627,7 @@ document.getElementById("migrate-pack-btn").addEventListener("click", async () =
   if (largeDocs.length) {
     const largePackOnly = largeDocs.filter(st => st.functionKey === "LARGE_PACK");
     const setUPH = (largePackOnly[0] || largeDocs[0]).setUPH || LB_FUNCTIONS.LARGE_PACK.defaultUPH;
-    batch.set(lb_db.collection("stations").doc("LARGE_PACK"), {
+    batch.set(lb_db.collection("lb_stations").doc("LARGE_PACK"), {
       name: LB_FUNCTIONS.LARGE_PACK.name, functionKey: "LARGE_PACK", tranType: LB_FUNCTIONS.LARGE_PACK.tranType,
       setUPH, type: "bucket", capacity: largeDocs.length, order: largeDocs[0].order ?? 0
     }, { merge: true });
@@ -15655,7 +15657,7 @@ function lb_renderStationsAdmin() {
       inp.addEventListener("change", () => {
         const field = inp.dataset.field;
         const val = (field === "setUPH" || field === "capacity") ? parseFloat(inp.value) || 0 : inp.value;
-        lb_db.collection("stations").doc(st.id).update({ [field]: val });
+        lb_db.collection("lb_stations").doc(st.id).update({ [field]: val });
       });
     });
     tr.querySelector('[data-action="delete"]').addEventListener("click", async () => {
@@ -15665,13 +15667,13 @@ function lb_renderStationsAdmin() {
       const openSegsHere = lb_segments.filter(s => !s.endTime && s.stationId === st.id);
       if (openSegsHere.length) {
         const now = firebase.firestore.Timestamp.now();
-        const segRef = lb_db.collection("assignments").doc(lb_currentShiftDate).collection("segments");
+        const segRef = lb_db.collection("lb_assignments").doc(lb_currentShiftDate).collection("segments");
         const batch = lb_db.batch();
         openSegsHere.forEach(seg => batch.update(segRef.doc(seg.id), { endTime: now }));
-        batch.delete(lb_db.collection("stations").doc(st.id));
+        batch.delete(lb_db.collection("lb_stations").doc(st.id));
         await batch.commit();
       } else {
-        await lb_db.collection("stations").doc(st.id).delete();
+        await lb_db.collection("lb_stations").doc(st.id).delete();
       }
     });
     tbody.appendChild(tr);
@@ -15780,7 +15782,7 @@ document.getElementById("add-assoc-btn").addEventListener("click", async () => {
   const trainedRoles = newAssocCerts;
   const automated = document.getElementById("new-assoc-automated").checked;
   if (!employeeId || !name) { alert("Employee Id and name are required."); return; }
-  await lb_db.collection("associates").add({ employeeId, name, associateCode, trainedRoles, active: true, automated });
+  await lb_db.collection("lb_associates").add({ employeeId, name, associateCode, trainedRoles, active: true, automated });
   document.getElementById("new-assoc-eid").value = "";
   document.getElementById("new-assoc-name").value = "";
   document.getElementById("new-assoc-code").value = "";
@@ -15807,7 +15809,7 @@ document.getElementById("bulk-add-assoc-btn").addEventListener("click", async ()
   const KNOWN_AUTOMATED_IDS = new Set(["RSItem", "inVia"]);
   const batch = lb_db.batch();
   toAdd.forEach(id => {
-    batch.set(lb_db.collection("associates").doc(), {
+    batch.set(lb_db.collection("lb_associates").doc(), {
       employeeId: id, name: id, associateCode: "", trainedRoles: [], active: true,
       automated: KNOWN_AUTOMATED_IDS.has(id)
     });
@@ -15842,21 +15844,21 @@ function lb_renderAssociatesAdmin() {
       inp.addEventListener("change", () => {
         const field = inp.dataset.field;
         const val = (field === "active" || field === "automated") ? inp.checked : inp.value;
-        lb_db.collection("associates").doc(a.id).update({ [field]: val });
+        lb_db.collection("lb_associates").doc(a.id).update({ [field]: val });
       });
     });
     tr.querySelector('[data-action="certs"]').addEventListener("click", () => {
       lb_openCertsModal(lb_rolesFor(a), keys => {
-        lb_db.collection("associates").doc(a.id).update({ trainedRoles: keys });
+        lb_db.collection("lb_associates").doc(a.id).update({ trainedRoles: keys });
       });
     });
     tr.querySelector('[data-action="ojt"]').addEventListener("click", () => {
       lb_openOjtModal(a.ojtWeek || 0, week => {
-        lb_db.collection("associates").doc(a.id).update({ ojtWeek: week });
+        lb_db.collection("lb_associates").doc(a.id).update({ ojtWeek: week });
       });
     });
     tr.querySelector('[data-action="delete"]').addEventListener("click", () => {
-      if (confirm(`Delete associate "${a.name}"?`)) lb_db.collection("associates").doc(a.id).delete();
+      if (confirm(`Delete associate "${a.name}"?`)) lb_db.collection("lb_associates").doc(a.id).delete();
     });
     tbody.appendChild(tr);
   });
@@ -15882,7 +15884,7 @@ document.getElementById("save-goal-btn").addEventListener("click", async () => {
   const functionKey = document.getElementById("goal-function").value;
   const targetUnits = parseFloat(document.getElementById("goal-units").value) || 0;
   const plannedHours = parseFloat(document.getElementById("goal-hours").value) || 0;
-  await lb_db.collection("shiftGoals").doc(`${shiftDate}_${functionKey}`).set({ shiftDate, functionKey, targetUnits, plannedHours });
+  await lb_db.collection("lb_shiftGoals").doc(`${shiftDate}_${functionKey}`).set({ shiftDate, functionKey, targetUnits, plannedHours });
 });
 
 function lb_renderGoalsAdmin() {
@@ -15892,7 +15894,7 @@ function lb_renderGoalsAdmin() {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${(LB_FUNCTIONS[g.functionKey]||{}).name || g.functionKey}</td><td>${g.targetUnits}</td><td>${g.plannedHours}</td>
       <td class="row-actions"><button data-action="delete">Delete</button></td>`;
-    tr.querySelector('[data-action="delete"]').addEventListener("click", () => lb_db.collection("shiftGoals").doc(g.id).delete());
+    tr.querySelector('[data-action="delete"]').addEventListener("click", () => lb_db.collection("lb_shiftGoals").doc(g.id).delete());
     tbody.appendChild(tr);
   });
 }
@@ -15908,7 +15910,7 @@ document.getElementById("save-settings-btn").addEventListener("click", async () 
   const shiftLengthHours = parseFloat(document.getElementById("set-shift-length").value);
   const shiftGraceHours = parseFloat(document.getElementById("set-shift-grace").value);
   const productionHoursPerShift = parseFloat(document.getElementById("set-production-hours").value);
-  await lb_db.collection("settings").doc("appSettings").set({
+  await lb_db.collection("lb_settings").doc("appSettings").set({
     avgUphWindowShifts, trendRecentDays, trendPriorDays,
     shiftStartHour: isNaN(shiftStartHour) ? 17 : shiftStartHour,
     shiftLengthHours: isNaN(shiftLengthHours) ? 10.5 : shiftLengthHours,
@@ -16013,7 +16015,7 @@ document.getElementById("commit-btn").addEventListener("click", async () => {
     const expire = new Date(r.shiftDate);
     expire.setMonth(expire.getMonth() + 4);
     const id = `${r.associateId}_${r.tranType}_${r.shiftDate}`;
-    writes.push([lb_db.collection("uphHistory").doc(id), {
+    writes.push([lb_db.collection("lb_uphHistory").doc(id), {
       associateId: r.associateId, tranType: r.tranType, shiftDate: r.shiftDate,
       units: r.units, minutes: r.minutes, uph: r.uph, reliable: r.reliable,
       expireAt: firebase.firestore.Timestamp.fromDate(expire)
@@ -16021,14 +16023,14 @@ document.getElementById("commit-btn").addEventListener("click", async () => {
   });
   Object.entries(pendingTrendBuckets || {}).forEach(([key, unitsArr]) => {
     const [shiftDate, tranType] = key.split("|");
-    writes.push([lb_db.collection("shiftTrend").doc(`${shiftDate}_${tranType}`), {
+    writes.push([lb_db.collection("lb_shiftTrend").doc(`${shiftDate}_${tranType}`), {
       shiftDate, tranType,
       buckets: unitsArr.map((units, i) => ({ label: bucketLabels[i], units }))
     }]);
   });
   Object.entries(pendingAssocTrendBuckets || {}).forEach(([key, unitsArr]) => {
     const [shiftDate, associateId, tranType] = key.split("|");
-    writes.push([lb_db.collection("assocTrend").doc(`${shiftDate}_${associateId}_${tranType}`), {
+    writes.push([lb_db.collection("lb_assocTrend").doc(`${shiftDate}_${associateId}_${tranType}`), {
       shiftDate, associateId, tranType,
       buckets: unitsArr.map((units, i) => ({ label: bucketLabels[i], units }))
     }]);
@@ -16060,9 +16062,9 @@ document.getElementById("clear-shiftdate-btn").addEventListener("click", async (
   if (!confirm(`Delete ALL lb_uphHistory, Shift Trend, and Associate UPH Trend records for ${shiftDate}? This can't be undone.`)) return;
   log.textContent = "Deleting...";
   const [uphSnap, trendSnap, assocTrendSnap] = await Promise.all([
-    lb_db.collection("uphHistory").where("shiftDate", "==", shiftDate).get(),
-    lb_db.collection("shiftTrend").where("shiftDate", "==", shiftDate).get(),
-    lb_db.collection("assocTrend").where("shiftDate", "==", shiftDate).get()
+    lb_db.collection("lb_uphHistory").where("shiftDate", "==", shiftDate).get(),
+    lb_db.collection("lb_shiftTrend").where("shiftDate", "==", shiftDate).get(),
+    lb_db.collection("lb_assocTrend").where("shiftDate", "==", shiftDate).get()
   ]);
   if (uphSnap.empty && trendSnap.empty && assocTrendSnap.empty) { log.textContent = `No records found for ${shiftDate}.`; return; }
   // Firestore batches cap at 500 writes - a busy day's per-associate deletes can exceed that, so
