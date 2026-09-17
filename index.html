@@ -15776,22 +15776,29 @@ document.getElementById("new-assoc-certs-btn").addEventListener("click", () => {
 });
 
 document.getElementById("add-assoc-btn").addEventListener("click", async () => {
+  if (!lb_db) { alert("Production tab not initialized. Click the Production nav link first, then try again."); return; }
   const employeeId = document.getElementById("new-assoc-eid").value.trim();
   const name = document.getElementById("new-assoc-name").value.trim();
   const associateCode = document.getElementById("new-assoc-code").value.trim();
   const trainedRoles = newAssocCerts;
   const automated = document.getElementById("new-assoc-automated").checked;
   if (!employeeId || !name) { alert("Employee Id and name are required."); return; }
-  await lb_db.collection("lb_associates").add({ employeeId, name, associateCode, trainedRoles, active: true, automated });
-  document.getElementById("new-assoc-eid").value = "";
-  document.getElementById("new-assoc-name").value = "";
-  document.getElementById("new-assoc-code").value = "";
-  newAssocCerts = [];
-  document.getElementById("new-assoc-certs-summary").textContent = "None selected";
-  document.getElementById("new-assoc-automated").checked = false;
+  try {
+    await lb_db.collection("lb_associates").add({ employeeId, name, associateCode, trainedRoles, active: true, automated });
+    document.getElementById("new-assoc-eid").value = "";
+    document.getElementById("new-assoc-name").value = "";
+    document.getElementById("new-assoc-code").value = "";
+    newAssocCerts = [];
+    document.getElementById("new-assoc-certs-summary").textContent = "None selected";
+    document.getElementById("new-assoc-automated").checked = false;
+  } catch(e) {
+    alert("Error saving associate: " + e.message);
+    console.error("lb_associates write error:", e);
+  }
 });
 
 document.getElementById("bulk-add-assoc-btn").addEventListener("click", async () => {
+  if (!lb_db) { alert("Production tab not initialized. Click the Production nav link first, then try again."); return; }
   const raw = document.getElementById("bulk-assoc-input").value;
   const ids = raw.split("\n").map(s => s.trim()).filter(Boolean);
   const logEl = document.getElementById("bulk-assoc-log");
@@ -15814,9 +15821,14 @@ document.getElementById("bulk-add-assoc-btn").addEventListener("click", async ()
       automated: KNOWN_AUTOMATED_IDS.has(id)
     });
   });
-  await batch.commit();
-  logEl.textContent = `Added ${toAdd.length} associate(s).` + (skipped ? ` Skipped ${skipped} already on file.` : "");
-  document.getElementById("bulk-assoc-input").value = "";
+  try {
+    await batch.commit();
+    logEl.textContent = `Added ${toAdd.length} associate(s).` + (skipped ? ` Skipped ${skipped} already on file.` : "");
+    document.getElementById("bulk-assoc-input").value = "";
+  } catch(e) {
+    logEl.textContent = "Error: " + e.message;
+    console.error("bulk lb_associates write error:", e);
+  }
 });
 
 function lb_renderAssociatesAdmin() {
