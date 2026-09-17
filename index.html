@@ -10001,18 +10001,18 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
   /* ---------- Admin view ---------- */
   #admin-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
-  #admin-tabs button{padding:6px 12px;border:1px solid var(--border);background:#fff;border-radius:6px;cursor:pointer;font-size:13px;}
-  #admin-tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent);}
-  .admin-pane{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;}
-  .admin-pane h2{font-size:15px;margin-top:0;}
-  table.admin-table{width:100%;border-collapse:collapse;font-size:13px;}
-  table.admin-table th, table.admin-table td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:left;}
-  table.admin-table input{width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;}
-  .row-actions button{border:1px solid var(--border);background:#fff;border-radius:5px;padding:4px 8px;font-size:12px;cursor:pointer;}
-  .btn{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:13px;cursor:pointer;}
-  .btn:hover{background:var(--accent-dark);}
-  .btn.secondary{background:#fff;color:var(--text);border:1px solid var(--border);}
-  .btn.danger{background:var(--bad);}
+  #productionView #admin-tabs button{padding:6px 12px;border:1px solid var(--border);background:#fff;border-radius:6px;cursor:pointer;font-size:13px;}
+  #productionView #admin-tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  #productionView .admin-pane{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;}
+  #productionView .admin-pane h2{font-size:15px;margin-top:0;}
+  #productionView table.admin-table{width:100%;border-collapse:collapse;font-size:13px;}
+  #productionView table.admin-table th, #productionView table.admin-table td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:left;}
+  #productionView table.admin-table input{width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;}
+  #productionView .row-actions button{border:1px solid var(--border);background:#fff;border-radius:5px;padding:4px 8px;font-size:12px;cursor:pointer;}
+  #productionView .btn{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:13px;cursor:pointer;}
+  #productionView .btn:hover{background:var(--accent-dark);}
+  #productionView .btn.secondary{background:#fff;color:var(--text);border:1px solid var(--border);}
+  #productionView .btn.danger{background:var(--bad);}
   .field-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end;}
   .field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);}
   .field input, .field select{padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;color:var(--text);}
@@ -13520,8 +13520,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 // ===== PRODUCTION TAB (Labor Allocation Board) =====
 (function() {
 
-// Labor Board Firebase - lazy init via lb_init()
-let lb_db = null;
+// Labor Board Firebase
+// lb_db initialized at page load so cert sync works even before Production tab is opened.
+// lb_startListeners() is still lazy — only called when Production tab is first clicked.
 const lb_firebaseConfig = {
   apiKey: "AIzaSyCMPDpzhZEWZjP9SptREKVSB4dmdhY5cpM",
   authDomain: "las1-tracker.firebaseapp.com",
@@ -13530,12 +13531,12 @@ const lb_firebaseConfig = {
   messagingSenderId: "366160549791",
   appId: "1:366160549791:web:b586a196cb8bf864aa0faa"
 };
+const _lbApp = firebase.initializeApp(lb_firebaseConfig, 'laborApp');
+let lb_db = _lbApp.firestore();
 let lb_initialized = false;
 function lb_init() {
   if (lb_initialized) return;
   lb_initialized = true;
-  const _lbApp = firebase.initializeApp(lb_firebaseConfig, 'laborApp');
-  lb_db = _lbApp.firestore();
   lb_startListeners();
 }
 window.lb_init = lb_init;
@@ -13559,7 +13560,7 @@ const LB_CERT_TO_ROLE = {
   'Small Consolidator': 'SMALL_CONSOLIDATION',
 };
 window.lb_syncCertToRole = async function(employeeId, certLabel, newStatus) {
-  if (!lb_db || !employeeId) return;
+  if (!employeeId) return;
   const lbRole = LB_CERT_TO_ROLE[certLabel];
   if (!lbRole) return; // cert has no matching labor board station
   try {
