@@ -3330,6 +3330,13 @@ window.setCertStatus = async (newStatus) => {
       listenBadges(currentAssociateId);
     } catch(e) { console.warn('Cert milestone check failed (non-critical):', e); }
   }
+
+  // Sync to labor board trainedRoles if the cert maps to a station
+  if (typeof window.lb_syncCertToRole === 'function') {
+    const mainAssoc = allAssociates.find(a => a.id === currentAssociateId);
+    const empId = mainAssoc?.employeeId;
+    if (empId) window.lb_syncCertToRole(empId, _certModalLabel, newStatus);
+  }
 };
 
 const CERT_MILESTONES = [
@@ -13533,6 +13540,43 @@ function lb_init() {
 }
 window.lb_init = lb_init;
 window.lb_showView = function(v) { lb_showView(v); };
+
+// Cert → labor board role sync
+// Maps main tracker cert labels to LB_FUNCTIONS keys
+const LB_CERT_TO_ROLE = {
+  'OP Pick':            'OP_PICK',
+  'Walkie Rider':       'WALKIE_PICK',
+  'Small Packer':       'SMALL_PACK',
+  'Large Packer':       'LARGE_PACK',
+  'MOD Pick':           'MOD_PICK',
+  'Replen Pick':        'REPLEN_PICK',
+  'Replen Put':         'REPLEN_PUT',
+  'Inbound Putaway':    'INBOUND_PUTAWAY',
+  'Inbound Receiver':   'INBOUND_RECEIVER',
+  'WOS Pick':           'WOS_PICK',
+  'WOS Pack':           'WOS_PACK',
+  'Large Consolidator': 'LARGE_CONSOLIDATION',
+  'Small Consolidator': 'SMALL_CONSOLIDATION',
+};
+window.lb_syncCertToRole = async function(employeeId, certLabel, newStatus) {
+  if (!lb_db || !employeeId) return;
+  const lbRole = LB_CERT_TO_ROLE[certLabel];
+  if (!lbRole) return; // cert has no matching labor board station
+  try {
+    const snap = await lb_db.collection("lb_associates").where("employeeId", "==", employeeId).limit(1).get();
+    if (snap.empty) return; // associate not in labor board yet
+    const lbDoc = snap.docs[0];
+    const currentRoles = lbDoc.data().trainedRoles || [];
+    const newRoles = newStatus === 'certified'
+      ? (currentRoles.includes(lbRole) ? currentRoles : [...currentRoles, lbRole])
+      : currentRoles.filter(r => r !== lbRole);
+    if (JSON.stringify(newRoles.sort()) !== JSON.stringify([...currentRoles].sort())) {
+      await lb_db.collection("lb_associates").doc(lbDoc.id).update({ trainedRoles: newRoles });
+    }
+  } catch(e) {
+    console.warn('lb_syncCertToRole failed (non-critical):', e);
+  }
+};
 
 // Live clock
 (function lb_startClock() {
