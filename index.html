@@ -13565,18 +13565,30 @@ window.lb_syncCertToRole = async function(employeeId, assocName, certLabel, newS
   const lbRole = LB_CERT_TO_ROLE[certLabel];
   if (!lbRole) { console.log('[lb sync] no role mapping for cert:', certLabel); return; }
   try {
-    let snap = null;
-    // Try by employeeId first, fall back to name match
+    let lbDoc = null;
+    // 1. Try by employeeId
     if (employeeId) {
-      snap = await lb_db.collection("lb_associates").where("employeeId", "==", employeeId).limit(1).get();
-      console.log('[lb sync] query by employeeId:', employeeId, '→ found:', !snap.empty);
+      const snap = await lb_db.collection("lb_associates").where("employeeId", "==", employeeId).limit(1).get();
+      if (!snap.empty) lbDoc = snap.docs[0];
     }
-    if ((!snap || snap.empty) && assocName) {
-      snap = await lb_db.collection("lb_associates").where("name", "==", assocName).limit(1).get();
-      console.log('[lb sync] query by name:', assocName, '→ found:', !snap.empty);
+    // 2. Try exact name match
+    if (!lbDoc && assocName) {
+      const snap = await lb_db.collection("lb_associates").where("name", "==", assocName).limit(1).get();
+      if (!snap.empty) lbDoc = snap.docs[0];
     }
-    if (!snap || snap.empty) { console.warn('[lb sync] associate not found in lb_associates'); return; }
-    const lbDoc = snap.docs[0];
+    // 3. Fuzzy name match — scan all lb_associates for first+last match (handles middle initials)
+    if (!lbDoc && assocName) {
+      const parts = assocName.trim().split(/\s+/);
+      const first = parts[0].toLowerCase();
+      const last = parts[parts.length - 1].toLowerCase();
+      const allSnap = await lb_db.collection("lb_associates").get();
+      const match = allSnap.docs.find(d => {
+        const n = (d.data().name || '').toLowerCase().split(/\s+/);
+        return n[0] === first && n[n.length - 1] === last;
+      });
+      if (match) lbDoc = match;
+    }
+    if (!lbDoc) { console.warn('[lb sync] associate not found in lb_associates for:', assocName, employeeId); return; }
     const currentRoles = lbDoc.data().trainedRoles || [];
     const newRoles = newStatus === 'certified'
       ? (currentRoles.includes(lbRole) ? currentRoles : [...currentRoles, lbRole])
