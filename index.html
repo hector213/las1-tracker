@@ -3334,8 +3334,10 @@ window.setCertStatus = async (newStatus) => {
   // Sync to labor board trainedRoles if the cert maps to a station
   if (typeof window.lb_syncCertToRole === 'function') {
     const mainAssoc = allAssociates.find(a => a.id === currentAssociateId);
-    const empId = mainAssoc?.employeeId;
-    if (empId) window.lb_syncCertToRole(empId, _certModalLabel, newStatus);
+    const empId = mainAssoc?.employeeId || null;
+    const assocName = mainAssoc?.name || null;
+    console.log('[lb sync] cert toggle:', _certModalLabel, newStatus, '| empId:', empId, '| name:', assocName);
+    window.lb_syncCertToRole(empId, assocName, _certModalLabel, newStatus);
   }
 };
 
@@ -13559,23 +13561,31 @@ const LB_CERT_TO_ROLE = {
   'Large Consolidator': 'LARGE_CONSOLIDATION',
   'Small Consolidator': 'SMALL_CONSOLIDATION',
 };
-window.lb_syncCertToRole = async function(employeeId, certLabel, newStatus) {
-  if (!employeeId) return;
+window.lb_syncCertToRole = async function(employeeId, assocName, certLabel, newStatus) {
   const lbRole = LB_CERT_TO_ROLE[certLabel];
-  if (!lbRole) return; // cert has no matching labor board station
+  if (!lbRole) { console.log('[lb sync] no role mapping for cert:', certLabel); return; }
   try {
-    const snap = await lb_db.collection("lb_associates").where("employeeId", "==", employeeId).limit(1).get();
-    if (snap.empty) return; // associate not in labor board yet
+    let snap = null;
+    // Try by employeeId first, fall back to name match
+    if (employeeId) {
+      snap = await lb_db.collection("lb_associates").where("employeeId", "==", employeeId).limit(1).get();
+      console.log('[lb sync] query by employeeId:', employeeId, '→ found:', !snap.empty);
+    }
+    if ((!snap || snap.empty) && assocName) {
+      snap = await lb_db.collection("lb_associates").where("name", "==", assocName).limit(1).get();
+      console.log('[lb sync] query by name:', assocName, '→ found:', !snap.empty);
+    }
+    if (!snap || snap.empty) { console.warn('[lb sync] associate not found in lb_associates'); return; }
     const lbDoc = snap.docs[0];
     const currentRoles = lbDoc.data().trainedRoles || [];
     const newRoles = newStatus === 'certified'
       ? (currentRoles.includes(lbRole) ? currentRoles : [...currentRoles, lbRole])
       : currentRoles.filter(r => r !== lbRole);
-    if (JSON.stringify(newRoles.sort()) !== JSON.stringify([...currentRoles].sort())) {
-      await lb_db.collection("lb_associates").doc(lbDoc.id).update({ trainedRoles: newRoles });
-    }
+    console.log('[lb sync] updating', lbDoc.id, 'trainedRoles:', currentRoles, '→', newRoles);
+    await lb_db.collection("lb_associates").doc(lbDoc.id).update({ trainedRoles: newRoles });
+    console.log('[lb sync] ✓ done');
   } catch(e) {
-    console.warn('lb_syncCertToRole failed (non-critical):', e);
+    console.error('[lb sync] failed:', e);
   }
 };
 
