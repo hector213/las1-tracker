@@ -631,7 +631,6 @@ window.doLogin = async () => {
   btn.disabled = true;
   try {
     await signInWithEmailAndPassword(auth, email, pw);
-    window._lb_authCred = { email, pw }; // store for labor board compat auth
   } catch (e) {
     err.textContent = 'Invalid email or password. Contact your admin.';
     err.classList.remove('d-none');
@@ -13527,16 +13526,7 @@ function lb_init() {
   lb_initialized = true;
   const _lbApp = firebase.initializeApp(lb_firebaseConfig, 'laborApp');
   lb_db = _lbApp.firestore();
-  // Sign into compat auth using the same credentials as the main app
-  const _lbAuth = _lbApp.auth();
-  const cred = window._lb_authCred;
-  if (cred) {
-    _lbAuth.signInWithEmailAndPassword(cred.email, cred.pw)
-      .then(() => lb_startListeners())
-      .catch(e => { console.error('lb compat auth failed:', e); lb_startListeners(); });
-  } else {
-    lb_startListeners();
-  }
+  lb_startListeners();
 }
 window.lb_init = lb_init;
 window.lb_showView = function(v) { lb_showView(v); };
