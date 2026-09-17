@@ -13695,13 +13695,6 @@ function lb_bucketIndexForHour(hh, buckets) {
 }
 
 /* ======================================================================
-   AUTH
-   ====================================================================== */
-// login-btn listener removed
-});
-// signout listener removed
-
-/* ======================================================================
    NAV
    ====================================================================== */
 document.getElementById("lb-nav-board").addEventListener("click", () => lb_showView("board"));
@@ -14038,7 +14031,7 @@ function lb_avatarHTML(a, functionKey) {
    BOARD RENDER
    ====================================================================== */
 function lb_renderBoard() {
-  if (!lb_stations.length) { document.getElementById("lb_stations-wrap").innerHTML = "<p class='note'>No lb_stations yet - seed them from Admin &rarr; Stations.</p>"; }
+  if (!lb_stations.length) { document.getElementById("stations-wrap").innerHTML = "<p class='note'>No lb_stations yet - seed them from Admin &rarr; Stations.</p>"; }
 
   const activeByStation = {}; // stationId -> [segment]
   lb_segments.filter(s => !s.endTime).forEach(s => {
@@ -14092,7 +14085,7 @@ function lb_renderBoard() {
   }
 
   // ---- Floor Grid, grouped into zones ----
-  const wrap = document.getElementById("lb_stations-wrap");
+  const wrap = document.getElementById("stations-wrap");
   wrap.innerHTML = "";
   let totalProjected = 0, totalGoal = 0;
   // Combined-Pack accumulators for the hero card/analysis box below - every Pack (315) occupant,
