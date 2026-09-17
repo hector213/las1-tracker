@@ -9777,7 +9777,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 }
 
 
-  #productionView .lb-header{display:flex;align-items:center;justify-content:space-between;background:var(--accent);border-bottom:1px solid var(--accent-dark);padding:10px 20px;}
+  #productionView .lb-header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;background:var(--accent);border-bottom:1px solid var(--accent-dark);padding:10px 20px;}
   #productionView .lb-header h1{font-size:16px;margin:0;color:#fff;}
   #productionView .lb-header .who{font-size:12px;color:#bcd0ea;}
   #productionView .lb-subnav{display:flex;gap:8px;}
@@ -9796,7 +9796,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   #shift-bar .title-row{width:100%;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:2px;}
   #shift-bar h2.hero-title{margin:0;font-size:17px;font-weight:700;}
   #shift-bar .field label{color:var(--hero-muted);}
-  #shift-bar input[type=date]{padding:5px;border:1px solid #33406a;border-radius:6px;background:#0e1730;color:var(--hero-text);}
+  #shift-bar input[type=date]{padding:5px;border:1px solid #33406a;border-radius:6px;background:#0e1730;color:var(--hero-text);text-align:center;}
   .shift-stat{font-size:12px;color:var(--hero-muted);min-width:120px;}
   .shift-stat b{display:block;font-size:18px;color:var(--hero-text);font-weight:700;margin-top:2px;}
   .shift-stat b.pos{color:#7be3a4;} .shift-stat b.neg{color:#ff9b9b;}
@@ -12132,7 +12132,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <button id="lb-nav-import">Import Data</button>
       <button id="lb-nav-admin">Admin</button>
     </div><!-- /.lb-subnav -->
-    
+    <div id="lb-live-clock" style="text-align:right;color:#cfe0ff;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:0.03em;"></div>
   </div><!-- /.lb-header -->
 
   <main>
@@ -12141,9 +12141,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <div id="shift-bar">
         <div class="title-row">
           <h2 class="hero-title">Labor Pivot Planner <span class="hero-sub" id="shift-period-label"></span></h2>
-          <div class="field">
-            <label for="shift-date">Shift date</label>
-            <input type="date" id="shift-date">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <div class="field">
+              <label for="shift-date">Shift date</label>
+              <input type="date" id="shift-date">
+            </div>
+            <span id="lb-last-updated" style="font-size:10px;color:var(--hero-muted);white-space:nowrap;"></span>
           </div>
           <button class="btn secondary" id="clear-assignments-btn" title="Fixes anyone stuck 'assigned' from the duplicate-segment bug">Reset today's assignments</button>
         </div>
@@ -13531,6 +13534,31 @@ function lb_init() {
 window.lb_init = lb_init;
 window.lb_showView = function(v) { lb_showView(v); };
 
+// Live clock
+(function lb_startClock() {
+  function lb_tick() {
+    const el = document.getElementById("lb-live-clock");
+    if (!el) return;
+    const now = new Date();
+    const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
+    const ampm = h >= 12 ? "PM" : "AM";
+    const hh = h % 12 || 12;
+    el.textContent = `${hh}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")} ${ampm}`;
+  }
+  lb_tick();
+  setInterval(lb_tick, 1000);
+})();
+
+function lb_stampLastUpdated() {
+  const el = document.getElementById("lb-last-updated");
+  if (!el) return;
+  const now = new Date();
+  const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
+  const ampm = h >= 12 ? "PM" : "AM";
+  const hh = h % 12 || 12;
+  el.textContent = `Updated ${hh}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")} ${ampm}`;
+}
+
 /* ======================================================================
    FUNCTION / STATION DEFINITIONS
    tranType maps to the code(s) used in your transaction export.
@@ -14033,6 +14061,7 @@ function lb_avatarHTML(a, functionKey) {
    BOARD RENDER
    ====================================================================== */
 function lb_renderBoard() {
+  lb_stampLastUpdated();
   if (!lb_stations.length) { document.getElementById("stations-wrap").innerHTML = "<p class='note'>No lb_stations yet - seed them from Admin &rarr; Stations.</p>"; }
 
   const activeByStation = {}; // stationId -> [segment]
