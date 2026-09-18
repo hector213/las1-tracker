@@ -1617,7 +1617,7 @@ function renderShiftStats(shift) {
 
   // In Building card
   const outIds = new Set([
-    ...Object.keys(_todayAttMap).filter(id => ['ncns','call-out','early','doctors-note'].includes(_todayAttMap[id])),
+    ...Object.keys(_todayAttMap).filter(id => ['ncns','call-out','early','doctors-note','vuto'].includes(_todayAttMap[id])),
     ...Object.keys(_todayTimeOffMap).filter(id => shiftActive.find(a => a.id === id))
   ]);
   const inBldg = shiftActive.filter(a => !outIds.has(a.id));
@@ -5705,14 +5705,18 @@ function applyAttendanceStats(activeAll, activeAssoc) {
   const earlyOutIds = new Set(Object.keys(_todayAttMap).filter(id => _todayAttMap[id] === 'early'));
   const timeOffIds  = new Set(Object.keys(_todayTimeOffMap).filter(id => activeAll.find(a => a.id === id)));
 
+  const vutoIds     = new Set(Object.keys(_todayAttMap).filter(id => _todayAttMap[id] === 'vuto'));
   const callOuts  = [...callOutIds, ...ncnsIds].filter(id => activeAssoc.find(a => a.id === id)).length;
   const earlyOuts = [...earlyOutIds].filter(id => activeAssoc.find(a => a.id === id)).length;
   const timeOffCount = timeOffIds.size;
-  const outOfBuilding = new Set([...ncnsIds, ...callOutIds, ...earlyOutIds, ...timeOffIds]).size;
+  const vutoCount = [...vutoIds].filter(id => activeAssoc.find(a => a.id === id)).length;
+  const outOfBuilding = new Set([...ncnsIds, ...callOutIds, ...earlyOutIds, ...timeOffIds, ...vutoIds]).size;
 
   document.getElementById('statCallOuts').textContent    = callOuts;
   document.getElementById('statEarlyOuts').textContent   = earlyOuts;
   document.getElementById('statTimeOff').textContent     = timeOffCount;
+  const statVutoEl = document.getElementById('statVuto');
+  if (statVutoEl) statVutoEl.textContent = vutoCount;
   // Stat cards (Active + In Building + dept breakdowns) handled by renderShiftStats
   renderShiftStats(leaderShiftFilter || 'All');
   renderCards();
@@ -10817,6 +10821,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
             <div class="d-flex justify-content-between align-items-center">
               <span class="lbl" style="margin-top:0">Time Off</span>
               <span class="val" id="statTimeOff" style="font-size:1.4rem">-</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="lbl" style="margin-top:0">VUTO</span>
+              <span class="val" id="statVuto" style="font-size:1.4rem">-</span>
             </div>
           </div>
         </div>
