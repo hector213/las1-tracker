@@ -1490,6 +1490,7 @@ function renderDashboard() {
     }).join('');
   };
 
+  window._renderCards = renderCards; // expose for external callers (deleteTimeOff, applyAttendanceStats)
   renderCards(); // Initial render
   applyKanbanCounts(); // restore cached counts immediately (zero reads)
 
@@ -5758,7 +5759,7 @@ window.deleteTimeOff = async (assocId, entryId) => {
   loadTimeOff();
   // Rebuild the today map and re-render cards so banners update immediately
   await loadTodayTimeOff();
-  renderCards();
+  window._renderCards?.();
 };
 
 // ─── Today's Attendance Stats (cached) ───────────────────────────────
@@ -5829,7 +5830,7 @@ function applyAttendanceStats(activeAll, activeAssoc) {
   if (statVutoEl) statVutoEl.textContent = vutoCount;
   // Stat cards (Active + In Building + dept breakdowns) handled by renderShiftStats
   renderShiftStats(leaderShiftFilter || 'All');
-  renderCards();
+  window._renderCards?.();
   applyKanbanCounts(); // restore cached counts from memory - no Firestore reads
 }
 
