@@ -257,6 +257,53 @@ function _isBadType(t) {
  return BAD_ATT_TYPES.some(b => lower.startsWith(b));
 }
 
+// ── Work Anniversary Points ────────────────────────────────────────────
+// Runs on login. For each active associate whose hire anniversary is TODAY,
+// awards 50 × years points (1yr=50, 2yr=100, etc.) if not already awarded this year.
+async function autoAwardAnniversaryPoints() {
+  if (!roleAtLeast('lead')) return;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const ranKey = 'anniversaryCheck_' + todayStr;
+  if (localStorage.getItem(ranKey)) return; // already ran today
+  localStorage.setItem(ranKey, '1');
+  const [todayMM, todayDD] = [todayStr.slice(5, 7), todayStr.slice(8, 10)];
+  const thisYear = new Date().getFullYear();
+
+  const eligible = allAssociates.filter(a => {
+    if (a.status !== 'active' || !a.hireDate) return false;
+    const [hireMM, hireDD] = [a.hireDate.slice(5, 7), a.hireDate.slice(8, 10)];
+    return hireMM === todayMM && hireDD === todayDD;
+  });
+
+  if (!eligible.length) return;
+
+  await Promise.all(eligible.map(async a => {
+    const hireYear = Number(a.hireDate.slice(0, 4));
+    const years = thisYear - hireYear;
+    if (years < 1) return;
+    const pts = years * 50;
+    const yearTag = `anniversary-${thisYear}`; // one award per calendar year
+
+    // Check pointslog — skip if already awarded this year
+    try {
+      const plSnap = await getDocs(collection(db, 'pointslog', a.id, 'entries'));
+      const alreadyAwarded = plSnap.docs.some(d => d.data().reason?.includes(yearTag));
+      if (alreadyAwarded) return;
+
+      // Award points
+      const reason = `${years}-year Work Anniversary (${yearTag})`;
+      await logPoints(a.id, 'Anniversary', reason, pts);
+      await updateDoc(doc(db, 'associates', a.id), {
+        points: (a.points || 0) + pts
+      });
+      // Update in-memory
+      const mem = allAssociates.find(x => x.id === a.id);
+      if (mem) mem.points = (mem.points || 0) + pts;
+      console.log(`[Anniversary] Awarded ${pts} pts to ${a.name} (${years} yr)`);
+    } catch(e) { console.warn('Anniversary points error for', a.name, e); }
+  }));
+}
+
 window.autoCheckPerfectAttendance = async function(showAlert = true) {
  const btn = document.getElementById('runAttCheckBtn');
  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Running…'; }
@@ -625,6 +672,7 @@ onAuthStateChanged(auth, async (user) => {
  restoreLastView();
  checkPendingNotifications();
  initTicker();
+ autoAwardAnniversaryPoints();
  (async () => {
  try {
  const _uSnap2 = await getDoc(doc(db, 'users', user.uid));
@@ -1334,42 +1382,50 @@ let _tickerPaused = false;
 async function initTicker() {
   if (!roleAtLeast('lead')) return; // leadership only
   try {
-    const snap = await getDoc(doc(db, 'system', 'ticker'));
-    if (!snap.exists()) return;
-    const data = snap.data();
-    const messages = [data.msg1, data.msg2, data.msg3, data.msg4].filter(m => m && m.trim());
-    if (!messages.length) return;
-    const speedMap = { slow: 40, normal: 25, fast: 14 };
-    const pxPerSec = speedMap[data.speed || 'normal'] || 25;
+    const snap = await getDocFromServer(doc(db, 'system', 'ticker'));
     const bar = document.getElementById('tickerBar');
     const textEl = document.getElementById('tickerText');
     if (!bar || !textEl) return;
-    const separator = '  ···  ';
+    if (!snap.exists()) { bar.style.display = 'none'; return; }
+    const data = snap.data();
+    const messages = [data.msg1, data.msg2, data.msg3, data.msg4].filter(m => m && m.trim());
+    if (!messages.length) { bar.style.display = 'none'; return; }
+    // speed is 1-10; map to px/sec (1=very slow ~8px/s, 10=very fast ~80px/s)
+    const speedVal = Math.min(10, Math.max(1, Number(data.speed) || 5));
+    const pxPerSec = speedVal * 8;
+    const separator = '     •     ';
     textEl.textContent = messages.join(separator) + separator;
     bar.style.display = 'flex';
     _tickerPaused = false;
-    document.getElementById('tickerPauseBtn').textContent = '⏸';
-    // RAF-based scroll
+    _updatePauseBtn();
+    // RAF-based scroll — reset position after content changes
+    if (_tickerAnim) cancelAnimationFrame(_tickerAnim);
     let pos = 0;
-    const fullWidth = textEl.scrollWidth;
     let last = null;
     function step(ts) {
       if (!_tickerPaused) {
-        if (last !== null) pos += pxPerSec * (ts - last) / 1000;
-        if (pos >= fullWidth) pos = 0;
+        if (last !== null) {
+          pos += pxPerSec * (ts - last) / 1000;
+          const fullWidth = textEl.scrollWidth;
+          if (pos >= fullWidth) pos = 0;
+        }
         textEl.style.transform = 'translateX(' + (-pos) + 'px)';
       }
       last = ts;
       _tickerAnim = requestAnimationFrame(step);
     }
-    if (_tickerAnim) cancelAnimationFrame(_tickerAnim);
     _tickerAnim = requestAnimationFrame(step);
   } catch(e) { console.warn('initTicker error:', e); }
 }
 
+function _updatePauseBtn() {
+  const btn = document.getElementById('tickerPauseBtn');
+  if (btn) btn.textContent = _tickerPaused ? '▶ Resume' : '⏸ Pause';
+}
+
 window.tickerTogglePause = () => {
   _tickerPaused = !_tickerPaused;
-  document.getElementById('tickerPauseBtn').textContent = _tickerPaused ? '▶' : '⏸';
+  _updatePauseBtn();
 };
 
 async function saveTickerSettings() {
@@ -1386,7 +1442,7 @@ async function saveTickerSettings() {
 
 async function loadTickerAdmin() {
   try {
-    const snap = await getDoc(doc(db, 'system', 'ticker'));
+    const snap = await getDocFromServer(doc(db, 'system', 'ticker'));
     if (!snap.exists()) return;
     const d = snap.data();
     for (let i = 1; i <= 4; i++) {
@@ -1394,7 +1450,11 @@ async function loadTickerAdmin() {
       if (el) el.value = d['msg' + i] || '';
     }
     const sp = document.getElementById('tickerSpeed');
-    if (sp) sp.value = d.speed || 'normal';
+    const spVal = document.getElementById('tickerSpeedVal');
+    const val = Math.min(10, Math.max(1, Number(d.speed) || 5));
+    if (sp) sp.value = val;
+    if (spVal) spVal.textContent = val;
+    _updatePauseBtn();
   } catch(e) { console.warn('loadTickerAdmin error:', e); }
 }
 
@@ -10258,6 +10318,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  0%,100% { box-shadow:0 0 0 2px #fff, 0 0 0 4px rgba(249,115,22,0.4); }
  50% { box-shadow:0 0 0 2px #fff, 0 0 0 6px rgba(249,115,22,0); }
 }
+@keyframes notif-glow {
+ 0%,100% { box-shadow:0 2px 10px rgba(249,115,22,0.35); }
+ 50% { box-shadow:0 2px 22px rgba(249,115,22,0.75), 0 0 0 4px rgba(249,115,22,0.18); }
+}
 /* Associate cards */
 .associate-card { background:#fff; border-radius:12px; border:1px solid #e5e7eb; border-top:3px solid var(--orange); cursor:pointer; transition:all .15s; height:100%; }
 .associate-card:hover { box-shadow:0 6px 24px rgba(0,0,0,0.1); transform:translateY(-2px); }
@@ -10866,16 +10930,13 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </nav>
 
  <!-- MESSAGE TICKER (leadership only) -->
- <div id="tickerBar" style="display:none;background:#1a2744;flex-shrink:0;overflow:hidden;display:flex;align-items:stretch;">
+ <div id="tickerBar" style="display:none;background:#1a2744;flex-shrink:0;overflow:hidden;align-items:stretch;">
    <div style="background:#f97316;padding:7px 16px;display:flex;align-items:center;gap:6px;flex-shrink:0;">
      <i class="fas fa-bullhorn" style="color:#fff;font-size:13px;"></i>
      <span style="color:#fff;font-size:12px;font-weight:600;white-space:nowrap;">LAS1 Updates</span>
    </div>
    <div style="flex:1;overflow:hidden;display:flex;align-items:center;">
      <div id="tickerText" style="white-space:nowrap;color:rgba(255,255,255,0.92);font-size:13px;padding:0 16px;will-change:transform;"></div>
-   </div>
-   <div style="display:flex;align-items:center;padding:0 10px;flex-shrink:0;">
-     <button id="tickerPauseBtn" onclick="tickerTogglePause()" title="Pause/resume" style="background:rgba(255,255,255,0.12);border:none;border-radius:4px;color:#fff;width:26px;height:26px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;">⏸</button>
    </div>
  </div>
 
@@ -10888,7 +10949,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <h1 class="page-title"><i class="fas fa-users me-2" style="color:var(--orange)"></i>Carparts.com</h1>
  <!-- Notification pill - hidden until there are items -->
  <div id="notifBanner" class="d-none" style="position:relative;flex:1;display:flex;justify-content:center;">
- <button id="notifBannerInner" onclick="handleNotifClick()" style="background:#f97316;border:none;border-radius:999px;padding:5px 16px;display:flex;align-items:center;gap:8px;cursor:pointer;box-shadow:0 2px 8px rgba(249,115,22,0.35);">
+ <button id="notifBannerInner" onclick="handleNotifClick()" style="background:#f97316;border:none;border-radius:999px;padding:5px 16px;display:flex;align-items:center;gap:8px;cursor:pointer;box-shadow:0 2px 8px rgba(249,115,22,0.35);animation:notif-glow 2s ease-in-out infinite;">
  <span style="width:7px;height:7px;border-radius:50%;background:#fff;display:inline-block;flex-shrink:0;animation:pulse-dot 1.5s infinite"></span>
  <span id="notifText" style="color:#fff;font-size:0.8rem;font-weight:700;white-space:nowrap;"></span>
  <span id="notifChevron" style="color:rgba(255,255,255,0.85);font-size:0.72rem;">▾</span>
@@ -12062,15 +12123,17 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
        <input type="text" id="tickerMsg4" class="form-control form-control-sm" placeholder="e.g. Congrats to James W. on his 1-year anniversary!" maxlength="160">
      </div>
    </div>
-   <div class="d-flex align-items-center gap-3">
-     <label class="form-label small fw-semibold mb-0">Scroll speed</label>
-     <select id="tickerSpeed" class="form-select form-select-sm" style="width:auto">
-       <option value="slow">Slow</option>
-       <option value="normal" selected>Normal</option>
-       <option value="fast">Fast</option>
-     </select>
-     <span class="text-muted small">Ticker hides automatically if all messages are blank.</span>
+   <div class="d-flex align-items-center gap-3 flex-wrap">
+     <label class="form-label small fw-semibold mb-0" style="white-space:nowrap;">Scroll speed</label>
+     <div class="d-flex align-items-center gap-2" style="flex:1;min-width:180px;">
+       <span class="text-muted small">1</span>
+       <input type="range" id="tickerSpeed" min="1" max="10" step="1" value="5" class="form-range" style="flex:1;" oninput="document.getElementById('tickerSpeedVal').textContent=this.value">
+       <span class="text-muted small">10</span>
+       <span id="tickerSpeedVal" class="fw-semibold small" style="min-width:18px;text-align:center;">5</span>
+     </div>
+     <button id="tickerPauseBtn" onclick="tickerTogglePause()" class="btn btn-sm btn-outline-secondary">⏸ Pause</button>
    </div>
+   <p class="text-muted small mt-2 mb-0">Ticker hides automatically if all messages are blank.</p>
  </div>
 
  <!-- Attendance Badge Auto-Check -->
