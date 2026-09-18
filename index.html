@@ -1344,6 +1344,7 @@ function renderDashboard() {
       else if (todayAtt === 'call-out')   banner = { label: 'OUT',        color: '#dc2626', bg: '#fee2e2', pending: false };
       else if (todayAtt === 'early') banner = { label: 'Early Out',       color: '#ea580c', bg: '#ffedd5', pending: false };
       else if (todayAtt === 'late')  banner = { label: 'Tardy',           color: '#d97706', bg: '#fef3c7', pending: false };
+      else if (todayAtt === 'vuto')  banner = { label: 'VUTO',            color: '#4338ca', bg: '#ede9fe', pending: false };
       // Pending entries  -  still show as absent, add pending indicator
       if (banner && _todayPendingSet?.has(a.id)) banner.pending = true;
       else if (todayTO)              banner = { label: todayTO.label, color: todayTO.color, bg: todayTO.bg };
@@ -5664,6 +5665,7 @@ async function loadTodayAttendanceStats() {
   const callOutIds = new Set();
   const earlyOutIds = new Set();
   const lateIds    = new Set();
+  const vutoIds    = new Set();
   const pendingIds = new Set(); // absent but point/docs still pending
 
   try {
@@ -5680,6 +5682,7 @@ async function loadTodayAttendanceStats() {
         else if (callOutTypes.has(e.type))                         callOutIds.add(assocId);
         if (earlyOutTypes.has(e.type))                             earlyOutIds.add(assocId);
         if (e.type?.startsWith('late'))                            lateIds.add(assocId);
+        if (e.type === 'vuto')                                     vutoIds.add(assocId);
         if (e.type === 'ncns-pending' || e.type === 'call-out-pending') pendingIds.add(assocId);
       });
     }));
@@ -5691,6 +5694,7 @@ async function loadTodayAttendanceStats() {
   [...callOutIds].forEach(id  => { if (!_todayAttMap[id]) _todayAttMap[id] = 'call-out'; });
   [...earlyOutIds].forEach(id => { if (!_todayAttMap[id]) _todayAttMap[id] = 'early'; });
   [...lateIds].forEach(id    => { if (!_todayAttMap[id]) _todayAttMap[id] = 'late'; });
+  [...vutoIds].forEach(id    => { if (!_todayAttMap[id]) _todayAttMap[id] = 'vuto'; });
   setCache('todayAttStats', { callOutIds: [...callOutIds], earlyOutIds: [...earlyOutIds] });
 }
 
@@ -5752,7 +5756,7 @@ window.downloadActiveCSV = () => {
 window.openInBuildingList = () => {
   const leaderPos = new Set(['ops-manager', 'supervisor', 'lead']);
   const outIds = new Set([
-    ...Object.keys(_todayAttMap).filter(id => _todayAttMap[id] === 'ncns' || _todayAttMap[id] === 'call-out'),
+    ...Object.keys(_todayAttMap).filter(id => _todayAttMap[id] === 'ncns' || _todayAttMap[id] === 'call-out' || _todayAttMap[id] === 'vuto'),
     ...Object.keys(_todayTimeOffMap)
   ]);
   const inBuilding = allAssociates
@@ -9681,15 +9685,17 @@ window.loadPortalNominate = async () => {
   // ── Voting status banner ──────────────────────────────────────────────
   const _now = new Date();
   const _lastDay = new Date(_now.getFullYear(), _now.getMonth() + 1, 0).getDate();
-  const _daysLeft = _lastDay - _now.getDate(); // days until end of month (0 = last day)
-  const _votingOpen = _now.getDate() >= _lastDay - 3; // same rule as eomVoteMonthKey
+  const _votingOpen = _now.getDate() >= _lastDay - 3; // last 4 days of month
+  // Always show current month in the banner (we vote for the current month)
+  const _curMonthKey = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`;
+  const _curMonthLabel = eomMonthLabel(_curMonthKey);
   let _bannerHtml;
   if (_votingOpen) {
     _bannerHtml = `<div style="background:linear-gradient(135deg,#1a2744,#2d3f6e);border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
       <div style="font-size:1.6rem;line-height:1">🏆</div>
       <div>
         <div style="font-weight:700;color:#fff;font-size:0.9rem">Employee of the Month — Voting is Open!</div>
-        <div style="color:rgba(255,255,255,0.7);font-size:0.75rem;margin-top:2px">Cast your nomination for ${escapeHtml(label)} below.</div>
+        <div style="color:rgba(255,255,255,0.7);font-size:0.75rem;margin-top:2px">Cast your nomination for ${escapeHtml(_curMonthLabel)} below.</div>
       </div>
     </div>`;
   } else {
@@ -9700,16 +9706,21 @@ window.loadPortalNominate = async () => {
       <div>
         <div style="font-weight:700;color:#1a2744;font-size:0.9rem">Employee of the Month — Peer Voting</div>
         <div style="color:#6b7280;font-size:0.75rem;margin-top:2px">
-          ${_daysUntilOpen === 1 ? 'Voting opens <strong>tomorrow</strong>' : `Voting opens in <strong>${_daysUntilOpen} days</strong>`} · Nominating for ${escapeHtml(label)}
+          ${_daysUntilOpen === 1 ? 'Voting opens <strong>tomorrow</strong>' : `Voting opens in <strong>${_daysUntilOpen} days</strong>`} · Nominating for ${escapeHtml(_curMonthLabel)}
         </div>
       </div>
     </div>`;
   }
-  // Prepend banner before rest of content (set after profile check below)
 
   // Check if already voted
   if (!currentAssociateId) {
     el.innerHTML = '<p class="text-center text-muted py-4">Unable to load your profile.</p>';
+    return;
+  }
+
+  // If voting hasn't opened yet, just show the banner — no form
+  if (!_votingOpen) {
+    el.innerHTML = _bannerHtml + `<div style="text-align:center;color:#9ca3af;font-size:0.8rem;padding:8px 0">Check back when voting opens to cast your nomination.</div>`;
     return;
   }
 
@@ -13634,16 +13645,32 @@ window.lb_syncCertToRole = async function(employeeId, assocName, certLabel, newS
   }
 };
 
-// Live clock
+// Live clock + live schedule bar marker
 (function lb_startClock() {
   function lb_tick() {
     const el = document.getElementById("lb-live-clock");
-    if (!el) return;
-    const now = new Date();
-    const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
-    const ampm = h >= 12 ? "PM" : "AM";
-    const hh = h % 12 || 12;
-    el.textContent = `${hh}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")} ${ampm}`;
+    if (el) {
+      const now = new Date();
+      const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
+      const ampm = h >= 12 ? "PM" : "AM";
+      const hh = h % 12 || 12;
+      el.textContent = `${hh}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")} ${ampm}`;
+    }
+    // Move the schedule bar orange marker live without re-rendering the whole bar
+    const nowMarker = document.querySelector("#sched-bar .sched-now");
+    if (nowMarker && lb_appSettings) {
+      const now = new Date();
+      let shiftStart = new Date(lb_currentShiftDate + "T00:00:00");
+      shiftStart.setHours(Math.floor(lb_appSettings.shiftStartHour), (lb_appSettings.shiftStartHour % 1) * 60, 0, 0);
+      let elapsedMs = now - shiftStart;
+      if (elapsedMs < 0) elapsedMs += 24 * 3600000;
+      const elapsedMinNow = elapsedMs / 60000;
+      const nominalMin = lb_appSettings.shiftLengthHours * 60;
+      const graceMin = (lb_appSettings.shiftGraceHours || 0) * 60;
+      const totalWindow = nominalMin + graceMin;
+      const nowPct = totalWindow > 0 ? Math.min(Math.max(elapsedMinNow / totalWindow * 100, 0), 100) : 0;
+      nowMarker.style.left = nowPct.toFixed(3) + "%";
+    }
   }
   lb_tick();
   setInterval(lb_tick, 1000);
