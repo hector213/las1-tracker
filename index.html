@@ -223,20 +223,21 @@ window.logPoints = logPoints;
 function _lastCompletedWeekMonday() {
   const today = new Date();
   const dow = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-  // A week (Mon–Sun) is only "complete" once we are past Sunday.
-  // If today IS Sunday, people may still be on shift, so treat the
-  // current week as incomplete and check the previous one.
-  const lastCompletedSun = new Date(today);
-  if (dow === 0) {
-    // Today is Sunday — last completed Sunday was 7 days ago
-    lastCompletedSun.setDate(today.getDate() - 7);
+
+  // Find this week's Monday
+  const daysFromMon = dow === 0 ? 6 : dow - 1;
+  const thisMon = new Date(today);
+  thisMon.setDate(today.getDate() - daysFromMon);
+
+  if (dow >= 5 || dow === 0) {
+    // Fri, Sat, or Sun — work week (Mon–Thu) is done; target current week
+    return thisMon.toISOString().slice(0, 10);
   } else {
-    // Today is Mon–Sat — last completed Sunday was 'dow' days ago
-    lastCompletedSun.setDate(today.getDate() - dow);
+    // Mon–Thu — target the previous completed week
+    const lastMon = new Date(thisMon);
+    lastMon.setDate(thisMon.getDate() - 7);
+    return lastMon.toISOString().slice(0, 10);
   }
-  const lastMon = new Date(lastCompletedSun);
-  lastMon.setDate(lastCompletedSun.getDate() - 6);
-  return lastMon.toISOString().slice(0, 10);
 }
 
 function _weekDates(mondayStr) {
