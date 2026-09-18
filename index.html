@@ -1002,102 +1002,213 @@ window.submitAccessRequest = async () => {
   }
 };
 
-// ─── Notifications ────────────────────────────────────────────────────
-let _notifRequests = [];
+// ─── Unified Notifications ─────────────────────────────────────────────────
+// Covers: 1:1 meeting requests · open action items · attendance threshold alerts
+// All scoped to direct reports of the logged-in supervisor/lead.
+
+let _notifData = { requests: [], actionItems: [], thresholdAlerts: [] };
 
 async function checkPendingNotifications() {
   if (!currentUserAssocId) return;
   try {
-    // Find all associates who report to this user
     const directReportsSnap = await getDocs(
       query(collection(db, 'associates'), where('reportsTo', '==', currentUserAssocId))
     );
     if (directReportsSnap.empty) return;
-    const directReportIds = directReportsSnap.docs.map(d => d.id);
 
-    // Get pending 1:1 requests from those associates
+    const directReports = directReportsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const directReportIds = directReports.map(d => d.id);
+    const nameMap = directReports.reduce((m, d) => { m[d.id] = d.name; return m; }, {});
+    const today = new Date().toISOString().slice(0, 10);
+
+    // ── 1:1 pending requests ──────────────────────────────────────────
     const reqSnap = await getDocs(
       query(collection(db, 'oneOnOneRequests'), where('status', '==', 'pending'))
     );
-    _notifRequests = reqSnap.docs
+    const requests = reqSnap.docs
       .map(d => ({ id: d.id, ...d.data() }))
-      .filter(r => directReportIds.includes(r.associateId));
+      .filter(r => directReportIds.includes(r.associateId))
+      .map(r => ({ ...r, assocName: nameMap[r.associateId] || 'Unknown' }));
 
-    if (_notifRequests.length === 0) return;
+    // ── Open action items from manager notes ──────────────────────────
+    const actionItems = [];
+    await Promise.all(directReportIds.map(async assocId => {
+      const notesSnap = await getDocs(collection(db, 'notes', assocId, 'entries'));
+      notesSnap.docs.forEach(d => {
+        const n = d.data();
+        if (n.actionItem?.status === 'open') {
+          actionItems.push({
+            noteId: d.id, assocId,
+            assocName: nameMap[assocId] || 'Unknown',
+            text: n.actionItem.text,
+            dueDate: n.actionItem.dueDate || null,
+            overdue: n.actionItem.dueDate ? n.actionItem.dueDate < today : false,
+          });
+        }
+      });
+    }));
+    // Sort: overdue first, then by due date
+    actionItems.sort((a, b) => {
+      if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+      if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+      return a.dueDate ? -1 : 1;
+    });
 
-    // Enrich with associate names
-    const names = directReportsSnap.docs.reduce((m, d) => { m[d.id] = d.data().name; return m; }, {});
-    const count = _notifRequests.length;
-    const nameList = [...new Set(_notifRequests.map(r => names[r.associateId] || 'An associate'))];
-    const preview = nameList.length === 1 ? nameList[0] : nameList.length === 2
-      ? `${nameList[0]} and ${nameList[1]}`
-      : `${nameList[0]} and ${nameList.length - 1} others`;
+    // ── Attendance threshold alerts ───────────────────────────────────
+    const thresholdAlerts = directReports
+      .filter(a => a.status === 'active')
+      .map(a => {
+        const pts = a.attendancePoints || 0;
+        const tier = WARNING_TIERS.slice().reverse().find(t => pts >= t.threshold);
+        return tier ? { assocId: a.id, assocName: a.name, pts, tier } : null;
+      })
+      .filter(Boolean);
+
+    _notifData = { requests, actionItems, thresholdAlerts };
+    const total = requests.length + actionItems.length + thresholdAlerts.length;
+    if (total === 0) return;
+
+    const parts = [];
+    if (requests.length)       parts.push(`${requests.length} meeting request${requests.length > 1 ? 's' : ''}`);
+    if (actionItems.length)    parts.push(`${actionItems.length} action item${actionItems.length > 1 ? 's' : ''}`);
+    if (thresholdAlerts.length) parts.push(`${thresholdAlerts.length} corrective alert${thresholdAlerts.length > 1 ? 's' : ''}`);
 
     document.getElementById('notifText').textContent =
-      `${preview} requested a 1:1 meeting - ${count} pending request${count > 1 ? 's' : ''}`;
+      `${total} item${total > 1 ? 's' : ''} need your attention — ${parts.join(' · ')}`;
     document.getElementById('notifBanner').classList.remove('d-none');
-  } catch(e) { /* non-critical */ }
+    const spacer = document.getElementById('notifBannerSpacer');
+    if (spacer) spacer.classList.remove('d-none');
+  } catch(e) { console.warn('checkPendingNotifications error:', e); }
 }
 
 window.handleNotifClick = () => {
-  openRequestsInbox();
-};
-
-window.openRequestsInbox = async () => {
-  const el = document.getElementById('requestsInboxList');
-  el.innerHTML = '<p class="text-muted small">Loading…</p>';
-  new bootstrap.Modal(document.getElementById('requestsInboxModal')).show();
-
-  const assocSnap = await getDocs(collection(db, 'associates'));
-  const assocMap = assocSnap.docs.reduce((m, d) => { m[d.id] = d.data().name; return m; }, {});
-
-  // Filter to direct reports if we know the supervisor's assoc ID
-  const snap = await getDocs(query(collection(db, 'oneOnOneRequests'), where('status', '==', 'pending')));
-  let requests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-  if (currentUserAssocId) {
-    const directReportIds = assocSnap.docs
-      .filter(d => d.data().reportsTo === currentUserAssocId)
-      .map(d => d.id);
-    requests = requests.filter(r => directReportIds.includes(r.associateId));
-  }
-
-  if (requests.length === 0) {
-    el.innerHTML = '<p class="text-muted small mb-0 text-center py-3">No pending requests.</p>';
+  const tray = document.getElementById('notifTray');
+  const chevron = document.getElementById('notifChevron');
+  if (!tray) return;
+  const isOpen = tray.style.display !== 'none';
+  if (isOpen) {
+    tray.style.display = 'none';
+    if (chevron) chevron.textContent = '▾ View';
     return;
   }
-
-  el.innerHTML = requests.map(r => {
-    const name = assocMap[r.associateId] || 'Unknown';
-    const date = r.requestedDate ? new Date(r.requestedDate).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) : '-';
-    const submitted = r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
-    return `<div class="d-flex align-items-start gap-3 p-3 rounded mb-2" style="background:#fff8f1;border:1px solid #fed7aa;" id="inbox-${r.id}">
-      <div style="flex:1;">
-        <div class="fw-semibold" style="color:#1a2744;">${escapeHtml(name)}</div>
-        <div style="font-size:0.78rem;color:#f97316;font-weight:600;margin-top:2px;"><i class="fas fa-calendar me-1"></i>${date}</div>
-        ${r.note ? `<div style="font-size:0.78rem;color:#64748b;margin-top:4px;font-style:italic;">"${escapeHtml(r.note)}"</div>` : ''}
-        <div style="font-size:0.7rem;color:#94a3b8;margin-top:4px;">Submitted ${submitted}</div>
-      </div>
-      <div class="d-flex flex-column gap-1 flex-shrink-0">
-        <button class="btn btn-sm btn-orange py-0 px-2" onclick="resolveInboxRequest('${r.id}','confirmed')">Confirm</button>
-        <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="resolveInboxRequest('${r.id}','dismissed')">Dismiss</button>
-      </div>
-    </div>`;
-  }).join('');
+  tray.style.display = 'block';
+  if (chevron) chevron.textContent = '▴ Close';
+  renderNotifTray();
 };
 
-window.resolveInboxRequest = async (reqId, status) => {
+function renderNotifTray() {
+  const tray = document.getElementById('notifTray');
+  if (!tray) return;
+  const { requests, actionItems, thresholdAlerts } = _notifData;
+  const today = new Date().toISOString().slice(0, 10);
+
+  const sectionHeader = (icon, label, count) =>
+    `<div style="background:#1a2744;padding:7px 14px;display:flex;align-items:center;gap:8px;">
+       <i class="fas ${icon}" style="color:#f97316;font-size:0.8rem;"></i>
+       <span style="color:#fff;font-size:0.78rem;font-weight:700;letter-spacing:.3px">${label}</span>
+       <span style="margin-left:auto;background:#f97316;color:#fff;font-size:0.68rem;font-weight:700;padding:1px 7px;border-radius:20px;">${count}</span>
+     </div>`;
+
+  let html = '';
+
+  // ── 1:1 Requests ────────────────────────────────────────────────
+  if (requests.length) {
+    html += sectionHeader('fa-calendar-check', '1:1 Meeting Requests', requests.length);
+    html += requests.map(r => {
+      const date = r.requestedDate
+        ? new Date(r.requestedDate).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})
+        : '—';
+      return `<div style="padding:10px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:flex-start;gap:10px;" id="tray-req-${r.id}">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:0.82rem;color:#1a2744">${escapeHtml(r.assocName)}</div>
+          <div style="font-size:0.75rem;color:#f97316;margin-top:2px;"><i class="fas fa-calendar me-1"></i>${date}</div>
+          ${r.note ? `<div style="font-size:0.73rem;color:#64748b;margin-top:3px;font-style:italic;">"${escapeHtml(r.note)}"</div>` : ''}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+          <button class="btn btn-sm btn-orange py-0 px-2" style="font-size:0.72rem" onclick="trayResolveRequest('${r.id}','confirmed')">Confirm</button>
+          <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:0.72rem" onclick="trayResolveRequest('${r.id}','dismissed')">Dismiss</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Action Items ────────────────────────────────────────────────
+  if (actionItems.length) {
+    html += sectionHeader('fa-tasks', 'Open Action Items', actionItems.length);
+    html += actionItems.map(item => {
+      const duePill = item.overdue
+        ? `<span style="font-size:0.68rem;background:#fee2e2;color:#dc2626;font-weight:700;padding:1px 7px;border-radius:20px;">Overdue · ${new Date(item.dueDate+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>`
+        : item.dueDate
+          ? `<span style="font-size:0.68rem;background:#fef3c7;color:#92400e;font-weight:600;padding:1px 7px;border-radius:20px;">Due ${new Date(item.dueDate+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>`
+          : `<span style="font-size:0.68rem;background:#f1f5f9;color:#64748b;padding:1px 7px;border-radius:20px;">No due date</span>`;
+      return `<div style="padding:10px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:flex-start;gap:10px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:0.82rem;color:#1a2744">${escapeHtml(item.assocName)}</div>
+          <div style="font-size:0.75rem;color:#374151;margin-top:2px;">${escapeHtml(item.text)}</div>
+          <div style="margin-top:4px;">${duePill}</div>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:0.72rem;flex-shrink:0" onclick="openProfile('${item.assocId}');document.getElementById('notifTray').style.display='none'">Open profile</button>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Corrective Alerts ───────────────────────────────────────────
+  if (thresholdAlerts.length) {
+    html += sectionHeader('fa-exclamation-triangle', 'Corrective Action Due', thresholdAlerts.length);
+    html += thresholdAlerts.map(alert => {
+      const pillColor = alert.tier.key === 'termination' ? '#7f1d1d'
+        : alert.tier.key === 'final-warning' ? '#dc2626'
+        : alert.tier.key === 'written-warning' ? '#ea580c' : '#ca8a04';
+      const pillBg = alert.tier.key === 'termination' ? '#fecaca'
+        : alert.tier.key === 'final-warning' ? '#fee2e2'
+        : alert.tier.key === 'written-warning' ? '#ffedd5' : '#fef9c3';
+      return `<div style="padding:10px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:flex-start;gap:10px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:0.82rem;color:#1a2744">${escapeHtml(alert.assocName)}</div>
+          <div style="font-size:0.75rem;color:#374151;margin-top:2px;">${alert.pts} attendance point${alert.pts !== 1 ? 's' : ''} — threshold reached</div>
+          <div style="margin-top:4px;"><span style="font-size:0.68rem;background:${pillBg};color:${pillColor};font-weight:700;padding:1px 7px;border-radius:20px;">${escapeHtml(alert.tier.label)} due</span></div>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:0.72rem;flex-shrink:0" onclick="openProfile('${alert.assocId}');document.getElementById('notifTray').style.display='none'">Open profile</button>
+      </div>`;
+    }).join('');
+  }
+
+  if (!html) html = '<div style="padding:16px;text-align:center;color:#94a3b8;font-size:0.82rem;">All caught up!</div>';
+  tray.innerHTML = html;
+}
+
+window.trayResolveRequest = async (reqId, status) => {
   await updateDoc(doc(db, 'oneOnOneRequests', reqId), { status, resolvedAt: new Date().toISOString() });
-  document.getElementById('inbox-' + reqId)?.remove();
-  const el = document.getElementById('requestsInboxList');
-  if (el && !el.querySelector('[id^="inbox-"]')) {
-    el.innerHTML = '<p class="text-muted small mb-0 text-center py-3">All caught up!</p>';
+  _notifData.requests = _notifData.requests.filter(r => r.id !== reqId);
+  const total = _notifData.requests.length + _notifData.actionItems.length + _notifData.thresholdAlerts.length;
+  if (total === 0) {
     dismissNotifBanner();
+  } else {
+    renderNotifTray();
+    const parts = [];
+    if (_notifData.requests.length)       parts.push(`${_notifData.requests.length} meeting request${_notifData.requests.length > 1 ? 's' : ''}`);
+    if (_notifData.actionItems.length)    parts.push(`${_notifData.actionItems.length} action item${_notifData.actionItems.length > 1 ? 's' : ''}`);
+    if (_notifData.thresholdAlerts.length) parts.push(`${_notifData.thresholdAlerts.length} corrective alert${_notifData.thresholdAlerts.length > 1 ? 's' : ''}`);
+    document.getElementById('notifText').textContent = `${total} item${total > 1 ? 's' : ''} need your attention — ${parts.join(' · ')}`;
   }
 };
+
+// Keep old openRequestsInbox as alias (used by other code paths)
+window.openRequestsInbox = () => {
+  document.getElementById('notifBanner').classList.remove('d-none');
+  handleNotifClick();
+};
+
+window.resolveInboxRequest = window.trayResolveRequest;
 
 window.dismissNotifBanner = () => {
   document.getElementById('notifBanner').classList.add('d-none');
+  const spacer = document.getElementById('notifBannerSpacer');
+  if (spacer) spacer.classList.add('d-none');
+  const tray = document.getElementById('notifTray');
+  if (tray) tray.style.display = 'none';
+  const chevron = document.getElementById('notifChevron');
+  if (chevron) chevron.textContent = '▾ View';
 };
 
 function showView(view) {
@@ -10721,18 +10832,21 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   <main id="mainContent">
 
     <!-- NOTIFICATION BANNER -->
-    <div id="notifBanner" class="d-none" style="margin:-1.5rem -1.5rem 1.5rem -1.5rem;">
-      <div id="notifBannerInner" style="background:linear-gradient(90deg,#1a2744,#f97316);padding:10px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;" onclick="handleNotifClick()">
+    <div id="notifBanner" class="d-none" style="margin:-1.5rem -1.5rem 0 -1.5rem;">
+      <div id="notifBannerInner" style="background:linear-gradient(90deg,#1a2744,#243460);padding:10px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;" onclick="handleNotifClick()">
         <div style="display:flex;align-items:center;gap:10px;">
-          <span id="notifBell" style="font-size:1.2rem;">🔔</span>
+          <span style="width:9px;height:9px;border-radius:50%;background:#f97316;display:inline-block;flex-shrink:0;animation:pulse-dot 1.5s infinite"></span>
           <span id="notifText" style="color:#fff;font-size:0.85rem;font-weight:600;"></span>
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
-          <span style="color:rgba(255,255,255,0.8);font-size:0.78rem;">Click to view →</span>
+          <span id="notifChevron" style="color:rgba(255,255,255,0.7);font-size:0.78rem;">▾ View</span>
           <button onclick="event.stopPropagation();dismissNotifBanner()" style="background:rgba(255,255,255,0.15);border:none;color:#fff;border-radius:4px;padding:2px 8px;font-size:0.75rem;cursor:pointer;">✕</button>
         </div>
       </div>
+      <!-- Inline notification tray -->
+      <div id="notifTray" style="display:none;background:#fff;border:1px solid #e2e8f0;border-top:none;max-height:420px;overflow-y:auto;margin-bottom:1.5rem;"></div>
     </div>
+    <div id="notifBannerSpacer" class="d-none" style="margin-bottom:1.5rem;"></div>
 
     <!-- DASHBOARD VIEW -->
     <div id="dashboardView" class="view">
