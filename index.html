@@ -1392,9 +1392,8 @@ async function initTicker() {
     if (!messages.length) { bar.style.display = 'none'; return; }
     // speed 1-10, exponential scale: 1=~30px/s, 5=~150px/s, 10=~500px/s
     const speedVal = Math.min(10, Math.max(1, Number(data.speed) || 5));
-    const pxPerSec = Math.round(30 * Math.pow(speedVal, 1.4));
-    const separator = '          •          ';
-    textEl.textContent = messages.join(separator) + separator;
+    const pxPerSec = Math.round(30 * Math.pow(speedVal, 1.4) * 0.8);
+    textEl.innerHTML = messages.map(m => `<span>${m}</span>`).join(`<span style="color:#f97316;margin:0 1.2em;">•</span>`) + `<span style="color:#f97316;margin:0 1.2em;">•</span>`;
     bar.style.display = 'flex';
     _tickerPaused = false;
     _updatePauseBtn();
@@ -10939,12 +10938,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- MESSAGE TICKER (leadership only) -->
  <div id="tickerBar" style="display:none;background:#1a2744;flex-shrink:0;overflow:hidden;align-items:stretch;">
-   <div style="background:#f97316;padding:7px 16px;display:flex;align-items:center;gap:6px;flex-shrink:0;">
-     <i class="fas fa-bullhorn" style="color:#fff;font-size:13px;"></i>
-     <span style="color:#fff;font-size:12px;font-weight:600;white-space:nowrap;">LAS1 Updates</span>
+   <div style="background:#f97316;padding:10px 20px;display:flex;align-items:center;gap:7px;flex-shrink:0;">
+     <i class="fas fa-bullhorn" style="color:#fff;font-size:16px;"></i>
+     <span style="color:#fff;font-size:14px;font-weight:600;white-space:nowrap;">LAS1 Updates</span>
    </div>
    <div style="flex:1;overflow:hidden;display:flex;align-items:center;">
-     <div id="tickerText" style="white-space:nowrap;color:rgba(255,255,255,0.92);font-size:13px;padding:0 16px;will-change:transform;"></div>
+     <div id="tickerText" style="white-space:nowrap;color:rgba(255,255,255,0.92);font-size:16px;padding:0 20px;will-change:transform;"></div>
    </div>
  </div>
 
