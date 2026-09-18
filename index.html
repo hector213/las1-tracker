@@ -601,14 +601,22 @@ onAuthStateChanged(auth, async (user) => {
       }
     }
     showApp();
-    // Resolve the associate record for the logged-in user (match by displayName)
+    // Resolve the associate record for the logged-in user (match by displayName, then email)
     const _uSnap = await getDoc(doc(db, 'users', user.uid));
     const _uName = _uSnap.data()?.displayName || '';
-    if (_uName) {
+    const _uEmail = user.email || '';
+    {
       const _aSnap = await getDocs(collection(db, 'associates'));
       if (!_aSnap.empty) {
-        const _matchDoc = _aSnap.docs.find(d => { const a = d.data(); return a.name && a.name.toLowerCase() === _uName.toLowerCase(); });
+        // Try name match first (case-insensitive), then fall back to email field
+        let _matchDoc = _uName
+          ? _aSnap.docs.find(d => { const a = d.data(); return a.name && a.name.toLowerCase() === _uName.toLowerCase(); })
+          : null;
+        if (!_matchDoc && _uEmail) {
+          _matchDoc = _aSnap.docs.find(d => { const a = d.data(); return a.email && a.email.toLowerCase() === _uEmail.toLowerCase(); });
+        }
         currentUserAssocId = _matchDoc ? _matchDoc.id : null;
+        console.log('[Auth] displayName:', _uName, '| email:', _uEmail, '| assocId resolved:', currentUserAssocId);
       }
     }
     if (roleAtLeast('om')) document.getElementById('navAdmin').classList.remove('d-none');
