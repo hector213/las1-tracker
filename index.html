@@ -540,6 +540,12 @@ let currentAssociateId = null;
 let _origAssocStatus = '';
 let _pendingAssocSave = null;
 window._getCurrentAssocId = () => currentAssociateId;
+window._debugNotif = () => {
+  console.log('currentUserAssocId:', currentUserAssocId);
+  console.log('currentUserRole:', currentUserRole);
+  console.log('notifData:', _notifData);
+  checkPendingNotifications().then(() => console.log('notifData after check:', _notifData));
+};
 let activeListeners = {};
 let allAssociates = [];
 let allCertsMap = {}; // { associateId: Set of cert keys }
@@ -553,11 +559,16 @@ onAuthStateChanged(auth, async (user) => {
   if (user) {
     currentUser = user;
 
-    // Check if this UID belongs to an associate (portal user) - force server read for fresh points
+    // Check if this UID belongs to an associate (portal user)
     const assocQ = query(collection(db, 'associates'), where('viewerUid', '==', user.uid));
-    const assocSnap = await getDocsFromServer(assocQ);
+    const assocSnap = await getDocs(assocQ); // use cache-first — avoids forced server round-trip on every login
     if (!assocSnap.empty) {
       const assocDoc = assocSnap.docs[0];
+      // Populate allAssociates so manager name lookup works in the portal
+      if (!allAssociates.length) {
+        const allSnap = await getDocs(collection(db, 'associates'));
+        allAssociates = allSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      }
       showAssociatePortal();
       loadAssociatePortal(assocDoc.id, assocDoc.data());
       return;
@@ -667,34 +678,22 @@ window.loadAssociatePortal = async (assocId, assocData) => {
   _apAssocId = assocId;
   currentAssociateId = assocId; // so loadPortalNominate can identify this associate
 
-  // Always do a direct server read by doc ID to guarantee fresh points data
+  // Use passed-in data immediately so the header renders without waiting for network
   let freshData = assocData;
-  try {
-    const directSnap = await getDocFromServer(doc(db, 'associates', assocId));
-    if (directSnap.exists()) freshData = directSnap.data();
-  } catch(e) {
-    // fallback to query data if direct read fails
-  }
-
   const pts = Number(freshData.points ?? freshData.engagementPoints ?? 0);
 
-
-  // Header
+  // Header — render right away from cached data
   document.getElementById('apName').textContent = freshData.name || 'Associate';
   document.getElementById('apRole').textContent = freshData.role || freshData.department || '';
   const ptsDisplay = (pts > 0 ? '+' : '') + pts;
   document.getElementById('apPoints').textContent = ptsDisplay;
   document.getElementById('apHomePoints').textContent = ptsDisplay;
 
-  // Reports to
+  // Reports to — resolve from allAssociates in memory (no extra Firestore read)
   const apReportsTo = document.getElementById('apReportsTo');
   if (freshData.reportsTo) {
-    const mgrSnap = await getDocFromServer(doc(db, 'associates', freshData.reportsTo));
-    if (mgrSnap.exists()) {
-      apReportsTo.textContent = 'Reports to ' + mgrSnap.data().name;
-    } else {
-      apReportsTo.textContent = '';
-    }
+    const mgr = allAssociates.find(a => a.id === freshData.reportsTo);
+    apReportsTo.textContent = mgr ? 'Reports to ' + mgr.name : '';
   } else {
     apReportsTo.textContent = '';
   }
