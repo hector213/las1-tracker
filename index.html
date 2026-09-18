@@ -13676,14 +13676,24 @@ window.lb_syncCertToRole = async function(employeeId, assocName, certLabel, newS
   setInterval(lb_tick, 1000);
 })();
 
-function lb_stampLastUpdated() {
+function lb_stampLastUpdated(fromImport = false) {
+  // Only update the timestamp when called from an actual data import, not on every board render.
+  // The timestamp is persisted in localStorage so it survives page reloads.
   const el = document.getElementById("lb-last-updated");
   if (!el) return;
-  const now = new Date();
-  const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
-  const ampm = h >= 12 ? "PM" : "AM";
-  const hh = h % 12 || 12;
-  el.textContent = `Updated ${hh}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")} ${ampm}`;
+  if (fromImport) {
+    const now = new Date();
+    const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
+    const ampm = h >= 12 ? "PM" : "AM";
+    const hh = h % 12 || 12;
+    const stamp = `Updated ${hh}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")} ${ampm}`;
+    localStorage.setItem("lb_lastImportStamp", stamp);
+    el.textContent = stamp;
+  } else {
+    // Restore saved stamp from last import (if any)
+    const saved = localStorage.getItem("lb_lastImportStamp");
+    el.textContent = saved || "";
+  }
 }
 
 /* ======================================================================
@@ -14188,7 +14198,7 @@ function lb_avatarHTML(a, functionKey) {
    BOARD RENDER
    ====================================================================== */
 function lb_renderBoard() {
-  lb_stampLastUpdated();
+  lb_stampLastUpdated(false); // restore saved import stamp — do NOT update timestamp on render
   if (!lb_stations.length) { document.getElementById("stations-wrap").innerHTML = "<p class='note'>No lb_stations yet - seed them from Admin &rarr; Stations.</p>"; }
 
   const activeByStation = {}; // stationId -> [segment]
@@ -16220,6 +16230,7 @@ document.getElementById("commit-btn").addEventListener("click", async () => {
   pendingImportRows = null;
   pendingTrendBuckets = null;
   pendingAssocTrendBuckets = null;
+  lb_stampLastUpdated(true); // stamp the import time now that data is committed
   document.getElementById("commit-btn").classList.add("hidden");
 });
 
