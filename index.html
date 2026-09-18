@@ -1428,17 +1428,22 @@ window.tickerTogglePause = () => {
   _updatePauseBtn();
 };
 
-async function saveTickerSettings() {
-  const msgs = {};
-  for (let i = 1; i <= 4; i++) {
-    msgs['msg' + i] = (document.getElementById('tickerMsg' + i)?.value || '').trim();
-  }
-  const speed = document.getElementById('tickerSpeed')?.value || 'normal';
-  await setDoc(doc(db, 'system', 'ticker'), { ...msgs, speed });
+window.saveTickerSettings = async function() {
   const btn = document.getElementById('saveTickerBtn');
-  if (btn) { btn.textContent = 'Saved!'; setTimeout(() => btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Ticker', 1500); }
-  initTicker(); // restart with new settings
-}
+  try {
+    const msgs = {};
+    for (let i = 1; i <= 4; i++) {
+      msgs['msg' + i] = (document.getElementById('tickerMsg' + i)?.value || '').trim();
+    }
+    const speed = document.getElementById('tickerSpeed')?.value || '5';
+    await setDoc(doc(db, 'system', 'ticker'), { ...msgs, speed });
+    if (btn) { btn.textContent = 'Saved!'; setTimeout(() => btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Ticker', 1500); }
+    initTicker(); // restart ticker with new settings
+  } catch(e) {
+    console.error('saveTickerSettings error:', e);
+    if (btn) { btn.textContent = 'Error - check console'; btn.style.background = '#dc2626'; setTimeout(() => { btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Ticker'; btn.style.background = ''; }, 3000); }
+  }
+};
 
 async function loadTickerAdmin() {
   try {
