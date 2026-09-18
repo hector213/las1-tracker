@@ -1112,6 +1112,8 @@ window.showView = showView;
 // ── Auto-run attendance badge check once per week for admins ─────────
 async function autoRunAttendanceCheckIfNeeded() {
   if (!roleAtLeast('admin')) return;
+  // Only auto-run on Mondays — shift hasn't ended yet on other days so early-outs could still affect the week
+  if (new Date().getDay() !== 1) return;
   const weekMon = _lastCompletedWeekMonday();
   try {
     const snap = await getDoc(doc(db, 'system', 'attCheckLastRun'));
@@ -10627,6 +10629,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       <a class="nav-link active" data-view="dashboard" onclick="loadDashboard()">
         <i class="fas fa-th-large"></i><span>Dashboard</span>
       </a>
+      <a class="nav-link" data-view="production" onclick="event.preventDefault(); showView('production')">
+        <i class="fas fa-industry"></i><span>Production</span>
+      </a>
       <a class="nav-link" data-view="matrix" onclick="loadMatrix()">
         <i class="fas fa-table"></i><span>Training Matrix</span>
       </a>
@@ -10653,9 +10658,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
       </a>
       <a class="nav-link d-none" id="navAdmin" data-view="admin" onclick="loadAdminPanel()">
         <i class="fas fa-shield-alt"></i><span>Admin</span>
-      </a>
-      <a class="nav-link" data-view="production" onclick="event.preventDefault(); showView('production')">
-        <i class="fas fa-industry"></i><span>Production</span>
       </a>
       <a class="nav-link" data-view="help" onclick="showView('help')">
         <i class="fas fa-question-circle"></i><span>Help</span>
@@ -12151,11 +12153,11 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
         <div class="title-row">
           <h2 class="hero-title">Labor Pivot Planner <span class="hero-sub" id="shift-period-label"></span></h2>
           <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
-            <div class="field">
-              <label for="shift-date">Shift date</label>
-              <input type="date" id="shift-date">
+            <div class="field" style="display:flex;flex-direction:column;align-items:center;">
+              <label for="shift-date" style="text-align:center;">Shift date</label>
+              <input type="date" id="shift-date" style="text-align:center;">
             </div>
-            <span id="lb-last-updated" style="font-size:10px;color:var(--hero-muted);white-space:nowrap;"></span>
+            <span id="lb-last-updated" style="font-size:17px;color:var(--hero-muted);white-space:nowrap;text-align:center;"></span>
           </div>
           <button class="btn secondary" id="clear-assignments-btn" title="Fixes anyone stuck 'assigned' from the duplicate-segment bug">Reset today's assignments</button>
         </div>
