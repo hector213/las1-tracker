@@ -13700,7 +13700,7 @@ function lb_stampLastUpdated(fromImport = false) {
   } else {
     // Restore saved stamp from last import (if any)
     const saved = localStorage.getItem("lb_lastImportStamp");
-    el.textContent = saved || "";
+    el.textContent = saved || "Not yet imported";
   }
 }
 
