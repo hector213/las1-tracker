@@ -665,6 +665,7 @@ let _apAttendancePts = 0;
 
 window.loadAssociatePortal = async (assocId, assocData) => {
   _apAssocId = assocId;
+  currentAssociateId = assocId; // so loadPortalNominate can identify this associate
 
   // Always do a direct server read by doc ID to guarantee fresh points data
   let freshData = assocData;
@@ -9677,6 +9678,35 @@ window.loadPortalNominate = async () => {
   const monthKey = eomVoteMonthKey();
   const label = eomMonthLabel(monthKey);
 
+  // ── Voting status banner ──────────────────────────────────────────────
+  const _now = new Date();
+  const _lastDay = new Date(_now.getFullYear(), _now.getMonth() + 1, 0).getDate();
+  const _daysLeft = _lastDay - _now.getDate(); // days until end of month (0 = last day)
+  const _votingOpen = _now.getDate() >= _lastDay - 3; // same rule as eomVoteMonthKey
+  let _bannerHtml;
+  if (_votingOpen) {
+    _bannerHtml = `<div style="background:linear-gradient(135deg,#1a2744,#2d3f6e);border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
+      <div style="font-size:1.6rem;line-height:1">🏆</div>
+      <div>
+        <div style="font-weight:700;color:#fff;font-size:0.9rem">Employee of the Month — Voting is Open!</div>
+        <div style="color:rgba(255,255,255,0.7);font-size:0.75rem;margin-top:2px">Cast your nomination for ${escapeHtml(label)} below.</div>
+      </div>
+    </div>`;
+  } else {
+    const _openOnDay = _lastDay - 3;
+    const _daysUntilOpen = _openOnDay - _now.getDate();
+    _bannerHtml = `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
+      <div style="font-size:1.6rem;line-height:1">📅</div>
+      <div>
+        <div style="font-weight:700;color:#1a2744;font-size:0.9rem">Employee of the Month — Peer Voting</div>
+        <div style="color:#6b7280;font-size:0.75rem;margin-top:2px">
+          ${_daysUntilOpen === 1 ? 'Voting opens <strong>tomorrow</strong>' : `Voting opens in <strong>${_daysUntilOpen} days</strong>`} · Nominating for ${escapeHtml(label)}
+        </div>
+      </div>
+    </div>`;
+  }
+  // Prepend banner before rest of content (set after profile check below)
+
   // Check if already voted
   if (!currentAssociateId) {
     el.innerHTML = '<p class="text-center text-muted py-4">Unable to load your profile.</p>';
@@ -9687,7 +9717,7 @@ window.loadPortalNominate = async () => {
 
   if (existingVote.exists()) {
     const v = existingVote.data();
-    el.innerHTML = `
+    el.innerHTML = _bannerHtml + `
       <div style="background:#fff;border-radius:14px;padding:20px;box-shadow:0 2px 10px rgba(0,0,0,0.07);text-align:center;margin-bottom:16px">
         <div style="font-size:2rem;margin-bottom:8px">✅</div>
         <div style="font-weight:700;color:#1a2744;margin-bottom:4px">Your nomination is in!</div>
@@ -9711,7 +9741,7 @@ window.loadPortalNominate = async () => {
   const voterType = (me && (me.position === 'lead' || me.position === 'supervisor' || me.position === 'ops-manager'))
     ? 'leadership' : 'associate';
 
-  el.innerHTML = `
+  el.innerHTML = _bannerHtml + `
     <div style="background:#fff;border-radius:14px;padding:20px;box-shadow:0 2px 10px rgba(0,0,0,0.07);margin-bottom:16px">
       <div style="font-size:0.85rem;font-weight:700;color:#1a2744;margin-bottom:4px"><i class="fas fa-trophy me-1" style="color:#f97316"></i>Nominate for ${escapeHtml(label)}</div>
       <div style="font-size:0.75rem;color:#6b7280;margin-bottom:16px">Your vote is confidential. Nominate a colleague who went above and beyond this month.</div>
