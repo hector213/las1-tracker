@@ -1390,31 +1390,34 @@ async function initTicker() {
     const data = snap.data();
     const messages = [data.msg1, data.msg2, data.msg3, data.msg4].filter(m => m && m.trim());
     if (!messages.length) { bar.style.display = 'none'; return; }
-    // speed is 1-10; map to px/sec (1=very slow ~8px/s, 10=very fast ~80px/s)
+    // speed 1-10, exponential scale: 1=~30px/s, 5=~150px/s, 10=~500px/s
     const speedVal = Math.min(10, Math.max(1, Number(data.speed) || 5));
-    const pxPerSec = speedVal * 8;
-    const separator = '     •     ';
+    const pxPerSec = Math.round(30 * Math.pow(speedVal, 1.4));
+    const separator = '          •          ';
     textEl.textContent = messages.join(separator) + separator;
     bar.style.display = 'flex';
     _tickerPaused = false;
     _updatePauseBtn();
-    // RAF-based scroll — reset position after content changes
+    // RAF-based scroll — text starts off-screen right, scrolls to left
     if (_tickerAnim) cancelAnimationFrame(_tickerAnim);
-    let pos = 0;
-    let last = null;
-    function step(ts) {
-      if (!_tickerPaused) {
-        if (last !== null) {
-          pos += pxPerSec * (ts - last) / 1000;
-          const fullWidth = textEl.scrollWidth;
-          if (pos >= fullWidth) pos = 0;
+    // Wait one frame so bar.offsetWidth is measured after display:flex kicks in
+    requestAnimationFrame(() => {
+      const barWidth = bar.offsetWidth;
+      let pos = -barWidth; // start off-screen to the right
+      let last = null;
+      function step(ts) {
+        if (!_tickerPaused) {
+          if (last !== null) {
+            pos += pxPerSec * (ts - last) / 1000;
+            if (pos >= textEl.scrollWidth) pos = -barWidth; // reset to right
+          }
+          textEl.style.transform = 'translateX(' + (-pos) + 'px)';
         }
-        textEl.style.transform = 'translateX(' + (-pos) + 'px)';
+        last = ts;
+        _tickerAnim = requestAnimationFrame(step);
       }
-      last = ts;
       _tickerAnim = requestAnimationFrame(step);
-    }
-    _tickerAnim = requestAnimationFrame(step);
+    });
   } catch(e) { console.warn('initTicker error:', e); }
 }
 
