@@ -4765,10 +4765,7 @@ window.generateCorrectiveAction = async (tierKey, overrideAssocId) => {
  const warnings = warnSource.filter(w => w.type === tierKey).sort((a,b) => new Date(b.issuedAt)-new Date(a.issuedAt));
  const latest = warnings[0];
  const pts = assoc.attendancePoints || 0;
- const _docDate = (() => {
- if (latest) return new Date(latest.issuedAt);
- return new Date();
- })();
+ const _docDate = new Date();
  const issuedDate = _docDate.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
  const schedule = SHIFT_SCHEDULES[assoc.shift] || assoc.shift || '-';
 
@@ -13947,23 +13944,41 @@ window.lb_syncCertToRole = async function(employeeId, assocName, certLabel, newS
  setInterval(lb_tick, 1000);
 })();
 
-function lb_stampLastUpdated(fromImport = false) {
- // Only update the timestamp when called from an actual data import, not on every board render.
- // The timestamp is persisted in localStorage so it survives page reloads.
+async function lb_stampLastUpdated(fromImport = false) {
+ // Timestamp is stored in Firestore so ALL users see the same "last imported" time.
  const el = document.getElementById("lb-last-updated");
  if (!el) return;
+
+ function _fmt(isoStr) {
+   const d = new Date(isoStr);
+   const h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
+   const ampm = h >= 12 ? "PM" : "AM";
+   const hh = h % 12 || 12;
+   const mon = String(d.getMonth()+1).padStart(2,"0");
+   const day = String(d.getDate()).padStart(2,"0");
+   return `Updated ${mon}/${day} ${hh}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")} ${ampm}`;
+ }
+
  if (fromImport) {
- const now = new Date();
- const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
- const ampm = h >= 12 ? "PM" : "AM";
- const hh = h % 12 || 12;
- const stamp = `Updated ${hh}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")} ${ampm}`;
- localStorage.setItem("lb_lastImportStamp", stamp);
- el.textContent = stamp;
+   try {
+     const iso = new Date().toISOString();
+     await setDoc(doc(db, 'system', 'lbLastUpdated'), { iso, updatedBy: currentUser?.email || 'unknown' });
+     el.textContent = _fmt(iso);
+   } catch(e) {
+     console.warn('lb_stampLastUpdated write error:', e);
+     el.textContent = _fmt(new Date().toISOString());
+   }
  } else {
- // Restore saved stamp from last import (if any)
- const saved = localStorage.getItem("lb_lastImportStamp");
- el.textContent = saved || "Not yet imported";
+   try {
+     const snap = await getDocFromServer(doc(db, 'system', 'lbLastUpdated'));
+     if (snap.exists() && snap.data().iso) {
+       el.textContent = _fmt(snap.data().iso);
+     } else {
+       el.textContent = "Not yet imported";
+     }
+   } catch(e) {
+     el.textContent = "Not yet imported";
+   }
  }
 }
 
