@@ -14023,7 +14023,7 @@ async function _lbRefreshStamp() {
  if (!el) return;
  try {
    // Use compat SDK (lb_db) so this works regardless of modular SDK availability
-   const snap = await lb_db.collection('system').doc('lbLastUpdated').get({ source: 'server' });
+   const snap = await lb_db.collection('lb_settings').doc('lastImport').get({ source: 'server' });
    el.textContent = (snap.exists && snap.data().iso) ? _lbFmtStamp(snap.data().iso) : "Not yet imported";
  } catch(e) {
    console.warn('_lbRefreshStamp error:', e);
@@ -14036,7 +14036,7 @@ async function lb_stampLastUpdated(fromImport = false) {
  if (fromImport) {
    try {
      const iso = new Date().toISOString();
-     await lb_db.collection('system').doc('lbLastUpdated').set({ iso, updatedBy: currentUser?.email || 'unknown' });
+     await lb_db.collection('lb_settings').doc('lastImport').set({ iso, updatedBy: currentUser?.email || 'unknown' });
      const el = document.getElementById("lb-last-updated");
      if (el) el.textContent = _lbFmtStamp(iso);
    } catch(e) {
