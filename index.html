@@ -14036,7 +14036,7 @@ async function lb_stampLastUpdated(fromImport = false) {
  if (fromImport) {
    try {
      const iso = new Date().toISOString();
-     await lb_db.collection('lb_settings').doc('lastImport').set({ iso, updatedBy: currentUser?.email || 'unknown' });
+     await lb_db.collection('lb_settings').doc('lastImport').set({ iso });
      const el = document.getElementById("lb-last-updated");
      if (el) el.textContent = _lbFmtStamp(iso);
    } catch(e) {
