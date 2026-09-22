@@ -14024,7 +14024,10 @@ async function _lbRefreshStamp() {
  try {
    const snap = await getDocFromServer(doc(db, 'system', 'lbLastUpdated'));
    el.textContent = (snap.exists() && snap.data().iso) ? _lbFmtStamp(snap.data().iso) : "Not yet imported";
- } catch(e) { /* leave as-is */ }
+ } catch(e) {
+   console.warn('_lbRefreshStamp error:', e);
+   el.textContent = "Not yet imported";
+ }
 }
 
 let _lbStampInterval = null;
