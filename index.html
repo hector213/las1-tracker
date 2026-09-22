@@ -14014,6 +14014,7 @@ async function lb_stampLastUpdated(fromImport = false) {
 
  function _fmt(isoStr) {
    const d = new Date(isoStr);
+   if (!isoStr || isNaN(d.getTime())) return "Not yet imported";
    const h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
    const ampm = h >= 12 ? "PM" : "AM";
    const hh = h % 12 || 12;
@@ -14040,13 +14041,10 @@ async function lb_stampLastUpdated(fromImport = false) {
      if (snap.exists() && snap.data().iso) {
        el.textContent = _fmt(snap.data().iso);
      } else {
-       // Fall back to localStorage stamp from before Firestore tracking was added
-       const local = localStorage.getItem('lb_lastImportStamp');
-       el.textContent = local ? _fmt(local) : "Not yet imported";
+       el.textContent = "Not yet imported";
      }
    } catch(e) {
-     const local = localStorage.getItem('lb_lastImportStamp');
-     el.textContent = local ? _fmt(local) : "Not yet imported";
+     el.textContent = "Not yet imported";
    }
  }
 }
