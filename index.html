@@ -407,6 +407,65 @@ window.autoCheckPerfectAttendance = async function(showAlert = true) {
  }
 };
 
+// ── Remove duplicate auto-awarded attendance badges ───────────────────
+window.removeDuplicateAttBadges = async function() {
+ const log = document.getElementById('dupBadgeLog');
+ if (!confirm('This will find and remove duplicate auto-awarded attendance badges (keeping the oldest), then reverse the extra points. Continue?')) return;
+ if (log) log.textContent = 'Scanning...';
+ try {
+   if (!allAssociates.length) {
+     const snap = await getDocs(collection(db, 'associates'));
+     allAssociates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+   }
+   const DUPE_BADGES = ['Weekly Perfect Attendance', 'Perfect Month Attendance'];
+   const BADGE_PTS = { 'Weekly Perfect Attendance': 25, 'Perfect Month Attendance': 100 };
+   let totalRemoved = 0, totalPtsReversed = 0;
+   const lines = [];
+
+   for (const assoc of allAssociates.filter(a => a.status === 'active')) {
+     const badgeSnap = await getDocs(collection(db, 'badges', assoc.id, 'entries'));
+     const entries = badgeSnap.docs.map(d => ({ docId: d.id, ...d.data() }));
+
+     for (const badgeName of DUPE_BADGES) {
+       // Group by weekKey
+       const byWeek = {};
+       entries.filter(b => b.badge === badgeName && b.autoAwarded).forEach(b => {
+         const key = b.weekKey || 'nokey';
+         (byWeek[key] = byWeek[key] || []).push(b);
+       });
+
+       for (const [weekKey, dupes] of Object.entries(byWeek)) {
+         if (dupes.length <= 1) continue;
+         // Keep the oldest (first createdAt), delete the rest
+         dupes.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+         const toDelete = dupes.slice(1);
+         for (const d of toDelete) {
+           await deleteDoc(doc(db, 'badges', assoc.id, 'entries', d.docId));
+           const pts = BADGE_PTS[badgeName] || 0;
+           await updateDoc(doc(db, 'associates', assoc.id), { points: increment(-pts) });
+           await logPoints(assoc.id, 'Badge', `Duplicate badge removed: ${badgeName} (week ${weekKey})`, -pts);
+           const cached = allAssociates.find(a => a.id === assoc.id);
+           if (cached) cached.points = (cached.points || 0) - pts;
+           totalRemoved++;
+           totalPtsReversed += pts;
+         }
+         lines.push(`${assoc.name}: removed ${toDelete.length} duplicate ${badgeName} (week ${weekKey}), -${toDelete.length * (BADGE_PTS[badgeName]||0)} pts`);
+       }
+     }
+   }
+
+   const summary = totalRemoved > 0
+     ? `Done. Removed ${totalRemoved} duplicate badge(s), reversed ${totalPtsReversed} pts.\n\n${lines.join('\n')}`
+     : 'No duplicate badges found.';
+   if (log) log.textContent = summary;
+   alert(summary.split('\n')[0]);
+ } catch(e) {
+   console.error('removeDuplicateAttBadges error:', e);
+   if (log) log.textContent = 'Error: ' + e.message;
+   alert('Error: ' + e.message);
+ }
+};
+
 // ── Recalculate nextPointExpiry on associate doc ──────────────────────
 // Called after any pointslog write so renderMilestones can read it from memory
 async function recalcPointExpiry(associateId) {
@@ -1301,7 +1360,7 @@ async function autoRunAttendanceCheckIfNeeded() {
  if (new Date().getDay() !== 1) return;
  const weekMon = _lastCompletedWeekMonday();
  try {
- const snap = await getDoc(doc(db, 'system', 'attCheckLastRun'));
+ const snap = await getDocFromServer(doc(db, 'system', 'attCheckLastRun'));
  if (snap.exists() && snap.data().weekKey === weekMon) return; // already ran this week
  // Run silently
  const result = await window.autoCheckPerfectAttendance(false);
@@ -12149,6 +12208,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <button id="runAttCheckBtn" class="btn btn-sm btn-orange" onclick="autoCheckPerfectAttendance(true)">
  <i class="fas fa-calendar-check me-1"></i>Run Attendance Badge Check
  </button>
+ <button class="btn btn-sm btn-outline-danger ms-2" onclick="removeDuplicateAttBadges()" style="margin-top:4px;">
+ <i class="fas fa-broom me-1"></i>Remove Duplicate Badges
+ </button>
+ <div id="dupBadgeLog" class="mt-2 small text-muted" style="white-space:pre-wrap;"></div>
  </div>
 
  <!-- Tab Visibility -->
