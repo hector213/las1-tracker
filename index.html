@@ -2153,7 +2153,7 @@ window.openProfile = async (id) => {
  const _nc = document.getElementById('notesChevron');
  const _na = document.getElementById('notesAddBtn');
  if (_nb) { _nb.classList.add('d-none'); }
- if (_nc) { _nc.style.transform = 'rotate(-90deg)'; }
+ if (_nc) { _nc.style.transform = ''; }
  if (_na) { _na.style.display = 'none'; }
 
  listenNotes(id);
@@ -2476,7 +2476,7 @@ window.toggleManagerNotes = () => {
  const chevron = document.getElementById('notesChevron');
  const addBtn = document.getElementById('notesAddBtn');
  if (body) body.classList.toggle('d-none', !_notesOpen);
- if (chevron) chevron.style.transform = _notesOpen ? '' : 'rotate(-90deg)';
+ if (chevron) chevron.style.transform = _notesOpen ? 'rotate(90deg)' : '';
  if (addBtn) addBtn.style.display = _notesOpen ? '' : 'none';
 };
 
@@ -11381,15 +11381,15 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
 
  <!-- Manager Notes -->
- <div class="d-flex align-items-center justify-content-between mb-0" style="cursor:pointer" onclick="toggleManagerNotes()">
+ <div onclick="toggleManagerNotes()" style="background:#1a2744;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;margin-bottom:0">
  <div class="d-flex align-items-center gap-2">
- <i class="fas fa-sticky-note" style="color:var(--orange);font-size:0.85rem"></i>
- <h6 class="fw-bold mb-0" style="color:var(--navy)">Manager Notes</h6>
- <span class="badge ms-1" id="notesCountBadge" style="background:var(--navy);font-size:0.7rem">0</span>
+ <i class="fas fa-sticky-note" style="color:#f97316;font-size:1rem"></i>
+ <span class="fw-bold" style="color:#fff;font-size:0.9rem">Manager Notes</span>
+ <span id="notesCountBadge" style="background:#f97316;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:20px;line-height:1.4">0</span>
  </div>
  <div class="d-flex align-items-center gap-2">
- <button class="btn btn-sm btn-orange" id="notesAddBtn" style="display:none" onclick="event.stopPropagation();openAddNote()"><i class="fas fa-plus me-1"></i>Add Note</button>
- <i class="fas fa-chevron-down" id="notesChevron" style="color:var(--navy);font-size:0.8rem;transition:transform 0.2s"></i>
+ <button class="btn btn-sm" id="notesAddBtn" style="display:none;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:0.75rem;padding:4px 12px;border-radius:6px" onclick="event.stopPropagation();openAddNote()"><i class="fas fa-plus me-1"></i>Add Note</button>
+ <i class="fas fa-chevron-right" id="notesChevron" style="color:rgba(255,255,255,0.7);font-size:0.8rem;transition:transform 0.2s"></i>
  </div>
  </div>
  <div id="notesBody" class="mt-3 d-none">
