@@ -330,8 +330,8 @@ window.autoCheckPerfectAttendance = async function(showAlert = true) {
  for (const assoc of eligibleAssociates) {
  // Load attendance + badge entries
  const [attSnap, badgeSnap] = await Promise.all([
- getDocs(collection(db, 'attendance', assoc.id, 'entries')),
- getDocs(collection(db, 'badges', assoc.id, 'entries')),
+ getDocsFromServer(collection(db, 'attendance', assoc.id, 'entries')),
+ getDocsFromServer(collection(db, 'badges', assoc.id, 'entries')),
  ]);
 
  const attEntries = attSnap.docs.map(d => d.data());
@@ -423,7 +423,7 @@ window.removeDuplicateAttBadges = async function() {
    const lines = [];
 
    for (const assoc of allAssociates.filter(a => a.status === 'active')) {
-     const badgeSnap = await getDocs(collection(db, 'badges', assoc.id, 'entries'));
+     const badgeSnap = await getDocsFromServer(collection(db, 'badges', assoc.id, 'entries'));
      const entries = badgeSnap.docs.map(d => ({ docId: d.id, ...d.data() }));
 
      for (const badgeName of DUPE_BADGES) {
