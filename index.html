@@ -6249,6 +6249,11 @@ window.saveAttendance = async () => {
  await addDoc(collection(db, 'attendance', currentAssociateId, 'entries'), entry);
  if (info.points !== 0) {
  await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(info.points) });
+ // Update allAssociates in memory so checkPendingNotifications sees fresh points
+ const idx = allAssociates.findIndex(a => a.id === currentAssociateId);
+ if (idx !== -1) {
+ allAssociates[idx] = { ...allAssociates[idx], attendancePoints: (allAssociates[idx].attendancePoints || 0) + info.points };
+ }
  }
  clearCache('attendance');
  clearCache('milestones_firestore');
@@ -6257,6 +6262,7 @@ window.saveAttendance = async () => {
  recordActivity(currentAssociateId);
  bootstrap.Modal.getInstance(document.getElementById('attModal')).hide();
  listenAttendance(currentAssociateId); // refresh the attendance list immediately
+ checkPendingNotifications(); // refresh threshold alerts in notification banner
  // Refresh dashboard stats immediately after logging attendance
  loadTodayAttendanceStats().then(() => {
  const activeAll = allAssociates.filter(a => a.status === 'active');
@@ -6272,6 +6278,11 @@ window.deleteAttendance = async (entryId, type, pts) => {
  const newPts = Math.max(0, oldPts - pts);
  await deleteDoc(doc(db, 'attendance', currentAssociateId, 'entries', entryId));
  await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(-pts) });
+ // Update allAssociates in memory so checkPendingNotifications sees fresh points
+ const dIdx = allAssociates.findIndex(a => a.id === currentAssociateId);
+ if (dIdx !== -1) {
+ allAssociates[dIdx] = { ...allAssociates[dIdx], attendancePoints: Math.max(0, (allAssociates[dIdx].attendancePoints || 0) - pts) };
+ }
  // Clear threshold dismissals for any tier the associate dropped back below
  await clearAttThresholdDismissals(currentAssociateId, oldPts, newPts);
  clearCache('attendance');
@@ -6279,6 +6290,7 @@ window.deleteAttendance = async (entryId, type, pts) => {
  clearCache('todayAttStats'); // force re-read on next dashboard render
  recalcAttExpiry(currentAssociateId); // update nextAttExpiry on associate doc (non-blocking)
  listenAttendance(currentAssociateId); // refresh the attendance list immediately
+ checkPendingNotifications(); // refresh threshold alerts in notification banner
  loadTodayAttendanceStats().then(() => {
  const activeAll = allAssociates.filter(a => a.status === 'active');
  const activeAssoc = activeAll.filter(a => a.position !== 'supervisor' && a.position !== 'ops-manager' && a.position !== 'lead');
