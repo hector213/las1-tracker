@@ -429,7 +429,7 @@ window.removeDuplicateAttBadges = async function() {
      for (const badgeName of DUPE_BADGES) {
        // Group by weekKey
        const byWeek = {};
-       entries.filter(b => b.badge === badgeName && b.autoAwarded).forEach(b => {
+       entries.filter(b => b.badge === badgeName).forEach(b => {
          const key = b.weekKey || 'nokey';
          (byWeek[key] = byWeek[key] || []).push(b);
        });
@@ -14026,10 +14026,13 @@ async function lb_stampLastUpdated(fromImport = false) {
    try {
      const iso = new Date().toISOString();
      await setDoc(doc(db, 'system', 'lbLastUpdated'), { iso, updatedBy: currentUser?.email || 'unknown' });
+     localStorage.setItem('lb_lastImportStamp', iso);
      el.textContent = _fmt(iso);
    } catch(e) {
      console.warn('lb_stampLastUpdated write error:', e);
-     el.textContent = _fmt(new Date().toISOString());
+     const iso = new Date().toISOString();
+     localStorage.setItem('lb_lastImportStamp', iso);
+     el.textContent = _fmt(iso);
    }
  } else {
    try {
@@ -14037,10 +14040,13 @@ async function lb_stampLastUpdated(fromImport = false) {
      if (snap.exists() && snap.data().iso) {
        el.textContent = _fmt(snap.data().iso);
      } else {
-       el.textContent = "Not yet imported";
+       // Fall back to localStorage stamp from before Firestore tracking was added
+       const local = localStorage.getItem('lb_lastImportStamp');
+       el.textContent = local ? _fmt(local) : "Not yet imported";
      }
    } catch(e) {
-     el.textContent = "Not yet imported";
+     const local = localStorage.getItem('lb_lastImportStamp');
+     el.textContent = local ? _fmt(local) : "Not yet imported";
    }
  }
 }
