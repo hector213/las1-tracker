@@ -1192,11 +1192,20 @@ async function checkPendingNotifications() {
  const pts = a.attendancePoints || 0;
  const tier = WARNING_TIERS.slice().reverse().find(t => pts >= t.threshold);
  if (!tier) return null;
- // Check if this tier's corrective has already been issued
+ // Check if this tier's corrective has already been issued for the CURRENT threshold crossing
  try {
  const wSnap = await getDocs(collection(db, 'warnings', a.id, 'entries'));
- const alreadyIssued = wSnap.docs.some(d => d.data().type === tier.key);
- if (alreadyIssued) return null; // corrective issued - no alert needed
+ const crossedAt = a.attThresholdCrossings?.[tier.key] || null;
+ const alreadyIssued = wSnap.docs.some(d => {
+ if (d.data().type !== tier.key) return false;
+ // If we have a crossing timestamp, the warning must have been issued AFTER that crossing
+ // to count as "already handled" — an older warning means points re-crossed the threshold
+ if (crossedAt) return new Date(d.data().issuedAt) >= new Date(crossedAt);
+ // No crossing timestamp yet (legacy associates): only suppress for pre-existing entries.
+ // Timestamped warnings don't suppress — forces re-check so manager can confirm coverage.
+ return !!d.data().preExisting;
+ });
+ if (alreadyIssued) return null; // corrective issued for this crossing - no alert needed
  } catch(e) { /* if warnings subcollection missing, treat as not issued */ }
  return { assocId: a.id, assocName: a.name, pts, tier };
  })
@@ -6252,7 +6261,27 @@ window.saveAttendance = async () => {
  // Update allAssociates in memory so checkPendingNotifications sees fresh points
  const idx = allAssociates.findIndex(a => a.id === currentAssociateId);
  if (idx !== -1) {
- allAssociates[idx] = { ...allAssociates[idx], attendancePoints: (allAssociates[idx].attendancePoints || 0) + info.points };
+ const oldPtsAtt = allAssociates[idx].attendancePoints || 0;
+ const newPtsAtt = oldPtsAtt + info.points;
+ allAssociates[idx] = { ...allAssociates[idx], attendancePoints: newPtsAtt };
+ // Record threshold crossing timestamps so re-crossings trigger new notifications
+ const crossings = { ...(allAssociates[idx].attThresholdCrossings || {}) };
+ let crossingsChanged = false;
+ for (const tier of WARNING_TIERS) {
+ if (oldPtsAtt < tier.threshold && newPtsAtt >= tier.threshold) {
+ // Just crossed above this threshold - record the time
+ crossings[tier.key] = new Date().toISOString();
+ crossingsChanged = true;
+ } else if (oldPtsAtt >= tier.threshold && newPtsAtt < tier.threshold) {
+ // Dropped below - clear so next crossing gets a fresh timestamp
+ delete crossings[tier.key];
+ crossingsChanged = true;
+ }
+ }
+ if (crossingsChanged) {
+ allAssociates[idx].attThresholdCrossings = crossings;
+ updateDoc(doc(db, 'associates', currentAssociateId), { attThresholdCrossings: crossings });
+ }
  }
  }
  clearCache('attendance');
@@ -6281,7 +6310,22 @@ window.deleteAttendance = async (entryId, type, pts) => {
  // Update allAssociates in memory so checkPendingNotifications sees fresh points
  const dIdx = allAssociates.findIndex(a => a.id === currentAssociateId);
  if (dIdx !== -1) {
- allAssociates[dIdx] = { ...allAssociates[dIdx], attendancePoints: Math.max(0, (allAssociates[dIdx].attendancePoints || 0) - pts) };
+ const oldPtsDel = allAssociates[dIdx].attendancePoints || 0;
+ const newPtsDel = Math.max(0, oldPtsDel - pts);
+ allAssociates[dIdx] = { ...allAssociates[dIdx], attendancePoints: newPtsDel };
+ // Clear crossing timestamps for tiers dropped below, so re-crossing fires a fresh alert
+ const crossingsDel = { ...(allAssociates[dIdx].attThresholdCrossings || {}) };
+ let crossingsDelChanged = false;
+ for (const tier of WARNING_TIERS) {
+ if (oldPtsDel >= tier.threshold && newPtsDel < tier.threshold) {
+ delete crossingsDel[tier.key];
+ crossingsDelChanged = true;
+ }
+ }
+ if (crossingsDelChanged) {
+ allAssociates[dIdx].attThresholdCrossings = crossingsDel;
+ updateDoc(doc(db, 'associates', currentAssociateId), { attThresholdCrossings: crossingsDel });
+ }
  }
  // Clear threshold dismissals for any tier the associate dropped back below
  await clearAttThresholdDismissals(currentAssociateId, oldPts, newPts);
