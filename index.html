@@ -1201,9 +1201,8 @@ async function checkPendingNotifications() {
  // If we have a crossing timestamp, the warning must have been issued AFTER that crossing
  // to count as "already handled" — an older warning means points re-crossed the threshold
  if (crossedAt) return new Date(d.data().issuedAt) >= new Date(crossedAt);
- // No crossing timestamp yet (legacy associates): only suppress for pre-existing entries.
- // Timestamped warnings don't suppress — forces re-check so manager can confirm coverage.
- return !!d.data().preExisting;
+ // No crossing timestamp yet (legacy): any existing warning suppresses the alert
+ return true;
  });
  if (alreadyIssued) return null; // corrective issued for this crossing - no alert needed
  } catch(e) { /* if warnings subcollection missing, treat as not issued */ }
@@ -4824,6 +4823,7 @@ function renderWarnings(warnings) {
  <div class="d-flex gap-1">
  ${isActive && canEdit ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.75rem;background:#1a2744;color:#fff;border:none" onclick="generateCorrectiveAction('${tier.key}')"><i class="fas fa-file-signature me-1"></i>${hasHistory ? 'Re-issue' : 'Issue'}</button>` : ''}
  ${isActive && !hasHistory && roleAtLeast('admin') ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.75rem;background:#6b7280;color:#fff;border:none" onclick="markWarningPreExisting('${tier.key}')" title="Mark as already issued (no timestamp)"><i class="fas fa-check me-1"></i>Already Issued</button>` : ''}
+ ${isActive && hasHistory && roleAtLeast('admin') ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:transparent;border:1px solid #d1d5db;color:#6b7280" onclick="resetThresholdCrossing('${tier.key}')" title="Associate dropped below this threshold and crossed it again — reset so notification fires"><i class="fas fa-redo me-1"></i>Reset Alert</button>` : ''}
  </div>
  </div>
  ${issued.length ? `<div class="mt-2">` + issued.map(w => `
@@ -6202,6 +6202,21 @@ async function loadTodayTimeOff() {
  setCache('todayTimeOff', _todayTimeOffMap);
  } catch(e) {}
 }
+
+window.resetThresholdCrossing = async (tierKey) => {
+ const tier = WARNING_TIERS.find(t => t.key === tierKey);
+ if (!tier) return;
+ if (!confirm(`Reset the alert for ${tier.label}?\n\nUse this when the associate dropped below ${tier.threshold} pts and crossed back over — it will trigger a new notification for their manager so a new corrective can be issued.`)) return;
+ const now = new Date().toISOString();
+ const crossings = { ...(allAssociates.find(a => a.id === currentAssociateId)?.attThresholdCrossings || {}) };
+ crossings[tierKey] = now;
+ await updateDoc(doc(db, 'associates', currentAssociateId), { attThresholdCrossings: crossings });
+ const idx = allAssociates.findIndex(a => a.id === currentAssociateId);
+ if (idx !== -1) allAssociates[idx] = { ...allAssociates[idx], attThresholdCrossings: crossings };
+ checkPendingNotifications();
+ listenWarnings(currentAssociateId);
+ alert(`Alert reset for ${tier.label}. Anthony's notification banner will now show this corrective as needed.`);
+};
 
 window.markWarningPreExisting = async (type, overrideAssocId) => {
  const assocId = overrideAssocId || currentAssociateId;
