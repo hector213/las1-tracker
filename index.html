@@ -2119,21 +2119,23 @@ window.openProfile = async (id) => {
  // Reset credentials panel state
  credsOpen = false;
  document.getElementById('credsBody').classList.add('d-none');
- document.getElementById('credsChevron').classList.remove('open');
+ const _cc = document.getElementById('credsChevron');
+ if (_cc) _cc.style.transform = '';
  document.getElementById('credsAddBtn').style.display = 'none';
 
  // Reset watch notes panel state
  watchNotesOpen = false;
  goalsOpen = false;
  document.getElementById('watchNotesBody').classList.add('d-none');
- document.getElementById('watchChevron').classList.remove('open');
+ const _wc = document.getElementById('watchChevron');
+ if (_wc) _wc.style.transform = '';
  document.getElementById('watchAddBtn').style.display = 'none';
  // Reset goals panel state
  const goalsBodyEl = document.getElementById('goalsBody');
  const goalsChevronEl = document.getElementById('goalsChevron');
  const goalsAddBtnEl = document.getElementById('goalsAddBtn');
  if (goalsBodyEl) goalsBodyEl.classList.add('d-none');
- if (goalsChevronEl) goalsChevronEl.classList.remove('open');
+ if (goalsChevronEl) goalsChevronEl.style.transform = '';
  if (goalsAddBtnEl) goalsAddBtnEl.style.display = 'none';
 
  // Reset 1:1 panel state
@@ -2144,7 +2146,7 @@ window.openProfile = async (id) => {
  const oo1Chev = document.getElementById('oneOnOneChevron');
  const oo1Btn = document.getElementById('oneOnOneSchedBtn');
  if (oo1Body) oo1Body.classList.add('d-none');
- if (oo1Chev) oo1Chev.classList.remove('open');
+ if (oo1Chev) oo1Chev.style.transform = '';
  if (oo1Btn) oo1Btn.style.display = 'none';
 
  // Start manager notes collapsed on each new profile
@@ -2164,21 +2166,20 @@ window.openProfile = async (id) => {
  listenGoals(id);
  onboardingPanelOpen = false;
  document.getElementById('onboardingBody')?.classList.add('d-none');
- document.getElementById('onboardingChevron')?.classList.remove('open');
+ const _oc = document.getElementById('onboardingChevron');
+ if (_oc) _oc.style.transform = '';
  loadOnboarding(id);
  listenAttendance(id);
  listenWarnings(id);
  listenOneOnOnes(id);
- // Show attendance add button for leads+ (inside collapsed body)
- const attBtn = document.getElementById('attAddBtn');
- if (attBtn) attBtn.classList.toggle('d-none', currentUserRole === 'viewer');
  // Always start collapsed when opening a profile
  const attLogBody = document.getElementById('attLogBody');
  const attChevron = document.getElementById('attLogChevron');
- const attLabel = document.getElementById('attLogToggleLabel');
  if (attLogBody) attLogBody.classList.add('d-none');
  if (attChevron) attChevron.style.transform = '';
- if (attLabel) attLabel.textContent = 'View Log';
+ // Hide the add button when collapsed (it shows/hides with toggleAttendanceLog)
+ const attBtn = document.getElementById('attAddBtn');
+ if (attBtn) attBtn.style.display = 'none';
 };
 
 // ─── Flagging ─────────────────────────────────────────────────────────
@@ -2367,7 +2368,8 @@ let onboardingPanelOpen = false;
 window.toggleOnboardingPanel = () => {
  onboardingPanelOpen = !onboardingPanelOpen;
  document.getElementById('onboardingBody').classList.toggle('d-none', !onboardingPanelOpen);
- document.getElementById('onboardingChevron').classList.toggle('open', onboardingPanelOpen);
+ const chev = document.getElementById('onboardingChevron');
+ if (chev) chev.style.transform = onboardingPanelOpen ? 'rotate(90deg)' : '';
  if (onboardingPanelOpen && currentAssociateId) loadOnboarding(currentAssociateId);
 };
 
@@ -2837,7 +2839,8 @@ function renderCreds(creds) {
 window.toggleCreds = () => {
  credsOpen = !credsOpen;
  document.getElementById('credsBody').classList.toggle('d-none', !credsOpen);
- document.getElementById('credsChevron').classList.toggle('open', credsOpen);
+ const chev = document.getElementById('credsChevron');
+ if (chev) chev.style.transform = credsOpen ? 'rotate(90deg)' : '';
  document.getElementById('credsAddBtn').style.display = credsOpen ? 'inline-flex' : 'none';
  if (credsOpen) renderCreds(lastCreds);
 };
@@ -2959,8 +2962,8 @@ window.toggleWatchNotes = () => {
  const chevron = document.getElementById('watchChevron');
  const addBtn = document.getElementById('watchAddBtn');
  body.classList.toggle('d-none', !watchNotesOpen);
- chevron.classList.toggle('open', watchNotesOpen);
- addBtn.style.display = watchNotesOpen ? 'inline-flex' : 'none';
+ if (chevron) chevron.style.transform = watchNotesOpen ? 'rotate(90deg)' : '';
+ if (addBtn) addBtn.style.display = watchNotesOpen ? 'inline-flex' : 'none';
  if (watchNotesOpen) renderWatchNotes(lastWatchNotes);
 };
 
@@ -3205,7 +3208,8 @@ window.deleteProgressNote = async (goalId, noteId) => {
 window.toggleGoalsPanel = () => {
  goalsOpen = !goalsOpen;
  document.getElementById('goalsBody').classList.toggle('d-none', !goalsOpen);
- document.getElementById('goalsChevron').classList.toggle('open', goalsOpen);
+ const chev = document.getElementById('goalsChevron');
+ if (chev) chev.style.transform = goalsOpen ? 'rotate(90deg)' : '';
  const btn = document.getElementById('goalsAddBtn');
  if (btn) btn.style.display = goalsOpen && roleAtLeast('supervisor') ? 'inline-flex' : 'none';
  if (goalsOpen) renderGoals(lastGoals);
@@ -4651,7 +4655,8 @@ function updateAttScoreDisplay() {
  const el = document.getElementById('attScoreVal');
  if (!el) return;
  const color = total === 0 ? '#10b981' : total < 3 ? '#f97316' : '#dc2626';
- el.textContent = total % 1 === 0 ? total : total.toFixed(1);
+ const scoreNum = total % 1 === 0 ? total : total.toFixed(1);
+ el.textContent = scoreNum + ' pts';
  el.style.color = color;
  document.getElementById('attScoreCount').textContent = lastAttendance.length;
  const counts = { callOut: 0, late: 0, leftEarly: 0 };
@@ -4748,12 +4753,12 @@ function renderAttendanceLog() {
 window.toggleAttendanceLog = () => {
  const body = document.getElementById('attLogBody');
  const chevron = document.getElementById('attLogChevron');
- const label = document.getElementById('attLogToggleLabel');
+ const addBtn = document.getElementById('attAddBtn');
  if (!body) return;
  const isOpen = !body.classList.contains('d-none');
  body.classList.toggle('d-none', isOpen);
- if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
- if (label) label.textContent = isOpen ? 'View Log' : 'Hide Log';
+ if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(90deg)';
+ if (addBtn) addBtn.style.display = isOpen ? 'none' : '';
 };
 
 window.openAttendanceModal = () => {
@@ -7962,7 +7967,7 @@ window.toggle1on1Panel = () => {
  const chevron = document.getElementById('oneOnOneChevron');
  const addBtn = document.getElementById('oneOnOneSchedBtn');
  body.classList.toggle('d-none', !oneOnOneOpen);
- chevron.classList.toggle('open', oneOnOneOpen);
+ if (chevron) chevron.style.transform = oneOnOneOpen ? 'rotate(90deg)' : '';
  if (addBtn) addBtn.style.display = oneOnOneOpen && currentUserRole !== 'viewer' ? '' : 'none';
 };
 
@@ -11335,18 +11340,16 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- Onboarding Checklist -->
  <div id="onboardingSection" class="d-none mt-4">
- <div style="border:1px solid #bbf7d0;border-radius:10px;overflow:hidden">
- <div class="d-flex align-items-center justify-content-between" style="background:linear-gradient(90deg,#f0fdf4 0%,#ecfdf5 100%);padding:12px 16px;cursor:pointer" onclick="toggleOnboardingPanel()">
+ <div onclick="toggleOnboardingPanel()" style="background:#1a2744;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer">
  <div class="d-flex align-items-center gap-2">
- <i class="fas fa-clipboard-list" style="color:#16a34a;font-size:0.9rem"></i>
- <span class="fw-bold" style="color:#15803d">Onboarding Checklist</span>
- <span class="badge ms-1" style="background:#dcfce7;color:#15803d;font-size:0.7rem" id="onboardingProgressBadge">0%</span>
+ <i class="fas fa-clipboard-list" style="color:#f97316;font-size:1rem"></i>
+ <span class="fw-bold" style="color:#fff;font-size:0.9rem">Onboarding Checklist</span>
+ <span id="onboardingProgressBadge" style="background:#f97316;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:20px;line-height:1.4">0%</span>
  </div>
- <i class="fas fa-chevron-down" id="onboardingChevron" style="color:#16a34a;transition:transform 0.2s"></i>
+ <i class="fas fa-chevron-right" id="onboardingChevron" style="color:rgba(255,255,255,0.7);font-size:0.8rem;transition:transform 0.2s"></i>
  </div>
- <div id="onboardingBody" class="d-none" style="padding:14px 16px 16px">
+ <div id="onboardingBody" class="d-none mt-3">
  <div id="onboardingContent"><div class="text-center text-muted py-3 small">Loading…</div></div>
- </div>
  </div>
  </div>
 
@@ -11362,21 +11365,19 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- Goals / Development Plan -->
  <div class="mt-4" id="goalsSection">
- <div style="border:1px solid #bfdbfe;border-radius:10px;overflow:hidden">
- <div class="d-flex align-items-center justify-content-between" style="background:linear-gradient(90deg,#eff6ff 0%,#f0f9ff 100%);padding:12px 16px;cursor:pointer" onclick="toggleGoalsPanel()">
+ <div onclick="toggleGoalsPanel()" style="background:#1a2744;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer">
  <div class="d-flex align-items-center gap-2">
- <i class="fas fa-bullseye" style="color:#2563eb;font-size:0.9rem"></i>
- <span class="fw-bold" style="color:#1d4ed8">Goals & Development</span>
- <span class="badge ms-1" style="background:#dbeafe;color:#1d4ed8;font-size:0.7rem" id="goalCountBadge">0</span>
+ <i class="fas fa-bullseye" style="color:#f97316;font-size:1rem"></i>
+ <span class="fw-bold" style="color:#fff;font-size:0.9rem">Goals & Development</span>
+ <span id="goalCountBadge" style="background:#f97316;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:20px;line-height:1.4">0</span>
  </div>
  <div class="d-flex align-items-center gap-2">
- <button class="btn btn-sm" style="display:none;background:#2563eb;color:#fff;border:none;font-size:0.78rem;padding:2px 10px" id="goalsAddBtn" onclick="event.stopPropagation();openAddGoalModal()"><i class="fas fa-plus me-1"></i>Add Goal</button>
- <i class="fas fa-chevron-down" id="goalsChevron" style="color:#2563eb;transition:transform 0.2s"></i>
+ <button class="btn btn-sm" id="goalsAddBtn" style="display:none;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:0.75rem;padding:4px 12px;border-radius:6px" onclick="event.stopPropagation();openAddGoalModal()"><i class="fas fa-plus me-1"></i>Add Goal</button>
+ <i class="fas fa-chevron-right" id="goalsChevron" style="color:rgba(255,255,255,0.7);font-size:0.8rem;transition:transform 0.2s"></i>
  </div>
  </div>
- <div id="goalsBody" class="d-none" style="padding:14px 16px 16px">
+ <div id="goalsBody" class="d-none mt-3">
  <div id="goalsContainer"></div>
- </div>
  </div>
  </div>
 
@@ -11406,49 +11407,46 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- Login Credentials (admins only) -->
  <div id="credsSection" class="d-none mt-4">
- <div class="creds-panel">
- <div class="d-flex justify-content-between align-items-center mb-0">
- <button class="creds-toggle-btn d-flex align-items-center gap-2 w-100 text-start" onclick="toggleCreds()" id="credsToggleBtn">
- <span class="creds-key-icon"><i class="fas fa-key"></i></span>
- <span class="fw-bold" style="color:var(--navy)">Login Credentials</span>
- <span class="badge bg-secondary ms-1" id="credsCountBadge">0</span>
- <i class="fas fa-chevron-down ms-auto creds-chevron" id="credsChevron"></i>
- </button>
- <button class="btn btn-sm creds-add-btn ms-2" id="credsAddBtn" onclick="openAddCred()" style="display:none">
- <i class="fas fa-plus me-1"></i>Add
- </button>
+ <div onclick="toggleCreds()" style="background:#1a2744;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer">
+ <div class="d-flex align-items-center gap-2">
+ <i class="fas fa-key" style="color:#f97316;font-size:1rem"></i>
+ <span class="fw-bold" style="color:#fff;font-size:0.9rem">Login Credentials</span>
+ <span id="credsCountBadge" style="background:#f97316;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:20px;line-height:1.4">0</span>
+ </div>
+ <div class="d-flex align-items-center gap-2">
+ <button class="btn btn-sm" id="credsAddBtn" style="display:none;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:0.75rem;padding:4px 12px;border-radius:6px" onclick="event.stopPropagation();openAddCred()"><i class="fas fa-plus me-1"></i>Add</button>
+ <i class="fas fa-chevron-right" id="credsChevron" style="color:rgba(255,255,255,0.7);font-size:0.8rem;transition:transform 0.2s"></i>
+ </div>
  </div>
  <div id="credsBody" class="d-none mt-3">
  <div id="credsContainer"></div>
  </div>
  </div>
- </div>
 
  <!-- Attendance -->
  <div class="mt-4" id="attendanceSection">
- <!-- Score panel (always visible) - click to expand log -->
- <div class="att-score-panel mb-0" style="cursor:pointer" onclick="toggleAttendanceLog()" id="attScoreToggle">
- <div>
- <div class="att-score-big" id="attScoreVal" style="color:#10b981">0</div>
- <div class="att-score-label">Attendance Points</div>
+ <!-- Header - click to expand log -->
+ <div onclick="toggleAttendanceLog()" style="background:#1a2744;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" id="attScoreToggle">
+ <div class="d-flex align-items-center gap-2">
+ <i class="fas fa-calendar-check" style="color:#f97316;font-size:1rem"></i>
+ <span class="fw-bold" style="color:#fff;font-size:0.9rem">Attendance</span>
+ <span id="attScoreVal" style="background:rgba(255,255,255,0.15);color:#10b981;font-size:0.75rem;font-weight:700;padding:2px 10px;border-radius:20px;line-height:1.4;border:1px solid rgba(255,255,255,0.2)">0 pts</span>
  </div>
- <div class="att-score-breakdown">
- <div class="att-score-stat"><div class="val" id="attBreakCallOut">0</div><div class="lbl">Call Outs</div></div>
- <div class="att-score-stat"><div class="val" id="attBreakLate">0</div><div class="lbl">Late</div></div>
- <div class="att-score-stat"><div class="val" id="attBreakLeft">0</div><div class="lbl">Left Early</div></div>
- <div class="att-score-stat"><div class="val" id="attScoreCount">0</div><div class="lbl">Total Events</div></div>
- </div>
- <div style="color:rgba(255,255,255,0.6);font-size:0.8rem;display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0">
- <span id="attLogToggleLabel" style="font-size:0.72rem">View Log</span>
- <i class="fas fa-chevron-down" id="attLogChevron" style="transition:.2s"></i>
+ <div class="d-flex align-items-center gap-2">
+ <button class="btn btn-sm" id="attAddBtn" style="display:none;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:0.75rem;padding:4px 12px;border-radius:6px" onclick="event.stopPropagation();openAttendanceModal()"><i class="fas fa-plus me-1"></i>Log Event</button>
+ <i class="fas fa-chevron-right" id="attLogChevron" style="color:rgba(255,255,255,0.7);font-size:0.8rem;transition:transform 0.2s"></i>
  </div>
  </div>
  <!-- Attrition Risk Score (leads+ only, rendered by updateAttScoreDisplay) -->
  <div id="attRiskScore"></div>
  <!-- Collapsible log -->
- <div id="attLogBody" class="d-none">
- <div class="d-flex justify-content-end mt-2 mb-1">
- <button class="btn btn-sm btn-orange d-none" id="attAddBtn" onclick="openAttendanceModal()"><i class="fas fa-plus me-1"></i>Log Event</button>
+ <div id="attLogBody" class="d-none mt-3">
+ <!-- Mini stats row -->
+ <div class="d-flex gap-3 flex-wrap mb-3" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px">
+ <div class="text-center"><div class="fw-bold" style="font-size:1rem;color:#374151" id="attBreakCallOut">0</div><div style="font-size:0.65rem;color:#9ca3af;text-transform:uppercase;letter-spacing:.04em">Call Outs</div></div>
+ <div class="text-center"><div class="fw-bold" style="font-size:1rem;color:#374151" id="attBreakLate">0</div><div style="font-size:0.65rem;color:#9ca3af;text-transform:uppercase;letter-spacing:.04em">Late</div></div>
+ <div class="text-center"><div class="fw-bold" style="font-size:1rem;color:#374151" id="attBreakLeft">0</div><div style="font-size:0.65rem;color:#9ca3af;text-transform:uppercase;letter-spacing:.04em">Left Early</div></div>
+ <div class="text-center"><div class="fw-bold" style="font-size:1rem;color:#374151" id="attScoreCount">0</div><div style="font-size:0.65rem;color:#9ca3af;text-transform:uppercase;letter-spacing:.04em">Total Events</div></div>
  </div>
  <div id="attendanceLog"></div>
  </div>
@@ -11466,43 +11464,39 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- 1:1 Meetings -->
  <div class="mt-4" id="oneOnOneSection">
- <div style="border:1px solid #e0e7ff;border-radius:10px;overflow:hidden">
- <div class="d-flex align-items-center justify-content-between" style="background:linear-gradient(90deg,#eef2ff 0%,#f5f3ff 100%);padding:12px 16px;cursor:pointer" onclick="toggle1on1Panel()">
+ <div onclick="toggle1on1Panel()" style="background:#1a2744;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer">
  <div class="d-flex align-items-center gap-2">
- <i class="fas fa-comments" style="color:#6366f1;font-size:0.9rem"></i>
- <span class="fw-bold" style="color:#3730a3">1:1 Meetings</span>
- <span class="badge ms-1" style="background:#e0e7ff;color:#3730a3;font-size:0.7rem" id="oneOnOneCountBadge">0</span>
+ <i class="fas fa-comments" style="color:#f97316;font-size:1rem"></i>
+ <span class="fw-bold" style="color:#fff;font-size:0.9rem">1:1 Meetings</span>
+ <span id="oneOnOneCountBadge" style="background:#f97316;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:20px;line-height:1.4">0</span>
  </div>
  <div class="d-flex align-items-center gap-2">
- <button class="btn btn-sm" style="display:none;background:#6366f1;color:#fff;border:none;font-size:0.78rem;padding:2px 10px" id="oneOnOneSchedBtn" onclick="event.stopPropagation();open1on1Modal('schedule')"><i class="fas fa-calendar-plus me-1"></i>Schedule</button>
- <i class="fas fa-chevron-down" id="oneOnOneChevron" style="color:#6366f1;transition:transform 0.2s"></i>
+ <button class="btn btn-sm" id="oneOnOneSchedBtn" style="display:none;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:0.75rem;padding:4px 12px;border-radius:6px" onclick="event.stopPropagation();open1on1Modal('schedule')"><i class="fas fa-calendar-plus me-1"></i>Schedule</button>
+ <i class="fas fa-chevron-right" id="oneOnOneChevron" style="color:rgba(255,255,255,0.7);font-size:0.8rem;transition:transform 0.2s"></i>
  </div>
  </div>
- <div id="oneOnOneBody" class="d-none" style="padding:14px 16px 16px">
+ <div id="oneOnOneBody" class="d-none mt-3">
  <div id="oneOnOneScheduled" class="mb-3"></div>
  <div id="oneOnOneAssigned" class="mb-3" style="display:none"></div>
  <div style="font-size:0.78rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">Meeting History</div>
  <div id="oneOnOneContainer"></div>
  </div>
  </div>
- </div>
 
  <div id="watchSection" class="d-none mt-4">
- <div class="watch-panel">
- <div class="d-flex justify-content-between align-items-center mb-0">
- <button class="watch-toggle-btn d-flex align-items-center gap-2 w-100 text-start" onclick="toggleWatchNotes()" id="watchToggleBtn">
- <span class="watch-lock-icon"><i class="fas fa-lock"></i></span>
- <span class="fw-bold" style="color:var(--navy)">Private Watch Notes</span>
- <span class="badge bg-secondary ms-1" id="watchCountBadge">0</span>
- <i class="fas fa-chevron-down ms-auto watch-chevron" id="watchChevron"></i>
- </button>
- <button class="btn btn-sm watch-add-btn ms-2" id="watchAddBtn" onclick="openAddWatchNote()" style="display:none">
- <i class="fas fa-plus me-1"></i>Add
- </button>
+ <div onclick="toggleWatchNotes()" style="background:#1a2744;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer">
+ <div class="d-flex align-items-center gap-2">
+ <i class="fas fa-lock" style="color:#f97316;font-size:1rem"></i>
+ <span class="fw-bold" style="color:#fff;font-size:0.9rem">Private Watch Notes</span>
+ <span id="watchCountBadge" style="background:#f97316;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:20px;line-height:1.4">0</span>
+ </div>
+ <div class="d-flex align-items-center gap-2">
+ <button class="btn btn-sm" id="watchAddBtn" style="display:none;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:0.75rem;padding:4px 12px;border-radius:6px" onclick="event.stopPropagation();openAddWatchNote()"><i class="fas fa-plus me-1"></i>Add</button>
+ <i class="fas fa-chevron-right" id="watchChevron" style="color:rgba(255,255,255,0.7);font-size:0.8rem;transition:transform 0.2s"></i>
+ </div>
  </div>
  <div id="watchNotesBody" class="d-none mt-3">
  <div id="watchNotesContainer"></div>
- </div>
  </div>
  </div>
  </div>
