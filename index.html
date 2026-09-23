@@ -726,6 +726,7 @@ onAuthStateChanged(auth, async (user) => {
  }
  }
  if (roleAtLeast('om')) document.getElementById('navAdmin').classList.remove('d-none');
+ if (roleAtLeast('om')) document.getElementById('navLeaderNotif').classList.remove('d-none');
  if (currentUserRole !== 'viewer') document.getElementById('addAssocBtn').classList.remove('d-none');
  applyTabVisibility();
  restoreLastView();
@@ -1461,6 +1462,24 @@ async function autoBackupAttPointsIfNeeded() {
 let _tickerAnim = null;
 let _tickerPaused = false;
 
+// Push #mainContent down by the ticker's height so fixed ticker doesn't overlap content.
+// Also updates the ticker's left position to match the current sidebar width (220px normal, 60px collapsed).
+function _tickerAdjustMain(show) {
+  const bar = document.getElementById('tickerBar');
+  const main = document.getElementById('mainContent');
+  if (!main) return;
+  if (show && bar) {
+    requestAnimationFrame(() => {
+      const h = bar.offsetHeight || 44;
+      // Add ticker height on top of the original 1.5rem (24px) content padding
+      main.style.paddingTop = (h + 24) + 'px';
+      bar.style.left = '220px';
+    });
+  } else {
+    main.style.paddingTop = '';
+  }
+}
+
 async function initTicker() {
   if (!roleAtLeast('lead')) return; // leadership only
   try {
@@ -1471,12 +1490,13 @@ async function initTicker() {
     if (!snap.exists()) { bar.style.display = 'none'; return; }
     const data = snap.data();
     const messages = [data.msg1, data.msg2, data.msg3, data.msg4].filter(m => m && m.trim());
-    if (!messages.length) { bar.style.display = 'none'; return; }
+    if (!messages.length) { bar.style.display = 'none'; _tickerAdjustMain(false); return; }
     // speed 1-10, exponential scale: 1=~30px/s, 5=~150px/s, 10=~500px/s
     const speedVal = Math.min(10, Math.max(1, Number(data.speed) || 5));
     const pxPerSec = Math.round(30 * Math.pow(speedVal, 1.4) * 0.8);
     textEl.innerHTML = messages.map(m => `<span>${m}</span>`).join(`<span style="color:#f97316;margin:0 1.2em;">•</span>`) + `<span style="color:#f97316;margin:0 1.2em;">•</span>`;
     bar.style.display = 'flex';
+    _tickerAdjustMain(true);
     _tickerPaused = false;
     _updatePauseBtn();
     // RAF-based scroll — text starts off-screen right, scrolls to left
@@ -3356,6 +3376,181 @@ window.loadTurnover = () => {
  renderTurnoverView();
 };
 window.renderTurnoverView = renderTurnoverView;
+
+// ─── Leader Alerts View ────────────────────────────────────────────────────────
+// Shows every leader/supervisor's pending notifications so an admin can see
+// at a glance what each person has outstanding.
+window.loadLeaderNotifications = async function () {
+ showView('leaderNotif');
+ const grid = document.getElementById('leaderNotifGrid');
+ if (!grid) return;
+ grid.innerHTML = '<div class="text-center py-5" style="color:var(--muted);grid-column:1/-1"><i class="fas fa-spinner fa-spin me-2"></i>Loading…</div>';
+
+ try {
+ // Pull a fresh copy of all associates (may already be cached in allAssociates)
+ let assocs = allAssociates;
+ if (!assocs.length) {
+ const snap = await getDocs(collection(db, 'associates'));
+ assocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+ }
+
+ // Identify leaders — associates who have at least one person reporting to them
+ const leaderIds = [...new Set(assocs.map(a => a.reportsTo).filter(Boolean))];
+ if (!leaderIds.length) {
+ grid.innerHTML = '<div class="text-center py-5" style="color:var(--muted);grid-column:1/-1">No leaders found.</div>';
+ return;
+ }
+
+ const today = new Date().toISOString().slice(0, 10);
+
+ // For each leader, compute their pending notification counts
+ const cards = await Promise.all(leaderIds.map(async leaderId => {
+ const leader = assocs.find(a => a.id === leaderId);
+ const leaderName = leader?.name || leaderId;
+ const directReports = assocs.filter(a => a.reportsTo === leaderId);
+ const drIds = directReports.map(d => d.id);
+ const nameMap = directReports.reduce((m, d) => { m[d.id] = d.name; return m; }, {});
+
+ // 1. Pending 1:1 requests
+ const reqSnap = await getDocs(
+ query(collection(db, 'oneOnOneRequests'), where('status', '==', 'pending'))
+ );
+ const requests = reqSnap.docs
+ .map(d => ({ id: d.id, ...d.data() }))
+ .filter(r => drIds.includes(r.associateId))
+ .map(r => ({ ...r, assocName: nameMap[r.associateId] || 'Unknown' }));
+
+ // 2. Open action items
+ const actionItems = [];
+ await Promise.all(drIds.map(async assocId => {
+ const [notesSnap, watchSnap] = await Promise.all([
+ getDocs(collection(db, 'notes', assocId, 'entries')),
+ getDocs(collection(db, 'watchnotes', assocId, 'entries')),
+ ]);
+ [...notesSnap.docs, ...watchSnap.docs].forEach(d => {
+ const n = d.data();
+ if (n.actionItem?.status === 'open') {
+ actionItems.push({
+ assocName: nameMap[assocId] || 'Unknown',
+ text: n.actionItem.text,
+ dueDate: n.actionItem.dueDate || null,
+ overdue: n.actionItem.dueDate ? n.actionItem.dueDate < today : false,
+ });
+ }
+ });
+ }));
+
+ // 3. Attendance threshold alerts
+ const thresholdAlerts = (await Promise.all(
+ directReports
+ .filter(a => a.status === 'active')
+ .map(async a => {
+ const pts = a.attendancePoints || 0;
+ const tier = WARNING_TIERS.slice().reverse().find(t => pts >= t.threshold);
+ if (!tier) return null;
+ try {
+ const wSnap = await getDocs(collection(db, 'warnings', a.id, 'entries'));
+ const crossedAt = a.attThresholdCrossings?.[tier.key] || null;
+ const alreadyIssued = wSnap.docs.some(d => {
+ if (d.data().type !== tier.key) return false;
+ if (crossedAt) return new Date(d.data().issuedAt) >= new Date(crossedAt);
+ return true;
+ });
+ if (alreadyIssued) return null;
+ } catch(e) { /* treat as not issued */ }
+ return { assocName: a.name, pts, tier };
+ })
+ )).filter(Boolean);
+
+ return { leaderId, leaderName, role: leader?.role || '', requests, actionItems, thresholdAlerts };
+ }));
+
+ // Sort: leaders with most alerts first
+ cards.sort((a, b) => {
+ const ta = a.requests.length + a.actionItems.length + a.thresholdAlerts.length;
+ const tb = b.requests.length + b.actionItems.length + b.thresholdAlerts.length;
+ return tb - ta;
+ });
+
+ if (!cards.length) {
+ grid.innerHTML = '<div class="text-center py-5" style="color:var(--muted);grid-column:1/-1">All clear — no pending items.</div>';
+ return;
+ }
+
+ grid.innerHTML = cards.map(({ leaderName, role, requests, actionItems, thresholdAlerts }) => {
+ const total = requests.length + actionItems.length + thresholdAlerts.length;
+ const allClear = total === 0;
+
+ const badgeCls = allClear ? 'background:#16a34a' : total > 5 ? 'background:#dc2626' : 'background:#f97316';
+
+ let body = '';
+
+ if (thresholdAlerts.length) {
+ body += `<div style="margin-bottom:10px">
+ <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#f97316;margin-bottom:4px">
+ <i class="fas fa-exclamation-triangle me-1"></i>Corrective Action Due (${thresholdAlerts.length})
+ </div>`;
+ thresholdAlerts.forEach(a => {
+ body += `<div style="font-size:0.8rem;padding:4px 8px;background:#7f1d1d22;border-left:3px solid #dc2626;border-radius:3px;margin-bottom:3px">
+ <span style="font-weight:600">${escapeHtml(a.assocName)}</span>
+ <span style="color:var(--muted)"> · ${a.pts} pts · ${escapeHtml(a.tier.label)}</span>
+ </div>`;
+ });
+ body += '</div>';
+ }
+
+ if (requests.length) {
+ body += `<div style="margin-bottom:10px">
+ <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#60a5fa;margin-bottom:4px">
+ <i class="fas fa-comments me-1"></i>1:1 Requests (${requests.length})
+ </div>`;
+ requests.forEach(r => {
+ body += `<div style="font-size:0.8rem;padding:4px 8px;background:#1e3a5f44;border-left:3px solid #60a5fa;border-radius:3px;margin-bottom:3px">
+ <span style="font-weight:600">${escapeHtml(r.assocName)}</span>
+ ${r.message ? `<span style="color:var(--muted)"> · "${escapeHtml(r.message.slice(0,60))}${r.message.length>60?'…':''}"</span>` : ''}
+ </div>`;
+ });
+ body += '</div>';
+ }
+
+ if (actionItems.length) {
+ const overdue = actionItems.filter(i => i.overdue).length;
+ body += `<div style="margin-bottom:10px">
+ <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#fbbf24;margin-bottom:4px">
+ <i class="fas fa-tasks me-1"></i>Open Action Items (${actionItems.length}${overdue ? ` · <span style="color:#fca5a5">${overdue} overdue</span>` : ''})
+ </div>`;
+ actionItems.slice(0, 5).forEach(i => {
+ const dueTxt = i.dueDate ? ` · Due ${new Date(i.dueDate+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : '';
+ body += `<div style="font-size:0.8rem;padding:4px 8px;${i.overdue?'background:#7f1d1d22;border-left:3px solid #fca5a5':'background:#78350f22;border-left:3px solid #fbbf24'};border-radius:3px;margin-bottom:3px">
+ <span style="font-weight:600">${escapeHtml(i.assocName)}</span>
+ <span style="color:var(--muted)"> · ${escapeHtml(i.text.slice(0,60))}${i.text.length>60?'…':''}${dueTxt}</span>
+ </div>`;
+ });
+ if (actionItems.length > 5) body += `<div style="font-size:0.72rem;color:var(--muted);padding-left:8px">…and ${actionItems.length-5} more</div>`;
+ body += '</div>';
+ }
+
+ if (allClear) {
+ body = '<div style="color:#4ade80;font-size:0.85rem;text-align:center;padding:12px 0"><i class="fas fa-check-circle me-1"></i>All clear</div>';
+ }
+
+ return `<div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);border-top:3px solid ${allClear?'#16a34a':total>5?'#dc2626':'#f97316'}">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+ <div>
+ <div style="font-weight:700;color:var(--navy);font-size:0.95rem">${escapeHtml(leaderName)}</div>
+ ${role ? `<div style="font-size:0.72rem;color:var(--muted)">${escapeHtml(role)}</div>` : ''}
+ </div>
+ <span style="display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;border-radius:50%;${badgeCls};color:#fff;font-size:0.78rem;font-weight:700;padding:0 6px">${allClear?'✓':total}</span>
+ </div>
+ ${body}
+ </div>`;
+ }).join('');
+
+ } catch(e) {
+ console.error('loadLeaderNotifications error:', e);
+ grid.innerHTML = `<div class="text-center py-5" style="color:#dc2626;grid-column:1/-1"><i class="fas fa-exclamation-circle me-2"></i>Error loading: ${e.message}</div>`;
+ }
+};
 
 function renderTurnoverView() {
  const period = window._turnoverPeriod || 12;
@@ -8093,7 +8288,7 @@ window.loadAdminPanel = () => {
 };
 
 // ─── Tab Visibility ───────────────────────────────────────────────────
-const CONTROLLABLE_TABS = ['matrix', 'attendance', 'coverage', 'timeoff', 'pointslog', 'hrrecords', 'help'];
+const CONTROLLABLE_TABS = ['matrix', 'attendance', 'coverage', 'timeoff', 'pointslog', 'hrrecords', 'leaderNotif', 'help'];
 
 async function loadTabToggles() {
  const snap = await getDoc(doc(db, 'settings', 'tabs'));
@@ -11144,6 +11339,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <a class="nav-link d-none" id="navAdmin" data-view="admin" onclick="loadAdminPanel()">
  <i class="fas fa-shield-alt"></i><span>Admin</span>
  </a>
+ <a class="nav-link d-none" id="navLeaderNotif" data-view="leaderNotif" onclick="loadLeaderNotifications()">
+ <i class="fas fa-bell"></i><span>Leader Alerts</span>
+ </a>
  <a class="nav-link" data-view="help" onclick="showView('help')">
  <i class="fas fa-question-circle"></i><span>Help</span>
  </a>
@@ -11157,8 +11355,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  </nav>
 
- <!-- MESSAGE TICKER (leadership only) -->
- <div id="tickerBar" style="display:none;background:#1a2744;flex-shrink:0;overflow:hidden;align-items:stretch;">
+ <!-- MESSAGE TICKER (leadership only) — fixed so it stays visible on all tabs and while scrolling -->
+ <div id="tickerBar" style="display:none;position:fixed;top:0;left:220px;right:0;z-index:97;background:#1a2744;overflow:hidden;align-items:stretch;box-shadow:0 2px 8px rgba(0,0,0,0.3);">
    <div style="background:#f97316;padding:10px 20px;display:flex;align-items:center;gap:7px;flex-shrink:0;">
      <i class="fas fa-bullhorn" style="color:#fff;font-size:16px;"></i>
      <span style="color:#fff;font-size:14px;font-weight:600;white-space:nowrap;">LAS1 Updates</span>
@@ -12261,6 +12459,24 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
 
  <!-- TURNOVER VIEW -->
+ <!-- ════════════════════════════════════════════════════
+  LEADER ALERTS VIEW — admin-only overview of every
+  leader's pending notifications
+ ════════════════════════════════════════════════════ -->
+ <div id="leaderNotifView" class="view d-none">
+ <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+ <h1 class="page-title"><i class="fas fa-bell me-2" style="color:var(--orange)"></i>Leader Alerts</h1>
+ <button class="btn btn-sm" style="background:var(--navy);color:#fff;border:none" onclick="loadLeaderNotifications()">
+ <i class="fas fa-sync-alt me-1"></i>Refresh
+ </button>
+ </div>
+ <div id="leaderNotifGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">
+ <div class="text-center py-5" style="color:var(--muted);grid-column:1/-1">
+ <i class="fas fa-spinner fa-spin me-2"></i>Loading…
+ </div>
+ </div>
+ </div>
+
  <div id="turnoverView" class="view d-none">
  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
  <h1 class="page-title"><i class="fas fa-door-open me-2" style="color:var(--orange)"></i>Turnover Tracker</h1>
@@ -12428,6 +12644,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div class="form-check form-switch mb-0">
  <input class="form-check-input" type="checkbox" id="tabToggle_hrrecords" onchange="saveTabVisibility('hrrecords', this.checked)">
  <label class="form-check-label small fw-semibold" for="tabToggle_hrrecords"><i class="fas fa-file-signature me-1" style="color:var(--navy)"></i>HR Records</label>
+ </div>
+ </div>
+ </div>
+ <div class="col-6 col-md-2">
+ <div class="d-flex align-items-center gap-2 p-2 rounded" style="background:#f8f9fa">
+ <div class="form-check form-switch mb-0">
+ <input class="form-check-input" type="checkbox" id="tabToggle_leaderNotif" onchange="saveTabVisibility('leaderNotif', this.checked)">
+ <label class="form-check-label small fw-semibold" for="tabToggle_leaderNotif"><i class="fas fa-bell me-1" style="color:var(--navy)"></i>Leader Alerts</label>
  </div>
  </div>
  </div>
