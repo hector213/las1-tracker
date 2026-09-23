@@ -1489,7 +1489,7 @@ async function initTicker() {
     if (!bar || !textEl) return;
     if (!snap.exists()) { bar.style.display = 'none'; return; }
     const data = snap.data();
-    const messages = [data.msg1, data.msg2, data.msg3, data.msg4].filter(m => m && m.trim());
+    const messages = [data.msg1, data.msg2, data.msg3, data.msg4, data.msg5, data.msg6, data.msg7].filter(m => m && m.trim());
     if (!messages.length) { bar.style.display = 'none'; _tickerAdjustMain(false); return; }
     // speed 1-10, exponential scale: 1=~30px/s, 5=~150px/s, 10=~500px/s
     const speedVal = Math.min(10, Math.max(1, Number(data.speed) || 5));
@@ -1536,7 +1536,7 @@ window.saveTickerSettings = async function() {
   const btn = document.getElementById('saveTickerBtn');
   try {
     const msgs = {};
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 7; i++) {
       msgs['msg' + i] = (document.getElementById('tickerMsg' + i)?.value || '').trim();
     }
     const speed = document.getElementById('tickerSpeed')?.value || '5';
@@ -1554,7 +1554,7 @@ async function loadTickerAdmin() {
     const snap = await getDocFromServer(doc(db, 'system', 'ticker'));
     if (!snap.exists()) return;
     const d = snap.data();
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 7; i++) {
       const el = document.getElementById('tickerMsg' + i);
       if (el) el.value = d['msg' + i] || '';
     }
@@ -1702,7 +1702,7 @@ function renderDashboard() {
  if (!associates.length) return;
  grid.innerHTML = associates.map(a => {
  const initials = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
- const statusColor = a.status === 'active' ? 'bg-success' : a.status === 'terminated' ? 'bg-danger' : a.status === 'resigned' ? 'bg-secondary' : 'bg-warning text-dark';
+ const statusColor = a.status === 'active' ? 'bg-success' : a.status === 'terminated' ? 'bg-danger' : a.status === 'resigned' ? 'bg-secondary' : a.status === 'released' ? 'bg-info text-dark' : 'bg-warning text-dark';
  const flagBadge = flagBadgesHtml(a);
  const isTemp = a.employmentType === 'temp';
  const tempBadge = isTemp ? `<span class="badge mt-1" style="font-size:0.65rem;background:#7c3aed;color:#fff">TEMP</span>` : '';
@@ -2103,7 +2103,7 @@ window.openProfile = async (id) => {
 
  const statusEl = document.getElementById('profileStatus');
  statusEl.textContent = capitalize(a.status || 'active');
- statusEl.className = 'badge ' + (a.status === 'active' ? 'bg-success' : a.status === 'terminated' ? 'bg-danger' : a.status === 'resigned' ? 'bg-secondary' : 'bg-warning text-dark');
+ statusEl.className = 'badge ' + (a.status === 'active' ? 'bg-success' : a.status === 'terminated' ? 'bg-danger' : a.status === 'resigned' ? 'bg-secondary' : a.status === 'released' ? 'bg-info text-dark' : 'bg-warning text-dark');
 
  const posEl = document.getElementById('profilePosition');
  if (a.position === 'ops-manager') posEl.innerHTML = `<span class="position-badge pos-om"><i class="fas fa-user-tie me-1"></i>Operations Manager</span>`;
@@ -3559,12 +3559,13 @@ function renderTurnoverView() {
  const cutoffStr = cutoff.toISOString().slice(0,10);
 
  const separated = allAssociates.filter(a => {
- const isSep = a.status === 'resigned' || a.status === 'terminated';
+ const isSep = a.status === 'resigned' || a.status === 'terminated' || a.status === 'released';
  const dateKey = (a.separatedAt||'').slice(0,10) || a.exitLastDay || (a.updatedAt||'').slice(0,10) || '';
  return isSep && dateKey >= cutoffStr;
  });
 
  const resigned = separated.filter(a => (a.exitReason||a.status) === 'Resigned' || a.status === 'resigned');
+    const released = separated.filter(a => (a.exitReason||a.status) === 'Released' || a.status === 'released');
  const terminated = separated.filter(a => (a.exitReason||a.status) === 'Terminated' || a.status === 'terminated');
 
  function tenureMonths(a) {
@@ -3602,6 +3603,12 @@ function renderTurnoverView() {
  </div>
  <div class="col-6 col-md-3">
  <div class="admin-card text-center py-3">
+ <div style="font-size:2rem;font-weight:800;color:#0891b2">${released.length}</div>
+ <div class="small fw-semibold" style="color:#0891b2">Released (Temp)</div>
+ </div>
+ </div>
+ <div class="col-6 col-md-3">
+ <div class="admin-card text-center py-3">
  <div style="font-size:2rem;font-weight:800;color:#d97706">${avgTenure !== null ? avgTenure + ' mo' : '-'}</div>
  <div class="small text-muted fw-semibold">Avg Tenure</div>
  </div>
@@ -3621,12 +3628,15 @@ function renderTurnoverView() {
  return da < db2 ? 1 : -1;
  }).map(a => {
  const t = tenureMonths(a);
- const reason = a.exitReason || (a.status === 'resigned' ? 'Resigned' : 'Terminated');
+ const reason = a.exitReason || (a.status === 'resigned' ? 'Resigned' : a.status === 'released' ? 'Released' : 'Terminated');
  const isRes = reason === 'Resigned';
+ const isRel = reason === 'Released';
+ const badgeBg = isRes ? '#dbeafe' : isRel ? '#cffafe' : '#fee2e2';
+ const badgeColor = isRes ? '#1d4ed8' : isRel ? '#0e7490' : '#b91c1c';
  const lastDay = a.exitLastDay ? new Date(a.exitLastDay+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '-';
  return '<tr>' +
  '<td class="fw-semibold">' + escapeHtml(a.name) + '</td>' +
- '<td><span class="badge" style="background:' + (isRes?'#dbeafe':'#fee2e2') + ';color:' + (isRes?'#1d4ed8':'#b91c1c') + '">' + escapeHtml(reason) + '</span></td>' +
+ '<td><span class="badge" style="background:' + badgeBg + ';color:' + badgeColor + '">' + escapeHtml(reason) + '</span></td>' +
  '<td>' + lastDay + '</td>' +
  '<td class="text-muted">' + escapeHtml(a.department||'-') + '</td>' +
  '<td class="text-muted">' + escapeHtml(a.shift||'-') + '</td>' +
@@ -4092,12 +4102,12 @@ window.saveAssociate = async () => {
  };
  if (!data.name) { alert('Name is required'); return; }
  // Intercept to capture exit details when status changes to resigned/terminated
- const isNewExit = id && (data.status === 'resigned' || data.status === 'terminated')
- && _origAssocStatus !== 'resigned' && _origAssocStatus !== 'terminated'
+ const isNewExit = id && (data.status === 'resigned' || data.status === 'terminated' || data.status === 'released')
+ && _origAssocStatus !== 'resigned' && _origAssocStatus !== 'terminated' && _origAssocStatus !== 'released'
  && _origAssocStatus !== 'new';
  if (isNewExit) {
  _pendingAssocSave = { id, data };
- document.getElementById('exitReason').value = data.status === 'resigned' ? 'Resigned' : 'Terminated';
+ document.getElementById('exitReason').value = data.status === 'resigned' ? 'Resigned' : (data.employmentType === 'temp' ? 'Released' : 'Terminated');
  document.getElementById('exitLastDay').value = new Date().toISOString().slice(0,10);
  document.getElementById('exitNotes').value = '';
  bootstrap.Modal.getInstance(document.getElementById('assocModal')).hide();
@@ -4112,7 +4122,7 @@ window.saveAssociate = async () => {
  }
  bootstrap.Modal.getInstance(document.getElementById('assocModal')).hide();
  // When marking someone resigned/terminated, auto-switch the dashboard to active-only view
- if (data.status === 'resigned' || data.status === 'terminated') {
+ if (data.status === 'resigned' || data.status === 'terminated' || data.status === 'released') {
  const fs = document.getElementById('filterStatus');
  if (fs && fs.value !== 'active') { fs.value = 'active'; renderDashboard(); }
  }
@@ -12564,6 +12574,18 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
        <label class="form-label small fw-semibold mb-1">Message 4</label>
        <input type="text" id="tickerMsg4" class="form-control form-control-sm" placeholder="e.g. Congrats to James W. on his 1-year anniversary!" maxlength="160">
      </div>
+     <div class="col-12">
+       <label class="form-label small fw-semibold mb-1">Message 5</label>
+       <input type="text" id="tickerMsg5" class="form-control form-control-sm" placeholder="Optional message 5" maxlength="160">
+     </div>
+     <div class="col-12">
+       <label class="form-label small fw-semibold mb-1">Message 6</label>
+       <input type="text" id="tickerMsg6" class="form-control form-control-sm" placeholder="Optional message 6" maxlength="160">
+     </div>
+     <div class="col-12">
+       <label class="form-label small fw-semibold mb-1">Message 7</label>
+       <input type="text" id="tickerMsg7" class="form-control form-control-sm" placeholder="Optional message 7" maxlength="160">
+     </div>
    </div>
    <div class="d-flex align-items-center gap-3 flex-wrap">
      <label class="form-label small fw-semibold mb-0" style="white-space:nowrap;">Scroll speed</label>
@@ -14224,6 +14246,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <select class="form-select" id="exitReason">
  <option value="Resigned">Resigned</option>
  <option value="Terminated">Terminated</option>
+ <option value="Released">Released (Temp)</option>
  </select>
  </div>
  <div class="mb-3">
@@ -14264,6 +14287,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <select class="form-select" id="editSepReason">
  <option value="Resigned">Resigned</option>
  <option value="Terminated">Terminated</option>
+ <option value="Released">Released (Temp)</option>
  </select>
  </div>
  <div class="mb-3">
