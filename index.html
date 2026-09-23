@@ -10308,6 +10308,22 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  .pivot-tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.62rem;font-weight:800;letter-spacing:.03em;margin-right:6px;vertical-align:middle;}
  .pivot-tag.pack{background:rgba(255,122,28,.2);color:#ffb37a;}
  .pivot-tag.pick{background:rgba(56,189,248,.2);color:#7dd3fc;}
+ /* Large centered function pill above each column in the new two-column pivot layout */
+ .pivot-fn-pill{display:inline-block;padding:5px 32px;border-radius:6px;font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;}
+ .pivot-fn-pill.pack{background:rgba(255,122,28,.25);color:#ffb37a;}
+ .pivot-fn-pill.pick{background:rgba(56,189,248,.2);color:#7dd3fc;}
+ /* Prod Min Left chip in title row */
+ #pv-prodleft-header{background:#173257;border:1px solid #2f5590;border-radius:8px;padding:6px 16px;text-align:center;white-space:nowrap;}
+ /* Projected EOS row */
+ .pivot-eos-row{margin-top:12px;background:#173257;border:1px solid #2f5590;border-radius:10px;overflow:hidden;}
+ .pivot-eos-row-grid{display:grid;grid-template-columns:160px 1fr 1fr;align-items:stretch;}
+ .pivot-eos-live{padding:10px 14px;border-right:1px solid #2f5590;display:flex;flex-direction:column;justify-content:center;}
+ .pivot-eos-fn{border-right:1px solid #2f5590;}
+ .pivot-eos-fn:last-child{border-right:none;}
+ .pivot-eos-fn-header{padding:4px 12px;border-bottom:1px solid #2f5590;}
+ .pivot-eos-fn-header.pack{background:rgba(255,122,28,.1);}
+ .pivot-eos-fn-header.pick{background:rgba(56,189,248,.1);}
+ .pivot-eos-fn-cols{display:grid;grid-template-columns:1fr 1fr;padding:8px 12px;gap:12px;}
  .pivot-card-value{font-size:1.7rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1;}
  .pivot-card-sub{font-size:.7rem;color:var(--hero-muted);margin-top:2px;}
  .pivot-card-value.green{color:#4ade80;} .pivot-card-value.red{color:#fca5a5;}
@@ -12679,7 +12695,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  <span id="lb-last-updated" style="font-size:17px;color:var(--hero-muted);white-space:nowrap;text-align:center;"></span>
  </div>
- <button class="btn secondary" id="clear-assignments-btn" title="Fixes anyone stuck 'assigned' from the duplicate-segment bug">Reset today's assignments</button>
+ <!-- Prod Min Left: displayed here in place of the old Reset button, above the shift schedule bar -->
+ <div id="pv-prodleft-header">
+ <div class="pivot-card-label" style="margin-bottom:2px;text-align:center">Prod Min Left</div>
+ <div style="display:flex;align-items:baseline;gap:6px;justify-content:center">
+ <span class="pivot-card-value white" id="pv-prodleft">-</span>
+ <span class="pivot-card-sub" id="pv-prodleft-sub">of - total</span>
+ </div>
+ </div>
  </div>
 
  <div id="shift-schedule-bar-wrap">
@@ -12690,101 +12713,157 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <div id="pivot-status-banner" class="no-shift">LOADING&hellip;</div>
 
- <div class="pivot-section-title">Live - From Last Import</div>
- <div id="pivot-card-grid">
+ <!-- ── New two-column Pack / Pick layout ── -->
+ <div class="pivot-section-title">Live — From Last Import</div>
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+
+ <!-- PACK column -->
+ <div>
+ <div style="display:flex;justify-content:center;margin-bottom:8px">
+ <span class="pivot-fn-pill pack">PACK</span>
+ </div>
+ <!-- Row 1: Actual | Goal -->
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
  <div class="pivot-card">
- <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Actual (out so far)</div>
+ <div class="pivot-card-label">Actual (out so far)</div>
  <div class="pivot-card-value white" id="pv-actual">-</div>
  <div class="pivot-card-sub" id="pv-actual-sub">From last import</div>
  </div>
  <div class="pivot-card">
- <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Ideal Target (Now)</div>
+ <div class="pivot-card-label">Goal</div>
+ <div class="pivot-card-value accent" id="pv-goal">-</div>
+ <div class="pivot-card-sub">Shift goal</div>
+ </div>
+ </div>
+ <!-- Row 2: Ideal Target | Variance -->
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+ <div class="pivot-card">
+ <div class="pivot-card-label">Ideal Target (Now)</div>
  <div class="pivot-card-value accent" id="pv-ideal">-</div>
- <div class="pivot-card-sub" id="pv-ideal-sub">- prod min elapsed</div>
+ <div class="pivot-card-sub" id="pv-ideal-sub">— prod min elapsed</div>
  </div>
  <div class="pivot-card">
- <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Variance</div>
+ <div class="pivot-card-label">Variance</div>
  <div class="pivot-card-value white" id="pv-variance">-</div>
  <div class="pivot-card-sub" id="pv-variance-sub">units vs ideal</div>
  </div>
+ </div>
+ <!-- Row 3: UPH (3-col) -->
+ <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
  <div class="pivot-card">
- <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Current UPH</div>
+ <div class="pivot-card-label">Pack UPH</div>
  <div class="pivot-card-value white" id="pv-uph">-</div>
- <div class="pivot-card-sub" id="pv-uph-sub">Target: -</div>
+ <div class="pivot-card-sub" id="pv-uph-sub" style="display:none">Target: -</div>
  </div>
  <div class="pivot-card">
- <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Prod Min Left</div>
- <div class="pivot-card-value white" id="pv-prodleft">-</div>
- <div class="pivot-card-sub" id="pv-prodleft-sub">of - total</div>
+ <div class="pivot-card-label">Ideal UPH</div>
+ <div class="pivot-card-value accent" id="pv-uph-ideal">-</div>
+ </div>
+ <div class="pivot-card">
+ <div class="pivot-card-label">UPH Variance</div>
+ <div class="pivot-card-value white" id="pv-uph-var">-</div>
+ </div>
  </div>
  </div>
 
- <div class="pivot-section-title">Live - From Last Import (Pick)</div>
- <div id="pivot-card-grid-pick">
+ <!-- PICK column -->
+ <div>
+ <div style="display:flex;justify-content:center;margin-bottom:8px">
+ <span class="pivot-fn-pill pick">PICK</span>
+ </div>
+ <!-- Row 1: Actual | Goal -->
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
  <div class="pivot-card">
- <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Actual (so far)</div>
+ <div class="pivot-card-label">Actual (so far)</div>
  <div class="pivot-card-value white" id="pv-pick-actual">-</div>
  <div class="pivot-card-sub" id="pv-pick-actual-sub">From last import</div>
  </div>
  <div class="pivot-card">
- <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Ideal Target (Now)</div>
+ <div class="pivot-card-label">Goal</div>
+ <div class="pivot-card-value accent" id="pv-pick-goal">-</div>
+ <div class="pivot-card-sub">Shift goal</div>
+ </div>
+ </div>
+ <!-- Row 2: Ideal Target | Variance -->
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+ <div class="pivot-card">
+ <div class="pivot-card-label">Ideal Target (Now)</div>
  <div class="pivot-card-value accent" id="pv-pick-ideal">-</div>
- <div class="pivot-card-sub" id="pv-pick-ideal-sub">- prod min elapsed</div>
+ <div class="pivot-card-sub" id="pv-pick-ideal-sub">— prod min elapsed</div>
  </div>
  <div class="pivot-card">
- <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Variance</div>
+ <div class="pivot-card-label">Variance</div>
  <div class="pivot-card-value white" id="pv-pick-variance">-</div>
  <div class="pivot-card-sub" id="pv-pick-variance-sub">units vs ideal</div>
  </div>
+ </div>
+ <!-- Row 3: UPH (3-col) -->
+ <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
  <div class="pivot-card">
- <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Current UPH</div>
+ <div class="pivot-card-label">Pick UPH</div>
  <div class="pivot-card-value white" id="pv-pick-uph">-</div>
- <div class="pivot-card-sub" id="pv-pick-uph-sub">Target: -</div>
+ <div class="pivot-card-sub" id="pv-pick-uph-sub" style="display:none">Target: -</div>
  </div>
  <div class="pivot-card">
- <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Prod Min Left</div>
- <div class="pivot-card-value white" id="pv-pick-prodleft">-</div>
- <div class="pivot-card-sub" id="pv-pick-prodleft-sub">of - total</div>
+ <div class="pivot-card-label">Ideal UPH</div>
+ <div class="pivot-card-value accent" id="pv-pick-uph-ideal">-</div>
  </div>
+ <div class="pivot-card">
+ <div class="pivot-card-label">UPH Variance</div>
+ <div class="pivot-card-value white" id="pv-pick-uph-var">-</div>
+ </div>
+ </div>
+ <!-- Hidden for JS compat: pick-prodleft still updated by JS -->
+ <span id="pv-pick-prodleft" style="display:none">-</span>
+ <span id="pv-pick-prodleft-sub" style="display:none">of - total</span>
  </div>
 
- <div class="pivot-section-title">Projected End-of-Shift</div>
- <div id="pivot-projection-grid">
- <div class="pivot-card">
- <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Projected (Live Pace)</div>
+ </div><!-- end two-column grid -->
+
+ <!-- ── Projected End-of-Shift row ── -->
+ <div class="pivot-eos-row">
+ <div class="pivot-eos-row-grid">
+ <!-- Left: Projected Live (pack out only) -->
+ <div class="pivot-eos-live">
+ <div class="pivot-card-label">Projected End-of-Shift</div>
+ <div style="font-size:.75rem;font-weight:600;color:var(--hero-muted);margin-bottom:4px">Projected Live</div>
  <div class="pivot-card-value white" id="pv-projected">-</div>
- <div class="pivot-card-sub">At current live pace</div>
+ <div class="pivot-card-sub">Pack out pace</div>
  </div>
- <div class="pivot-card">
- <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Goal</div>
- <div class="pivot-card-value accent" id="pv-goal">-</div>
- <div class="pivot-card-sub">Combined Pack target</div>
+ <!-- Center: Pack projected assigned / at rate -->
+ <div class="pivot-eos-fn">
+ <div class="pivot-eos-fn-header pack">
+ <span class="pivot-fn-pill pack" style="font-size:.62rem;padding:2px 14px">PACK</span>
  </div>
- <div class="pivot-card pivot-card-wide">
- <div class="pivot-card-split-row">
- <div class="pivot-card-split-col">
- <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>Projected (Assigned UPH)</div>
+ <div class="pivot-eos-fn-cols">
+ <div>
+ <div class="pivot-card-label">Proj. Assigned UPH</div>
  <div class="pivot-card-value white" id="pv-projected-assigned">-</div>
+ <div class="pivot-card-sub" id="pv-projected-assigned-sub">Based on who's on the floor now</div>
  </div>
- <div class="pivot-card-split-col">
- <div class="pivot-card-label"><span class="pivot-tag pack">Pack</span>At Rate</div>
+ <div>
+ <div class="pivot-card-label">At Rate</div>
  <div class="pivot-card-value white" id="pv-at-rate">-</div>
  </div>
  </div>
- <div class="pivot-card-sub" id="pv-projected-assigned-sub">Based on who's on the floor now</div>
  </div>
- <div class="pivot-card pivot-card-wide">
- <div class="pivot-card-split-row">
- <div class="pivot-card-split-col">
- <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>Projected (Assigned UPH)</div>
+ <!-- Right: Pick projected assigned / at rate -->
+ <div class="pivot-eos-fn">
+ <div class="pivot-eos-fn-header pick">
+ <span class="pivot-fn-pill pick" style="font-size:.62rem;padding:2px 14px">PICK</span>
+ </div>
+ <div class="pivot-eos-fn-cols">
+ <div>
+ <div class="pivot-card-label">Proj. Assigned UPH</div>
  <div class="pivot-card-value white" id="pv-pick-projected-assigned">-</div>
+ <div class="pivot-card-sub" id="pv-pick-projected-assigned-sub">Based on who's on the floor now</div>
  </div>
- <div class="pivot-card-split-col">
- <div class="pivot-card-label"><span class="pivot-tag pick">Pick</span>At Rate</div>
+ <div>
+ <div class="pivot-card-label">At Rate</div>
  <div class="pivot-card-value white" id="pv-pick-at-rate">-</div>
  </div>
  </div>
- <div class="pivot-card-sub" id="pv-pick-projected-assigned-sub">Based on who's on the floor now</div>
+ </div>
  </div>
  </div>
 
@@ -12830,7 +12909,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div id="pool-empty-note" class="hidden">No one matches "<span id="pool-empty-term"></span>".</div>
  </div>
  <div class="panel">
- <h2>Floor Grid</h2>
+ <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+ <h2 style="margin:0">Floor Grid</h2>
+ <button class="btn secondary" id="clear-assignments-btn" title="Fixes anyone stuck 'assigned' from the duplicate-segment bug" style="font-size:0.78rem;padding:4px 10px">↺ Reset assignments</button>
+ </div>
  <div id="stations-wrap"></div>
  </div>
  </div>
@@ -15062,6 +15144,15 @@ function lb_renderPivotHero({ actual, totalGoal, totalProjected, headcount, uphS
  uphEl.textContent = "-"; uphEl.className = "pivot-card-value white";
  }
  document.getElementById("pv-uph-sub").textContent = `Target: ${impliedTargetUph ? Math.round(impliedTargetUph) : "-"}`;
+ // Populate new UPH breakdown cards
+ const uphIdealEl = document.getElementById("pv-uph-ideal");
+ if (uphIdealEl) uphIdealEl.textContent = impliedTargetUph ? Math.round(impliedTargetUph) : "-";
+ const uphVarEl = document.getElementById("pv-uph-var");
+ if (uphVarEl && prodHoursElapsed > 0 && impliedTargetUph > 0) {
+ const uphDiff = liveUph - impliedTargetUph;
+ uphVarEl.textContent = (uphDiff >= 0 ? "+" : "") + uphDiff.toFixed(1);
+ uphVarEl.className = "pivot-card-value " + (uphDiff >= 0 ? "green" : "red");
+ } else if (uphVarEl) { uphVarEl.textContent = "-"; uphVarEl.className = "pivot-card-value white"; }
 
  const projEl = document.getElementById("pv-projected");
  if (totalGoal > 0) {
@@ -15261,6 +15352,18 @@ function lb_renderPickLivePills({ actual, totalGoal, elapsedMinNow }) {
  uphEl.textContent = "-"; uphEl.className = "pivot-card-value white";
  }
  document.getElementById("pv-pick-uph-sub").textContent = `Target: ${impliedTargetUph ? Math.round(impliedTargetUph) : "-"}`;
+ // Populate new Pick UPH breakdown cards
+ const pickUphIdealEl = document.getElementById("pv-pick-uph-ideal");
+ if (pickUphIdealEl) pickUphIdealEl.textContent = impliedTargetUph ? Math.round(impliedTargetUph) : "-";
+ const pickUphVarEl = document.getElementById("pv-pick-uph-var");
+ if (pickUphVarEl && prodHoursElapsed > 0 && impliedTargetUph > 0) {
+ const uphDiff = liveUph - impliedTargetUph;
+ pickUphVarEl.textContent = (uphDiff >= 0 ? "+" : "") + uphDiff.toFixed(1);
+ pickUphVarEl.className = "pivot-card-value " + (uphDiff >= 0 ? "green" : "red");
+ } else if (pickUphVarEl) { pickUphVarEl.textContent = "-"; pickUphVarEl.className = "pivot-card-value white"; }
+ // Populate Pick Goal card
+ const pickGoalEl = document.getElementById("pv-pick-goal");
+ if (pickGoalEl) pickGoalEl.textContent = totalGoal ? Math.round(totalGoal).toLocaleString() : "-";
 
  document.getElementById("pv-pick-prodleft").textContent = Math.round(remainingProdMin);
  document.getElementById("pv-pick-prodleft-sub").textContent = `of ${Math.round(nominalProdMin)} total`;
