@@ -1571,20 +1571,22 @@ async function loadTickerAdmin() {
 let _trainerBadgeMap = {}; // assocId -> 'trainer' | 'elite-trainer'
 async function loadTrainerBadges() {
  try {
-   const snap = await getDocs(query(
-     collectionGroup(db, 'entries'),
-     where('badge', 'in', ['Trainer', 'Elite Trainer']),
-     where('status', '==', 'approved')
-   ));
    _trainerBadgeMap = {};
-   snap.forEach(d => {
-     const assocId = d.ref.parent.parent.id;
-     const badge = d.data().badge;
-     if (!_trainerBadgeMap[assocId] || badge === 'Elite Trainer') {
-       _trainerBadgeMap[assocId] = badge === 'Elite Trainer' ? 'elite-trainer' : 'trainer';
-     }
-   });
- } catch(e) { console.warn('loadTrainerBadges failed', e); }
+   // Use per-associate queries instead of collectionGroup (no composite index required)
+   const activeIds = allAssociates.filter(a => a.status === 'active').map(a => a.id);
+   await Promise.all(activeIds.map(async (assocId) => {
+     const snap = await getDocs(collection(db, 'badges', assocId, 'entries'));
+     snap.forEach(d => {
+       const data = d.data();
+       if (data.status === 'approved' &&
+           (data.badge === 'Trainer' || data.badge === 'Elite Trainer')) {
+         if (!_trainerBadgeMap[assocId] || data.badge === 'Elite Trainer') {
+           _trainerBadgeMap[assocId] = data.badge === 'Elite Trainer' ? 'elite-trainer' : 'trainer';
+         }
+       }
+     });
+   }));
+ } catch(e) { console.error('loadTrainerBadges failed', e); }
 }
 function loadDashboard() {
  showView('dashboard');
@@ -3845,6 +3847,14 @@ window.approveBadge = async (associateId, badgeId) => {
  await updateDoc(doc(db, 'badges', associateId, 'entries', badgeId), {
  status: 'approved', approvedBy: displayName, approvedAt: new Date().toISOString()
  });
+ // Update trainer badge map live so dashboard cards update without reload
+ if (badgeLabel === 'Trainer' || badgeLabel === 'Elite Trainer') {
+   const trainerType = badgeLabel === 'Elite Trainer' ? 'elite-trainer' : 'trainer';
+   if (!_trainerBadgeMap[associateId] || trainerType === 'elite-trainer') {
+     _trainerBadgeMap[associateId] = trainerType;
+     window._renderCards?.();
+   }
+ }
  const pts = badgePoints(badgeLabel);
  await updateDoc(doc(db, 'associates', associateId), { points: increment(pts) });
  await logPoints(associateId, 'Badge', `Badge approved: ${badgeLabel}`, pts);
