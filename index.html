@@ -1568,6 +1568,24 @@ async function loadTickerAdmin() {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────
+let _trainerBadgeMap = {}; // assocId -> 'trainer' | 'elite-trainer'
+async function loadTrainerBadges() {
+ try {
+   const snap = await getDocs(query(
+     collectionGroup(db, 'entries'),
+     where('badge', 'in', ['Trainer', 'Elite Trainer']),
+     where('status', '==', 'approved')
+   ));
+   _trainerBadgeMap = {};
+   snap.forEach(d => {
+     const assocId = d.ref.parent.parent.id;
+     const badge = d.data().badge;
+     if (!_trainerBadgeMap[assocId] || badge === 'Elite Trainer') {
+       _trainerBadgeMap[assocId] = badge === 'Elite Trainer' ? 'elite-trainer' : 'trainer';
+     }
+   });
+ } catch(e) { console.warn('loadTrainerBadges failed', e); }
+}
 function loadDashboard() {
  showView('dashboard');
  detachAll();
@@ -1589,6 +1607,7 @@ function loadDashboard() {
  renderMilestones(); // only on initial load - expensive subcollection reads
  loadKanbanCounts(); // load once per dashboard visit; applyKanbanCounts() restores after redraws
  checkOverdueActionItems(); // check for overdue action items (leads+)
+ loadTrainerBadges().then(() => window._renderCards && window._renderCards());
  }
  });
  // autoExpirePoints() moved to Firebase Cloud Function (functions/index.js)
@@ -1702,6 +1721,16 @@ function renderDashboard() {
  if (!associates.length) return;
  grid.innerHTML = associates.map(a => {
  const initials = a.name.split(/[\s,]+/).filter(Boolean).map(p => p[0]).join('').toUpperCase().slice(0, 2);
+ const _trainerType = _trainerBadgeMap[a.id] || null;
+ const _isTrainer = _trainerType === 'trainer';
+ const _isElite = _trainerType === 'elite-trainer';
+ const trainerGlow = _trainerType ? ';box-shadow:0 0 0 3px #7c3aed, 0 0 10px 4px rgba(124,58,237,0.55), 0 0 22px 6px rgba(124,58,237,0.2)' : '';
+ const vestSvg = `<svg width="14" height="17" viewBox="0 0 28 34" style="filter:drop-shadow(0 0 3px rgba(124,58,237,0.7));flex-shrink:0"><path d="M4 5 L7 2 Q14 8 21 2 L24 5 L26 34 L18 34 L18 20 L10 20 L10 34 L2 34 Z" fill="#7c3aed"/><path d="M4 5 L7 2 Q14 8 21 2 L24 5 L26 34 L18 34 L18 20 L10 20 L10 34 L2 34 L4 5Z" fill="none" stroke="#1a0a2e" stroke-width="1.2"/><line x1="14" y1="8" x2="14" y2="34" stroke="#1a0a2e" stroke-width="0.8"/><rect x="2" y="15" width="24" height="3" fill="#e8e8e8" rx="0.5"/><rect x="2" y="15" width="24" height="1" fill="white" rx="0.5" opacity="0.7"/><rect x="2" y="22" width="8" height="3" fill="#e8e8e8" rx="0.5"/><rect x="18" y="22" width="8" height="3" fill="#e8e8e8" rx="0.5"/><rect x="2" y="22" width="8" height="1" fill="white" rx="0.5" opacity="0.7"/><rect x="18" y="22" width="8" height="1" fill="white" rx="0.5" opacity="0.7"/></svg>`;
+ const trainerLabel = _isElite
+   ? `<div style="display:flex;align-items:center;gap:3px;margin-top:3px">${vestSvg}<div style="display:flex;flex-direction:column;line-height:1.15"><span style="font-size:8px;font-weight:700;color:#7c3aed;letter-spacing:0.04em;text-shadow:0 0 6px rgba(124,58,237,0.4)">ELITE</span><span style="font-size:8px;font-weight:700;color:#7c3aed;letter-spacing:0.04em;text-shadow:0 0 6px rgba(124,58,237,0.4)">TRAINER</span></div></div>`
+   : _isTrainer
+   ? `<div style="display:flex;align-items:center;gap:3px;margin-top:3px">${vestSvg}<span style="font-size:8px;font-weight:700;color:#7c3aed;letter-spacing:0.04em;text-shadow:0 0 6px rgba(124,58,237,0.4)">TRAINER</span></div>`
+   : '';
  const statusColor = a.status === 'active' ? 'bg-success' : a.status === 'terminated' ? 'bg-danger' : a.status === 'resigned' ? 'bg-secondary' : a.status === 'released' ? 'bg-info text-dark' : 'bg-warning text-dark';
  const flagBadge = flagBadgesHtml(a);
  const isTemp = a.employmentType === 'temp';
@@ -1728,7 +1757,10 @@ function renderDashboard() {
  ${newActivity ? `<span title="New activity on this profile" style="position:absolute;top:8px;right:10px;width:10px;height:10px;border-radius:50%;background:#f97316;box-shadow:0 0 0 2px #fff;animation:pulse-dot 1.5s infinite"></span>` : ''}
  <div class="card-body p-3">
  <div class="d-flex align-items-start gap-3 mb-2">
- <div class="avatar-circle">${initials}</div>
+ <div style="display:flex;flex-direction:column;align-items:center">
+ <div class="avatar-circle" style="${trainerGlow}">${initials}</div>
+ ${trainerLabel}
+ </div>
  <div class="flex-grow-1" style="min-width:0">
  <div class="d-flex align-items-center gap-1 flex-wrap">
  <div class="assoc-name">${escapeHtml(a.name)}</div>
