@@ -17139,7 +17139,7 @@ function lb_renderContainerSection() {
    <div style="margin-bottom:8px;font-size:12px;font-weight:600;color:var(--muted);">Container ${i+1}</div>
    <div id="lb-ctr-svg-${i}">${lb_ctrSVG(i, pct, num)}</div>
    <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
-    <input type="range" min="0" max="100" step="10" value="${pct}"
+    <input type="range" min="0" max="100" step="5" value="${pct}"
      style="flex:1;" data-ctr-idx="${i}">
     <span id="lb-ctr-pv-${i}" style="font-size:13px;font-weight:600;min-width:36px;text-align:right;color:var(--text);">${pct}%</span>
    </div>
