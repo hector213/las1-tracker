@@ -17212,9 +17212,9 @@ function lb_renderCtrNumInputs() {
    const pct = slider ? parseInt(slider.value) : (lb_containerProgress[idx]?.pct || 0);
    const svgEl = document.getElementById('lb-ctr-svg-'+idx);
    if (svgEl) svgEl.innerHTML = lb_ctrSVG(idx, pct, num);
-   // Save immediately for num changes (no debounce) so refresh doesn't lose the value
+   // Short debounce (300ms) — fast enough to survive refresh, slow enough not to thrash
    clearTimeout(lb_ctrSaveTimer);
-   lb_ctrSaveProgress();
+   lb_ctrSaveTimer = setTimeout(() => lb_ctrSaveProgress(), 300);
   }; })(i));
   label.appendChild(inp);
   wrap.appendChild(label);
@@ -17222,6 +17222,18 @@ function lb_renderCtrNumInputs() {
 }
 
 let lb_ctrSaveTimer = null;
+
+function lb_ctrLocalKey() { return 'lb_ctrProgress_' + lb_currentShiftDate; }
+
+function lb_ctrSaveLocal(containers) {
+ try { localStorage.setItem(lb_ctrLocalKey(), JSON.stringify({ containers, savedAt: Date.now() })); }
+ catch(e) {}
+}
+
+function lb_ctrLoadLocal() {
+ try { const r = localStorage.getItem(lb_ctrLocalKey()); return r ? JSON.parse(r) : null; }
+ catch(e) { return null; }
+}
 
 async function lb_ctrSaveProgress() {
  if (!lb_currentShiftDate) return;
@@ -17235,13 +17247,17 @@ async function lb_ctrSaveProgress() {
    num: numInp ? numInp.value.toUpperCase() : (lb_containerProgress[i]?.num || '')
   });
  }
+ // Write to localStorage first (synchronous — survives fast refresh)
+ lb_ctrSaveLocal(containers);
+ console.log('[CTR] saving to Firestore:', lb_currentShiftDate, JSON.stringify(containers));
  lb_containerProgress = containers;
  try {
   await lb_db.collection('lb_containerProgress').doc(lb_currentShiftDate).set({
    shiftDate: lb_currentShiftDate, containers, updatedAt: new Date().toISOString()
   }, { merge: true });
+  console.log('[CTR] Firestore write OK');
   lb_loadContainerWeekly();
- } catch(e) { console.warn('lb_ctrSaveProgress failed', e); }
+ } catch(e) { console.warn('[CTR] lb_ctrSaveProgress failed', e); }
 }
 
 // Flush any unsaved container progress on page unload (handles fast refresh)
@@ -17273,7 +17289,17 @@ function lb_watchContainerProgress(shiftDate) {
  if (lb_unsubContainerProgress) lb_unsubContainerProgress();
  lb_unsubContainerProgress = lb_db.collection('lb_containerProgress').doc(shiftDate)
   .onSnapshot(snap => {
-   lb_containerProgress = snap.exists ? (snap.data().containers || []) : [];
+   const fsContainers = snap.exists ? (snap.data().containers || []) : [];
+   const local = lb_ctrLoadLocal();
+   console.log('[CTR] onSnapshot — Firestore:', JSON.stringify(fsContainers), 'localStorage:', JSON.stringify(local));
+   // Prefer localStorage if it was saved more recently than the Firestore doc
+   const fsUpdatedAt = snap.exists ? new Date(snap.data().updatedAt || 0).getTime() : 0;
+   if (local && local.savedAt > fsUpdatedAt) {
+    console.log('[CTR] using localStorage (newer)');
+    lb_containerProgress = local.containers;
+   } else {
+    lb_containerProgress = fsContainers;
+   }
    lb_renderContainerSection();
   });
  lb_loadContainerWeekly();
