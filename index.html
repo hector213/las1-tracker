@@ -13296,10 +13296,13 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  </div>
 
- <!-- Receiving/Inbound Putaway leaderboard + container metrics side by side -->
- <div style="display:flex;gap:16px;align-items:flex-start;margin-top:16px;">
-  <div class="fn-grid" id="inbound-assoc-numbers-grid" style="flex:1;min-width:0;"></div>
-  <div id="lb-ctr-metrics" style="display:flex;flex-direction:column;gap:10px;flex-shrink:0;padding:14px;background:#f4f6f8;border-radius:10px;min-width:110px;"></div>
+ <!-- Receiving (left) | Putaway + container metrics (right) — 2-column grid -->
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
+  <div id="inbound-receiving-grid"></div>
+  <div>
+   <div id="inbound-putaway-grid"></div>
+   <div id="lb-ctr-metrics" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;"></div>
+  </div>
  </div>
 
  <!-- Container Unload Tracker -->
@@ -16413,7 +16416,8 @@ function lb_renderAssocNumbers() {
 // Receiving/Inbound Putaway leaderboard, same layout as Associate Numbers, living under the
 // Inbound tab's two charts instead of the same-name graphs already on this tab.
 function lb_renderInboundAssocNumbers() {
- lb_renderAssocNumberGroups(LB_INBOUND_ASSOC_GROUPS, "inbound-assoc-numbers-grid");
+ lb_renderAssocNumberGroups([{ tranType: "151", label: "Receiving" }],       "inbound-receiving-grid");
+ lb_renderAssocNumberGroups([{ tranType: "212", label: "Inbound Putaway" }], "inbound-putaway-grid");
 }
 
 function lb_associateCard(a, currentFunctionKey) {
@@ -17076,7 +17080,7 @@ function lb_renderContainerSection() {
    ['Weekly goal', wk],
    ['Progress', wpct+'%'],
    ["Today's goal", dy]
-  ].map(([l,v]) => `<div style="text-align:center;padding:4px 0;">
+  ].map(([l,v]) => `<div style="background:#f4f6f8;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px;">
    <div style="font-size:18px;font-weight:600;color:var(--text);">${v}</div>
    <div style="font-size:11px;color:var(--muted);margin-top:2px;">${l}</div>
   </div>`).join('');
