@@ -13293,13 +13293,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  Actual units scanned today (Tran Type 212) vs the Ideal Target line, prorated across
  production minutes from the Inbound Putaway goal set in Admin &gt; Shift Goals.
  </div>
- <!-- Container weekly metrics live here — directly under the putaway chart -->
- <div id="lb-ctr-metrics" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;"></div>
  </div>
  </div>
 
- <!-- Receiving/Inbound Putaway leaderboard -->
- <div class="fn-grid" id="inbound-assoc-numbers-grid" style="margin-top:16px;"></div>
+ <!-- Receiving/Inbound Putaway leaderboard + container metrics side by side -->
+ <div style="display:flex;gap:16px;align-items:flex-start;margin-top:16px;">
+  <div class="fn-grid" id="inbound-assoc-numbers-grid" style="flex:1;min-width:0;"></div>
+  <div id="lb-ctr-metrics" style="display:flex;flex-direction:column;gap:10px;flex-shrink:0;padding:14px;background:#f4f6f8;border-radius:10px;min-width:110px;"></div>
+ </div>
 
  <!-- Container Unload Tracker -->
  <div id="lb-container-section" style="margin-top:24px;">
@@ -17075,7 +17076,7 @@ function lb_renderContainerSection() {
    ['Weekly goal', wk],
    ['Progress', wpct+'%'],
    ["Today's goal", dy]
-  ].map(([l,v]) => `<div style="background:#f4f6f8;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px;">
+  ].map(([l,v]) => `<div style="text-align:center;padding:4px 0;">
    <div style="font-size:18px;font-weight:600;color:var(--text);">${v}</div>
    <div style="font-size:11px;color:var(--muted);margin-top:2px;">${l}</div>
   </div>`).join('');
