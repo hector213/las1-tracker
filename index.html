@@ -17128,17 +17128,22 @@ function lb_renderContainerSection() {
    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
     <div style="font-size:12px;font-weight:600;color:var(--muted);">Container ${i+1}</div>
     <input class="lb-ctr-num-input" type="text" value="${num.replace(/"/g,'&quot;')}" maxlength="16"
-     placeholder="Container #" oninput="lb_ctrNumUpdate(${i},this.value)"
+     placeholder="Container #"
      style="font-size:11px;font-weight:700;font-family:monospace;letter-spacing:0.5px;width:110px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:#f4f6f8;color:var(--text);text-transform:uppercase;">
    </div>
    <div id="lb-ctr-svg-${i}">${lb_ctrSVG(i, pct, num)}</div>
    <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
     <input type="range" min="0" max="100" step="10" value="${pct}"
-     style="flex:1;" oninput="lb_ctrUpdate(${i},+this.value)">
+     style="flex:1;" data-ctr-idx="${i}">
     <span id="lb-ctr-pv-${i}" style="font-size:13px;font-weight:600;min-width:36px;text-align:right;color:var(--text);">${pct}%</span>
    </div>
    <div id="lb-ctr-pill-${i}" style="margin-top:6px;display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;${lb_pillStyle(pct)}">${lb_pillLabel(pct)}</div>`;
   cardsEl.appendChild(card);
+  // Bind events via addEventListener — reliable regardless of script scope
+  const rangeEl = card.querySelector('input[type=range]');
+  const numEl   = card.querySelector('.lb-ctr-num-input');
+  if (rangeEl) rangeEl.addEventListener('input', (function(idx){ return function(){ lb_ctrUpdate(idx, +this.value); }; })(i));
+  if (numEl)   numEl.addEventListener('input',   (function(idx){ return function(){ lb_ctrNumUpdate(idx, this.value); }; })(i));
  }
 }
 
