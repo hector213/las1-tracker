@@ -13296,23 +13296,20 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  </div>
 
- <!-- Receiving (left) | Putaway + container metrics (right) — 2-column grid -->
- <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
-  <div id="inbound-receiving-grid"></div>
-  <div>
-   <div id="inbound-putaway-grid"></div>
-   <div id="lb-ctr-metrics" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;"></div>
-  </div>
- </div>
+ <!-- Receiving/Inbound Putaway leaderboard -->
+ <div class="fn-grid" id="inbound-assoc-numbers-grid" style="margin-top:16px;"></div>
 
- <!-- Container Unload Tracker -->
- <div id="lb-container-section" style="margin-top:24px;">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-   <h2 style="margin:0;font-size:16px;font-weight:600;color:var(--text);">Container Unload</h2>
-   <span style="font-size:12px;color:var(--muted);">Set goals in Admin → Shift Goals</span>
+ <!-- Container Unload — flex row: invisible left spacer (50%) + content (50%) aligns it under putaway -->
+ <div style="display:flex;gap:16px;margin-top:16px;">
+  <div style="flex:1;"></div>
+  <div id="lb-container-section" style="flex:1;">
+   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <h2 style="margin:0;font-size:16px;font-weight:600;color:var(--text);">Container Unload</h2>
+    <span style="font-size:12px;color:var(--muted);">Set goals in Admin → Shift Goals</span>
+   </div>
+   <div id="lb-ctr-metrics" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;"></div>
+   <div id="lb-ctr-cards" style="display:flex;gap:14px;flex-wrap:wrap;"></div>
   </div>
-  <!-- Container cards -->
-  <div id="lb-ctr-cards" style="display:flex;gap:14px;flex-wrap:wrap;"></div>
  </div>
  </section>
 
@@ -13537,6 +13534,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   <div class="field"><label>Weekly goal <span style="font-size:11px;color:var(--muted);">(resets Sun)</span></label><input type="number" id="lb-ctr-weekly-goal" min="0" max="60" value="20" style="width:80px;"></div>
   <button class="btn" id="lb-ctr-save-btn">Save container goals</button>
  </div>
+ <!-- Container number inputs — one per planned container -->
+ <div id="lb-ctr-num-inputs" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;"></div>
  </div>
 
  <!-- Settings tab -->
@@ -16416,8 +16415,7 @@ function lb_renderAssocNumbers() {
 // Receiving/Inbound Putaway leaderboard, same layout as Associate Numbers, living under the
 // Inbound tab's two charts instead of the same-name graphs already on this tab.
 function lb_renderInboundAssocNumbers() {
- lb_renderAssocNumberGroups([{ tranType: "151", label: "Receiving" }],       "inbound-receiving-grid");
- lb_renderAssocNumberGroups([{ tranType: "212", label: "Inbound Putaway" }], "inbound-putaway-grid");
+ lb_renderAssocNumberGroups(LB_INBOUND_ASSOC_GROUPS, "inbound-assoc-numbers-grid");
 }
 
 function lb_associateCard(a, currentFunctionKey) {
@@ -17068,6 +17066,7 @@ function lb_pillLabel(pct) {
 }
 
 function lb_renderContainerSection() {
+ lb_renderCtrNumInputs(); // keep Shift Goals number boxes in sync
  // metrics row
  const metricsEl = document.getElementById('lb-ctr-metrics');
  if (metricsEl) {
@@ -17101,9 +17100,8 @@ function lb_renderContainerSection() {
  if (lb_ctrRenderedCount === n && cardsEl.querySelectorAll('.lb-ctr-card').length === n) {
   for (let i = 0; i < n; i++) {
    const slider = document.querySelector(`#lb-ctr-card-${i} input[type=range]`);
-   const numInput = document.querySelector(`#lb-ctr-card-${i} .lb-ctr-num-input`);
    const livePct = slider ? parseInt(slider.value) : (lb_containerProgress[i]?.pct || 0);
-   const liveNum = numInput ? numInput.value : (lb_containerProgress[i]?.num || '');
+   const liveNum = lb_containerProgress[i]?.num || '';
    const svgEl = document.getElementById('lb-ctr-svg-'+i);
    if (svgEl) svgEl.innerHTML = lb_ctrSVG(i, livePct, liveNum);
    const pvEl = document.getElementById('lb-ctr-pv-'+i);
@@ -17128,12 +17126,7 @@ function lb_renderContainerSection() {
   card.style.cssText = `background:#fff;border:1px solid ${done?'#1D9E75':'var(--border)'};border-radius:12px;padding:14px;width:246px;flex-shrink:0;`;
   card.id = 'lb-ctr-card-'+i;
   card.innerHTML = `
-   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-    <div style="font-size:12px;font-weight:600;color:var(--muted);">Container ${i+1}</div>
-    <input class="lb-ctr-num-input" type="text" value="${num.replace(/"/g,'&quot;')}" maxlength="16"
-     placeholder="Container #"
-     style="font-size:11px;font-weight:700;font-family:monospace;letter-spacing:0.5px;width:110px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:#f4f6f8;color:var(--text);text-transform:uppercase;">
-   </div>
+   <div style="margin-bottom:8px;font-size:12px;font-weight:600;color:var(--muted);">Container ${i+1}${num ? ' · <span style="font-family:monospace;letter-spacing:1px;">'+num+'</span>' : ''}</div>
    <div id="lb-ctr-svg-${i}">${lb_ctrSVG(i, pct, num)}</div>
    <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
     <input type="range" min="0" max="100" step="10" value="${pct}"
@@ -17142,17 +17135,14 @@ function lb_renderContainerSection() {
    </div>
    <div id="lb-ctr-pill-${i}" style="margin-top:6px;display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;${lb_pillStyle(pct)}">${lb_pillLabel(pct)}</div>`;
   cardsEl.appendChild(card);
-  // Bind events via addEventListener — reliable regardless of script scope
+  // Bind slider via addEventListener — reliable regardless of script scope
   const rangeEl = card.querySelector('input[type=range]');
-  const numEl   = card.querySelector('.lb-ctr-num-input');
   if (rangeEl) rangeEl.addEventListener('input', (function(idx){ return function(){ lb_ctrUpdate(idx, +this.value); }; })(i));
-  if (numEl)   numEl.addEventListener('input',   (function(idx){ return function(){ lb_ctrNumUpdate(idx, this.value); }; })(i));
  }
 }
 
 function lb_ctrUpdate(idx, pct) {
- const numInput = document.querySelector(`#lb-ctr-card-${idx} .lb-ctr-num-input`);
- const num = numInput ? numInput.value : (lb_containerProgress[idx]?.num || '');
+ const num = lb_containerProgress[idx]?.num || '';
  document.getElementById('lb-ctr-pv-'+idx).textContent = pct+'%';
  document.getElementById('lb-ctr-svg-'+idx).innerHTML = lb_ctrSVG(idx, pct, num);
  const done = pct >= 100;
@@ -17165,20 +17155,51 @@ function lb_ctrUpdate(idx, pct) {
  pill.textContent = pillLabel;
  const card = document.getElementById('lb-ctr-card-'+idx);
  if (card) card.style.borderColor = done ? '#1D9E75' : 'var(--border)';
- // debounce Firestore write
+ // update lb_containerProgress pct in memory then debounce Firestore write
+ if (!lb_containerProgress[idx]) lb_containerProgress[idx] = {};
+ lb_containerProgress[idx].pct = pct;
  clearTimeout(lb_ctrSaveTimer);
  lb_ctrSaveTimer = setTimeout(() => lb_ctrSaveProgress(), 800);
 }
-function lb_ctrNumUpdate(idx, val) {
- const num = val.toUpperCase();
- const input = document.querySelector(`#lb-ctr-card-${idx} .lb-ctr-num-input`);
- if (input) input.value = num;
- const slider = document.querySelector(`#lb-ctr-card-${idx} input[type=range]`);
- const pct = slider ? parseInt(slider.value) : (lb_containerProgress[idx]?.pct || 0);
- document.getElementById('lb-ctr-svg-'+idx).innerHTML = lb_ctrSVG(idx, pct, num);
- clearTimeout(lb_ctrSaveTimer);
- lb_ctrSaveTimer = setTimeout(() => lb_ctrSaveProgress(), 800);
+
+// Render container number inputs in Shift Goals tab — one per planned container
+function lb_renderCtrNumInputs() {
+ const wrap = document.getElementById('lb-ctr-num-inputs');
+ if (!wrap) return;
+ const n = lb_containerGoals.shiftCount || 0;
+ wrap.innerHTML = '';
+ for (let i = 0; i < n; i++) {
+  const val = (lb_containerProgress[i]?.num || '').toUpperCase();
+  const label = document.createElement('div');
+  label.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+  label.innerHTML = `<label style="font-size:11px;color:var(--muted);font-weight:600;">Container ${i+1} #</label>`;
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = val;
+  inp.maxLength = 16;
+  inp.placeholder = 'Container #';
+  inp.style.cssText = 'font-size:12px;font-weight:700;font-family:monospace;letter-spacing:0.5px;width:120px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#f4f6f8;color:var(--text);text-transform:uppercase;';
+  inp.addEventListener('input', (function(idx){ return function() {
+   const num = this.value.toUpperCase();
+   this.value = num;
+   if (!lb_containerProgress[idx]) lb_containerProgress[idx] = {};
+   lb_containerProgress[idx].num = num;
+   // refresh SVG on inbound card if visible
+   const slider = document.querySelector(`#lb-ctr-card-${idx} input[type=range]`);
+   const pct = slider ? parseInt(slider.value) : (lb_containerProgress[idx]?.pct || 0);
+   const svgEl = document.getElementById('lb-ctr-svg-'+idx);
+   if (svgEl) svgEl.innerHTML = lb_ctrSVG(idx, pct, num);
+   // update card header label
+   const hdr = document.querySelector(`#lb-ctr-card-${idx} div[style*="color:var(--muted)"]`);
+   if (hdr) hdr.innerHTML = `Container ${idx+1}${num ? ' · <span style="font-family:monospace;letter-spacing:1px;">' + num + '</span>' : ''}`;
+   clearTimeout(lb_ctrSaveTimer);
+   lb_ctrSaveTimer = setTimeout(() => lb_ctrSaveProgress(), 800);
+  }; })(i));
+  label.appendChild(inp);
+  wrap.appendChild(label);
+ }
 }
+
 let lb_ctrSaveTimer = null;
 
 async function lb_ctrSaveProgress() {
@@ -17187,10 +17208,9 @@ async function lb_ctrSaveProgress() {
  const containers = [];
  for (let i = 0; i < n; i++) {
   const slider = document.querySelector(`#lb-ctr-card-${i} input[type=range]`);
-  const numInput = document.querySelector(`#lb-ctr-card-${i} .lb-ctr-num-input`);
   containers.push({
    pct: slider ? parseInt(slider.value) : (lb_containerProgress[i]?.pct || 0),
-   num: numInput ? numInput.value : (lb_containerProgress[i]?.num || '')
+   num: lb_containerProgress[i]?.num || ''
   });
  }
  lb_containerProgress = containers;
