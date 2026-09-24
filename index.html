@@ -13296,6 +13296,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  </div>
 
+ <!-- Container weekly metrics — shown below the putaway graph -->
+ <div id="lb-ctr-metrics" style="display:flex;gap:12px;flex-wrap:wrap;margin:16px 0 0;"></div>
+
  <!-- Receiving/Inbound Putaway leaderboard, moved here from Associate Numbers so it sits
  right under the matching graphs. See INBOUND_ASSOC_GROUPS/renderInboundAssocNumbers(). -->
  <div class="fn-grid" id="inbound-assoc-numbers-grid" style="margin-top:16px;"></div>
@@ -13306,8 +13309,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
    <h2 style="margin:0;font-size:16px;font-weight:600;color:var(--text);">Container Unload</h2>
    <span style="font-size:12px;color:var(--muted);">Set goals in Admin → Shift Goals</span>
   </div>
-  <!-- Weekly metrics -->
-  <div id="lb-ctr-metrics" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;"></div>
   <!-- Container cards -->
   <div id="lb-ctr-cards" style="display:flex;gap:14px;flex-wrap:wrap;"></div>
  </div>
@@ -14923,6 +14924,7 @@ function lb_watchShift(shiftDate) {
  lb_renderInboundAssocNumbers();
  });
  lb_watchAssocTrend();
+ lb_ctrRenderedCount = -1; // force full rebuild on new shift date
  lb_watchContainerProgress(shiftDate);
 }
 
@@ -17030,10 +17032,8 @@ function lb_ctrSVG(idx, pct, num) {
  const labelFill = pct > 14 ? 'white' : '#E3F2FD';
  const labelEl = pct > 0
   ? `<text x="${labelX}" y="${by + bodyH/2 + 5}" font-size="15" font-weight="500" fill="${labelFill}" opacity="0.95">${pct}%</text>` : '';
- // container number stenciled top-right, always on top of fill
+ // container number stenciled on top of everything so it's always visible
  const safeNum = (num||'').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
- const numEl = safeNum
-  ? `<text x="${bx+bw-18}" y="${by+14}" font-size="10" font-weight="700" fill="white" opacity="0.85" text-anchor="end" letter-spacing="0.8" font-family="monospace">${safeNum}</text>` : '';
  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
   <defs><clipPath id="${id}cl"><rect x="${bx+1}" y="${by+1}" width="${bw-2}" height="${bodyH-2}"/></clipPath></defs>
   <rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="#1565C0" rx="2"/>
@@ -17044,13 +17044,24 @@ function lb_ctrSVG(idx, pct, num) {
    ${pct > 0 ? `<rect x="${bx+1}" y="${by+1}" width="${fillW}" height="${bodyH-2}" fill="${fillColor}" opacity="${done?0.75:0.65}"/>` : ''}
    ${edgeLine}${labelEl}
   </g>
-  ${numEl}
   <rect x="${Math.round(bx+bw*0.18)}" y="${by+bodyH}" width="${Math.round(bw*0.14)}" height="11" fill="#07205A" rx="1"/>
   <rect x="${Math.round(bx+bw*0.68)}" y="${by+bodyH}" width="${Math.round(bw*0.14)}" height="11" fill="#07205A" rx="1"/>
   ${cc(bx,by,14,11)}${cc(bx+bw-14,by,14,11)}${cc(bx,by+bh-11,14,11)}${cc(bx+bw-14,by+bh-11,14,11)}
   <rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="none" stroke="#0A2A6A" stroke-width="1" rx="2"/>
   ${done ? `<circle cx="${W/2}" cy="${by+bodyH/2}" r="16" fill="#1D9E75" opacity="0.92"/><path d="M${W/2-8},${by+bodyH/2} L${W/2-2},${by+bodyH/2+7} L${W/2+9},${by+bodyH/2-8}" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>` : ''}
+  ${safeNum ? `<text x="${bx+18}" y="${by+22}" font-size="13" font-weight="700" fill="white" opacity="0.95" letter-spacing="1.2" font-family="monospace">${safeNum}</text>` : ''}
  </svg>`;
+}
+
+let lb_ctrRenderedCount = -1;
+
+function lb_pillStyle(pct) {
+ return pct >= 100 ? 'background:#e6f6ec;color:#1f8a4c;'
+  : pct > 0 ? 'background:#e4ebf5;color:#1c3f73;'
+  : 'background:#f4f6f8;color:var(--muted);';
+}
+function lb_pillLabel(pct) {
+ return pct >= 100 ? 'Complete' : pct > 0 ? 'In progress' : 'Not started';
 }
 
 function lb_renderContainerSection() {
@@ -17060,11 +17071,11 @@ function lb_renderContainerSection() {
   const wk = lb_containerGoals.weeklyGoal || 0;
   const dy = lb_containerGoals.dailyGoal || 0;
   const cnt = lb_containerWeeklyCount;
-  const pct = wk ? Math.round(cnt/wk*100) : 0;
+  const wpct = wk ? Math.round(cnt/wk*100) : 0;
   metricsEl.innerHTML = [
    ['This week', cnt],
    ['Weekly goal', wk],
-   ['Progress', pct+'%'],
+   ['Progress', wpct+'%'],
    ["Today's goal", dy]
   ].map(([l,v]) => `<div style="background:#f4f6f8;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px;">
    <div style="font-size:18px;font-weight:600;color:var(--text);">${v}</div>
@@ -17077,28 +17088,42 @@ function lb_renderContainerSection() {
  if (!cardsEl) return;
  const n = lb_containerGoals.shiftCount || 0;
  if (n === 0) {
+  lb_ctrRenderedCount = 0;
   cardsEl.innerHTML = '<p style="font-size:13px;color:var(--muted);">Set containers in Admin → Shift Goals to get started.</p>';
   return;
  }
- // preserve existing pct values and container numbers from DOM if user is mid-edit
- const existingSliders = cardsEl.querySelectorAll('input[type=range]');
- const existingNums = cardsEl.querySelectorAll('input.lb-ctr-num-input');
- const livePcts = Array.from(existingSliders).map(s => parseInt(s.value));
- const liveNums = Array.from(existingNums).map(s => s.value);
 
+ // ── Soft update: cards already exist with the right count ──────────────
+ // Preserves live slider values — only updates SVG, pct label, pill, border
+ if (lb_ctrRenderedCount === n && cardsEl.querySelectorAll('.lb-ctr-card').length === n) {
+  for (let i = 0; i < n; i++) {
+   const slider = document.querySelector(`#lb-ctr-card-${i} input[type=range]`);
+   const numInput = document.querySelector(`#lb-ctr-card-${i} .lb-ctr-num-input`);
+   const livePct = slider ? parseInt(slider.value) : (lb_containerProgress[i]?.pct || 0);
+   const liveNum = numInput ? numInput.value : (lb_containerProgress[i]?.num || '');
+   const svgEl = document.getElementById('lb-ctr-svg-'+i);
+   if (svgEl) svgEl.innerHTML = lb_ctrSVG(i, livePct, liveNum);
+   const pvEl = document.getElementById('lb-ctr-pv-'+i);
+   if (pvEl) pvEl.textContent = livePct+'%';
+   const pillEl = document.getElementById('lb-ctr-pill-'+i);
+   if (pillEl) { pillEl.style.cssText = `margin-top:6px;display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;${lb_pillStyle(livePct)}`; pillEl.textContent = lb_pillLabel(livePct); }
+   const card = document.getElementById('lb-ctr-card-'+i);
+   if (card) card.style.borderColor = livePct >= 100 ? '#1D9E75' : 'var(--border)';
+  }
+  return;
+ }
+
+ // ── Full rebuild: first render or shift count changed ──────────────────
+ lb_ctrRenderedCount = n;
  cardsEl.innerHTML = '';
  for (let i = 0; i < n; i++) {
-  const pct = livePcts[i] != null ? livePcts[i] : (lb_containerProgress[i]?.pct || 0);
-  const num = liveNums[i] != null ? liveNums[i] : (lb_containerProgress[i]?.num || '');
+  const pct = lb_containerProgress[i]?.pct || 0;
+  const num = lb_containerProgress[i]?.num || '';
   const done = pct >= 100;
   const card = document.createElement('div');
+  card.className = 'lb-ctr-card';
   card.style.cssText = `background:#fff;border:1px solid ${done?'#1D9E75':'var(--border)'};border-radius:12px;padding:14px;width:246px;flex-shrink:0;`;
   card.id = 'lb-ctr-card-'+i;
-  const pillStyle = done
-   ? 'background:#e6f6ec;color:#1f8a4c;'
-   : pct > 0 ? 'background:#e4ebf5;color:#1c3f73;'
-   : 'background:#f4f6f8;color:var(--muted);';
-  const pillLabel = done ? 'Complete' : pct > 0 ? 'In progress' : 'Not started';
   card.innerHTML = `
    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
     <div style="font-size:12px;font-weight:600;color:var(--muted);">Container ${i+1}</div>
@@ -17112,7 +17137,7 @@ function lb_renderContainerSection() {
      style="flex:1;" oninput="lb_ctrUpdate(${i},+this.value)">
     <span id="lb-ctr-pv-${i}" style="font-size:13px;font-weight:600;min-width:36px;text-align:right;color:var(--text);">${pct}%</span>
    </div>
-   <div id="lb-ctr-pill-${i}" style="margin-top:6px;display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;${pillStyle}">${pillLabel}</div>`;
+   <div id="lb-ctr-pill-${i}" style="margin-top:6px;display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;${lb_pillStyle(pct)}">${lb_pillLabel(pct)}</div>`;
   cardsEl.appendChild(card);
  }
 }
