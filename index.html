@@ -10728,8 +10728,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  .flag.goal{background:var(--accent-bg);color:var(--accent-dark);}
  .proj-line{font-size:12px;color:var(--muted);margin-top:4px;}
 
- #ai-fab{position:fixed;right:22px;bottom:22px;width:54px;height:54px;border-radius:50%;background:var(--hero-bg2);color:#fff;border:none;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:20px;cursor:pointer;}
- #ai-fab:hover{background:var(--accent);}
 
  /* ---------- Admin view ---------- */
  #admin-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
@@ -13209,7 +13207,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
 
  </section>
- <button id="ai-fab" title="AI Recommendation - planned for Phase 3">✦</button>
 
  <!-- ---------- SHIFT TREND VIEW ---------- -->
  <!-- Shift Trend: Actual vs Ideal Target cumulative units across the shift, like the
@@ -17362,9 +17359,6 @@ document.getElementById("save-settings-btn").addEventListener("click", async () 
  });
 });
 
-document.getElementById("ai-fab").addEventListener("click", () => {
- alert("AI-suggested placement, chat assistant, and anomaly alerts are planned for Phase 3, once a secure backend (Cloud Function) is in place to hold the API key. Not wired up yet.");
-});
 
 /* ======================================================================
  ADMIN: IMPORT / CLEANING PIPELINE
