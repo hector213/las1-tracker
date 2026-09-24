@@ -14470,6 +14470,12 @@ const lb_firebaseConfig = {
 };
 const _lbApp = firebase.initializeApp(lb_firebaseConfig, 'laborApp');
 let lb_db = _lbApp.firestore();
+// Enable offline persistence so pending writes survive a page refresh
+lb_db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+ if (err.code !== 'failed-precondition' && err.code !== 'unimplemented') {
+  console.warn('Firestore persistence unavailable:', err);
+ }
+});
 let lb_initialized = false;
 function lb_init() {
  if (lb_initialized) return;
@@ -17160,7 +17166,7 @@ function lb_ctrUpdate(idx, pct) {
  if (!lb_containerProgress[idx]) lb_containerProgress[idx] = {};
  lb_containerProgress[idx].pct = pct;
  clearTimeout(lb_ctrSaveTimer);
- lb_ctrSaveTimer = setTimeout(() => lb_ctrSaveProgress(), 800);
+ lb_ctrSaveTimer = setTimeout(() => lb_ctrSaveProgress(), 100);
 }
 
 // Render container number inputs in Shift Goals tab — one per planned container
@@ -17201,9 +17207,9 @@ function lb_renderCtrNumInputs() {
    const pct = slider ? parseInt(slider.value) : (lb_containerProgress[idx]?.pct || 0);
    const svgEl = document.getElementById('lb-ctr-svg-'+idx);
    if (svgEl) svgEl.innerHTML = lb_ctrSVG(idx, pct, num);
-   // card header stays as "Container N" — number shows only on the SVG
+   // Save immediately for num changes (no debounce) so refresh doesn't lose the value
    clearTimeout(lb_ctrSaveTimer);
-   lb_ctrSaveTimer = setTimeout(() => lb_ctrSaveProgress(), 800);
+   lb_ctrSaveProgress();
   }; })(i));
   label.appendChild(inp);
   wrap.appendChild(label);
@@ -17232,6 +17238,12 @@ async function lb_ctrSaveProgress() {
   lb_loadContainerWeekly();
  } catch(e) { console.warn('lb_ctrSaveProgress failed', e); }
 }
+
+// Flush any unsaved container progress on page unload (handles fast refresh)
+window.addEventListener('beforeunload', () => {
+ if (lb_ctrSaveTimer) { clearTimeout(lb_ctrSaveTimer); lb_ctrSaveTimer = null; }
+ lb_ctrSaveProgress();
+});
 
 async function lb_loadContainerWeekly() {
  try {
