@@ -12961,9 +12961,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div class="lb-subnav">
  <button id="lb-nav-board" class="active">Board</button>
  <button id="lb-nav-trend">Pick &amp; Pack Trend</button>
- <button id="lb-nav-inbound">Inbound Rates</button>
  <button id="lb-nav-assoc-trend">Associate UPH</button>
  <button id="lb-nav-assoc-numbers">Outbound Rates</button>
+ <button id="lb-nav-inbound">Inbound Rates</button>
  <button id="lb-nav-import">Import Data</button>
  <button id="lb-nav-admin">Admin</button>
  </div><!-- /.lb-subnav -->
@@ -13527,11 +13527,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- Container Unload Goals -->
  <h3 style="margin-top:24px;margin-bottom:6px;font-size:15px;font-weight:600;color:var(--text);">Container Unload Goals</h3>
- <div class="note" style="margin-bottom:12px;">Set how many containers to unload this shift and your daily / weekly targets. Weekly count resets automatically on Sunday.</div>
+ <div class="note" style="margin-bottom:12px;">Set how many containers to unload this shift, your daily / weekly targets, and the week-to-date actual count.</div>
  <div class="field-row">
   <div class="field"><label>Containers this shift</label><input type="number" id="lb-ctr-shift-count" min="0" max="10" value="2" style="width:80px;"></div>
   <div class="field"><label>Daily goal</label><input type="number" id="lb-ctr-daily-goal" min="0" max="20" value="4" style="width:80px;"></div>
-  <div class="field"><label>Weekly goal <span style="font-size:11px;color:var(--muted);">(resets Sun)</span></label><input type="number" id="lb-ctr-weekly-goal" min="0" max="60" value="20" style="width:80px;"></div>
+  <div class="field"><label>Weekly goal</label><input type="number" id="lb-ctr-weekly-goal" min="0" max="60" value="20" style="width:80px;"></div>
+  <div class="field"><label>This week (actual)</label><input type="number" id="lb-ctr-weekly-actual" min="0" max="999" value="0" style="width:80px;"></div>
   <button class="btn" id="lb-ctr-save-btn">Save container goals</button>
  </div>
  <!-- Container number inputs — one per planned container -->
@@ -17014,7 +17015,7 @@ document.getElementById("save-goal-btn").addEventListener("click", async () => {
 /* ======================================================================
  CONTAINER UNLOAD TRACKER
  ====================================================================== */
-let lb_containerGoals = { shiftCount: 2, dailyGoal: 4, weeklyGoal: 20 };
+let lb_containerGoals = { shiftCount: 2, dailyGoal: 4, weeklyGoal: 20, weeklyActual: 0 };
 let lb_containerProgress = []; // [{pct:0}, ...]
 let lb_containerWeeklyCount = 0;
 let lb_unsubContainerProgress = null;
@@ -17079,7 +17080,7 @@ function lb_renderContainerSection() {
  if (metricsEl) {
   const wk = lb_containerGoals.weeklyGoal || 0;
   const dy = lb_containerGoals.dailyGoal || 0;
-  const cnt = lb_containerWeeklyCount;
+  const cnt = lb_containerGoals.weeklyActual || 0;
   const wpct = wk ? Math.round(cnt/wk*100) : 0;
   metricsEl.innerHTML = [
    ['This week', cnt],
@@ -17311,18 +17312,21 @@ lb_db.collection('lb_settings').doc('containerGoals').onSnapshot(snap => {
  const sc = document.getElementById('lb-ctr-shift-count');
  const dg = document.getElementById('lb-ctr-daily-goal');
  const wg = document.getElementById('lb-ctr-weekly-goal');
+ const wa = document.getElementById('lb-ctr-weekly-actual');
  if (sc) sc.value = lb_containerGoals.shiftCount;
  if (dg) dg.value = lb_containerGoals.dailyGoal;
  if (wg) wg.value = lb_containerGoals.weeklyGoal;
+ if (wa) wa.value = lb_containerGoals.weeklyActual || 0;
  lb_renderContainerSection();
 });
 
 document.getElementById('lb-ctr-save-btn').addEventListener('click', async () => {
- const shiftCount = parseInt(document.getElementById('lb-ctr-shift-count').value) || 0;
- const dailyGoal  = parseInt(document.getElementById('lb-ctr-daily-goal').value)  || 0;
- const weeklyGoal = parseInt(document.getElementById('lb-ctr-weekly-goal').value) || 0;
- lb_containerGoals = { shiftCount, dailyGoal, weeklyGoal };
- await lb_db.collection('lb_settings').doc('containerGoals').set({ shiftCount, dailyGoal, weeklyGoal });
+ const shiftCount    = parseInt(document.getElementById('lb-ctr-shift-count').value)    || 0;
+ const dailyGoal     = parseInt(document.getElementById('lb-ctr-daily-goal').value)     || 0;
+ const weeklyGoal    = parseInt(document.getElementById('lb-ctr-weekly-goal').value)    || 0;
+ const weeklyActual  = parseInt(document.getElementById('lb-ctr-weekly-actual').value)  || 0;
+ lb_containerGoals = { shiftCount, dailyGoal, weeklyGoal, weeklyActual };
+ await lb_db.collection('lb_settings').doc('containerGoals').set({ shiftCount, dailyGoal, weeklyGoal, weeklyActual });
  lb_renderContainerSection();
 });
 
