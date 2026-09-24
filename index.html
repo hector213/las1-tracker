@@ -13296,9 +13296,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  </div>
 
- <!-- Associate leaderboard (left, auto-sized) + Container Unload (right) in the same row -->
- <div style="display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start;margin-top:16px;">
-  <div class="fn-grid" id="inbound-assoc-numbers-grid"></div>
+ <!-- Single grid row: Receiving | Putaway | Container Unload -->
+ <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start;margin-top:16px;">
+  <div id="inbound-receiving-grid"></div>
+  <div id="inbound-putaway-grid"></div>
   <div id="lb-container-section">
    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
     <h2 style="margin:0;font-size:16px;font-weight:600;color:var(--text);">Container Unload</h2>
@@ -16412,7 +16413,8 @@ function lb_renderAssocNumbers() {
 // Receiving/Inbound Putaway leaderboard, same layout as Associate Numbers, living under the
 // Inbound tab's two charts instead of the same-name graphs already on this tab.
 function lb_renderInboundAssocNumbers() {
- lb_renderAssocNumberGroups(LB_INBOUND_ASSOC_GROUPS, "inbound-assoc-numbers-grid");
+ lb_renderAssocNumberGroups([{ tranType: "151", label: "Receiving" }],       "inbound-receiving-grid");
+ lb_renderAssocNumberGroups([{ tranType: "212", label: "Inbound Putaway" }], "inbound-putaway-grid");
 }
 
 function lb_associateCard(a, currentFunctionKey) {
@@ -17123,7 +17125,7 @@ function lb_renderContainerSection() {
   card.style.cssText = `background:#fff;border:1px solid ${done?'#1D9E75':'var(--border)'};border-radius:12px;padding:14px;width:246px;flex-shrink:0;`;
   card.id = 'lb-ctr-card-'+i;
   card.innerHTML = `
-   <div style="margin-bottom:8px;font-size:12px;font-weight:600;color:var(--muted);">Container ${i+1}${num ? ' · <span style="font-family:monospace;letter-spacing:1px;">'+num+'</span>' : ''}</div>
+   <div style="margin-bottom:8px;font-size:12px;font-weight:600;color:var(--muted);">Container ${i+1}</div>
    <div id="lb-ctr-svg-${i}">${lb_ctrSVG(i, pct, num)}</div>
    <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
     <input type="range" min="0" max="100" step="10" value="${pct}"
@@ -17186,9 +17188,7 @@ function lb_renderCtrNumInputs() {
    const pct = slider ? parseInt(slider.value) : (lb_containerProgress[idx]?.pct || 0);
    const svgEl = document.getElementById('lb-ctr-svg-'+idx);
    if (svgEl) svgEl.innerHTML = lb_ctrSVG(idx, pct, num);
-   // update card header label
-   const hdr = document.querySelector(`#lb-ctr-card-${idx} div[style*="color:var(--muted)"]`);
-   if (hdr) hdr.innerHTML = `Container ${idx+1}${num ? ' · <span style="font-family:monospace;letter-spacing:1px;">' + num + '</span>' : ''}`;
+   // card header stays as "Container N" — number shows only on the SVG
    clearTimeout(lb_ctrSaveTimer);
    lb_ctrSaveTimer = setTimeout(() => lb_ctrSaveProgress(), 800);
   }; })(i));
