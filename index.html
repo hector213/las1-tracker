@@ -17103,11 +17103,16 @@ function lb_renderContainerSection() {
  }
 
  // ── Soft update: cards already exist with the right count ──────────────
- // Preserves live slider values — only updates SVG, pct label, pill, border
+ // Syncs slider + visuals from lb_containerProgress (handles the race where
+ // containerGoals fires first with empty progress, building cards at pct=0,
+ // then containerProgress loads later and we need to update the sliders too)
  if (lb_ctrRenderedCount === n && cardsEl.querySelectorAll('.lb-ctr-card').length === n) {
   for (let i = 0; i < n; i++) {
    const slider = document.querySelector(`#lb-ctr-card-${i} input[type=range]`);
-   const livePct = slider ? parseInt(slider.value) : (lb_containerProgress[i]?.pct || 0);
+   const storedPct = lb_containerProgress[i]?.pct || 0;
+   // Always sync slider to stored value so a stale 0-render gets corrected on load
+   if (slider && document.activeElement !== slider) slider.value = storedPct;
+   const livePct = slider ? parseInt(slider.value) : storedPct;
    const liveNum = lb_containerProgress[i]?.num || '';
    const svgEl = document.getElementById('lb-ctr-svg-'+i);
    if (svgEl) svgEl.innerHTML = lb_ctrSVG(i, livePct, liveNum);
