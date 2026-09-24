@@ -13299,6 +13299,18 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <!-- Receiving/Inbound Putaway leaderboard, moved here from Associate Numbers so it sits
  right under the matching graphs. See INBOUND_ASSOC_GROUPS/renderInboundAssocNumbers(). -->
  <div class="fn-grid" id="inbound-assoc-numbers-grid" style="margin-top:16px;"></div>
+
+ <!-- Container Unload Tracker -->
+ <div id="lb-container-section" style="margin-top:24px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+   <h2 style="margin:0;font-size:16px;font-weight:600;color:var(--text);">Container Unload</h2>
+   <span style="font-size:12px;color:var(--muted);">Set goals in Admin → Shift Goals</span>
+  </div>
+  <!-- Weekly metrics -->
+  <div id="lb-ctr-metrics" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;"></div>
+  <!-- Container cards -->
+  <div id="lb-ctr-cards" style="display:flex;gap:14px;flex-wrap:wrap;"></div>
+ </div>
  </section>
 
  <!-- ---------- ASSOCIATE UPH VIEW ---------- -->
@@ -13512,6 +13524,16 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <thead><tr><th>Function</th><th>Target Units</th><th>Planned Hours</th><th></th></tr></thead>
  <tbody></tbody>
  </table>
+
+ <!-- Container Unload Goals -->
+ <h3 style="margin-top:24px;margin-bottom:6px;font-size:15px;font-weight:600;color:var(--text);">Container Unload Goals</h3>
+ <div class="note" style="margin-bottom:12px;">Set how many containers to unload this shift and your daily / weekly targets. Weekly count resets automatically on Sunday.</div>
+ <div class="field-row">
+  <div class="field"><label>Containers this shift</label><input type="number" id="lb-ctr-shift-count" min="0" max="10" value="2" style="width:80px;"></div>
+  <div class="field"><label>Daily goal</label><input type="number" id="lb-ctr-daily-goal" min="0" max="20" value="4" style="width:80px;"></div>
+  <div class="field"><label>Weekly goal <span style="font-size:11px;color:var(--muted);">(resets Sun)</span></label><input type="number" id="lb-ctr-weekly-goal" min="0" max="60" value="20" style="width:80px;"></div>
+  <button class="btn" id="lb-ctr-save-btn">Save container goals</button>
+ </div>
  </div>
 
  <!-- Settings tab -->
@@ -14789,6 +14811,7 @@ function lb_showView(v) {
  if (v === "inbound") {
  lb_renderInboundCharts();
  lb_renderInboundAssocNumbers();
+ lb_renderContainerSection();
  Object.values(lb_inboundChartInstances).forEach(ch => requestAnimationFrame(() => ch.resize()));
  }
  if (v === "assoc-trend") {
@@ -14900,6 +14923,7 @@ function lb_watchShift(shiftDate) {
  lb_renderInboundAssocNumbers();
  });
  lb_watchAssocTrend();
+ lb_watchContainerProgress(shiftDate);
 }
 
 document.getElementById("shift-date").addEventListener("change", e => lb_watchShift(e.target.value));
@@ -16975,6 +16999,224 @@ document.getElementById("save-goal-btn").addEventListener("click", async () => {
  const targetUnits = parseFloat(document.getElementById("goal-units").value) || 0;
  const plannedHours = parseFloat(document.getElementById("goal-hours").value) || 0;
  await lb_db.collection("lb_shiftGoals").doc(`${shiftDate}_${functionKey}`).set({ shiftDate, functionKey, targetUnits, plannedHours });
+});
+
+/* ======================================================================
+ CONTAINER UNLOAD TRACKER
+ ====================================================================== */
+let lb_containerGoals = { shiftCount: 2, dailyGoal: 4, weeklyGoal: 20 };
+let lb_containerProgress = []; // [{pct:0}, ...]
+let lb_containerWeeklyCount = 0;
+let lb_unsubContainerProgress = null;
+
+function lb_ctrSVG(idx, pct, num) {
+ const id = 'LC'+idx;
+ const done = pct >= 100;
+ const W = 296, H = 86, bx = 3, by = 3, bw = W-6, bh = H-6, bodyH = bh-13;
+ const fillW = Math.round((bw-2) * pct / 100);
+ const fillColor = done ? '#1D9E75' : '#00BCD4';
+ const N = 27, step = bw/N;
+ let ridges = '';
+ for (let i=1; i<N; i++) {
+  const x = (bx + i*step).toFixed(2);
+  ridges += `<line x1="${x}" y1="${by+1}" x2="${x}" y2="${by+bodyH-1}" stroke="#0D47A1" stroke-width="1.4"/>`;
+  ridges += `<line x1="${(parseFloat(x)+1.8).toFixed(2)}" y1="${by+1}" x2="${(parseFloat(x)+1.8).toFixed(2)}" y2="${by+bodyH-1}" stroke="#42A5F5" stroke-width="1.2" opacity="0.7"/>`;
+ }
+ const cc = (x,y,w,h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#1A237E" rx="1.5"/>`;
+ const edgeLine = pct > 0 && pct < 100
+  ? `<line x1="${bx+1+fillW}" y1="${by+1}" x2="${bx+1+fillW}" y2="${by+bodyH-1}" stroke="white" stroke-width="2.5" opacity="0.7"/>` : '';
+ // pct label: center of container
+ const labelX = pct > 14 ? Math.max(bx + fillW - 30, bx+4) : bx + fillW + 8;
+ const labelFill = pct > 14 ? 'white' : '#E3F2FD';
+ const labelEl = pct > 0
+  ? `<text x="${labelX}" y="${by + bodyH/2 + 5}" font-size="15" font-weight="500" fill="${labelFill}" opacity="0.95">${pct}%</text>` : '';
+ // container number stenciled top-right, always on top of fill
+ const safeNum = (num||'').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+ const numEl = safeNum
+  ? `<text x="${bx+bw-18}" y="${by+14}" font-size="10" font-weight="700" fill="white" opacity="0.85" text-anchor="end" letter-spacing="0.8" font-family="monospace">${safeNum}</text>` : '';
+ return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+  <defs><clipPath id="${id}cl"><rect x="${bx+1}" y="${by+1}" width="${bw-2}" height="${bodyH-2}"/></clipPath></defs>
+  <rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="#1565C0" rx="2"/>
+  <rect x="${bx}" y="${by}" width="${bw}" height="3" fill="#1976D2" rx="2"/>
+  <rect x="${bx}" y="${by+bodyH}" width="${bw}" height="13" fill="#0D47A1" rx="1"/>
+  ${ridges}
+  <g clip-path="url(#${id}cl)">
+   ${pct > 0 ? `<rect x="${bx+1}" y="${by+1}" width="${fillW}" height="${bodyH-2}" fill="${fillColor}" opacity="${done?0.75:0.65}"/>` : ''}
+   ${edgeLine}${labelEl}
+  </g>
+  ${numEl}
+  <rect x="${Math.round(bx+bw*0.18)}" y="${by+bodyH}" width="${Math.round(bw*0.14)}" height="11" fill="#07205A" rx="1"/>
+  <rect x="${Math.round(bx+bw*0.68)}" y="${by+bodyH}" width="${Math.round(bw*0.14)}" height="11" fill="#07205A" rx="1"/>
+  ${cc(bx,by,14,11)}${cc(bx+bw-14,by,14,11)}${cc(bx,by+bh-11,14,11)}${cc(bx+bw-14,by+bh-11,14,11)}
+  <rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="none" stroke="#0A2A6A" stroke-width="1" rx="2"/>
+  ${done ? `<circle cx="${W/2}" cy="${by+bodyH/2}" r="16" fill="#1D9E75" opacity="0.92"/><path d="M${W/2-8},${by+bodyH/2} L${W/2-2},${by+bodyH/2+7} L${W/2+9},${by+bodyH/2-8}" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>` : ''}
+ </svg>`;
+}
+
+function lb_renderContainerSection() {
+ // metrics row
+ const metricsEl = document.getElementById('lb-ctr-metrics');
+ if (metricsEl) {
+  const wk = lb_containerGoals.weeklyGoal || 0;
+  const dy = lb_containerGoals.dailyGoal || 0;
+  const cnt = lb_containerWeeklyCount;
+  const pct = wk ? Math.round(cnt/wk*100) : 0;
+  metricsEl.innerHTML = [
+   ['This week', cnt],
+   ['Weekly goal', wk],
+   ['Progress', pct+'%'],
+   ["Today's goal", dy]
+  ].map(([l,v]) => `<div style="background:#f4f6f8;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px;">
+   <div style="font-size:18px;font-weight:600;color:var(--text);">${v}</div>
+   <div style="font-size:11px;color:var(--muted);margin-top:2px;">${l}</div>
+  </div>`).join('');
+ }
+
+ // container cards
+ const cardsEl = document.getElementById('lb-ctr-cards');
+ if (!cardsEl) return;
+ const n = lb_containerGoals.shiftCount || 0;
+ if (n === 0) {
+  cardsEl.innerHTML = '<p style="font-size:13px;color:var(--muted);">Set containers in Admin → Shift Goals to get started.</p>';
+  return;
+ }
+ // preserve existing pct values and container numbers from DOM if user is mid-edit
+ const existingSliders = cardsEl.querySelectorAll('input[type=range]');
+ const existingNums = cardsEl.querySelectorAll('input.lb-ctr-num-input');
+ const livePcts = Array.from(existingSliders).map(s => parseInt(s.value));
+ const liveNums = Array.from(existingNums).map(s => s.value);
+
+ cardsEl.innerHTML = '';
+ for (let i = 0; i < n; i++) {
+  const pct = livePcts[i] != null ? livePcts[i] : (lb_containerProgress[i]?.pct || 0);
+  const num = liveNums[i] != null ? liveNums[i] : (lb_containerProgress[i]?.num || '');
+  const done = pct >= 100;
+  const card = document.createElement('div');
+  card.style.cssText = `background:#fff;border:1px solid ${done?'#1D9E75':'var(--border)'};border-radius:12px;padding:14px;width:246px;flex-shrink:0;`;
+  card.id = 'lb-ctr-card-'+i;
+  const pillStyle = done
+   ? 'background:#e6f6ec;color:#1f8a4c;'
+   : pct > 0 ? 'background:#e4ebf5;color:#1c3f73;'
+   : 'background:#f4f6f8;color:var(--muted);';
+  const pillLabel = done ? 'Complete' : pct > 0 ? 'In progress' : 'Not started';
+  card.innerHTML = `
+   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+    <div style="font-size:12px;font-weight:600;color:var(--muted);">Container ${i+1}</div>
+    <input class="lb-ctr-num-input" type="text" value="${num.replace(/"/g,'&quot;')}" maxlength="16"
+     placeholder="Container #" oninput="lb_ctrNumUpdate(${i},this.value)"
+     style="font-size:11px;font-weight:700;font-family:monospace;letter-spacing:0.5px;width:110px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:#f4f6f8;color:var(--text);text-transform:uppercase;">
+   </div>
+   <div id="lb-ctr-svg-${i}">${lb_ctrSVG(i, pct, num)}</div>
+   <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
+    <input type="range" min="0" max="100" step="10" value="${pct}"
+     style="flex:1;" oninput="lb_ctrUpdate(${i},+this.value)">
+    <span id="lb-ctr-pv-${i}" style="font-size:13px;font-weight:600;min-width:36px;text-align:right;color:var(--text);">${pct}%</span>
+   </div>
+   <div id="lb-ctr-pill-${i}" style="margin-top:6px;display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;${pillStyle}">${pillLabel}</div>`;
+  cardsEl.appendChild(card);
+ }
+}
+
+function lb_ctrUpdate(idx, pct) {
+ const numInput = document.querySelector(`#lb-ctr-card-${idx} .lb-ctr-num-input`);
+ const num = numInput ? numInput.value : (lb_containerProgress[idx]?.num || '');
+ document.getElementById('lb-ctr-pv-'+idx).textContent = pct+'%';
+ document.getElementById('lb-ctr-svg-'+idx).innerHTML = lb_ctrSVG(idx, pct, num);
+ const done = pct >= 100;
+ const pillStyle = done ? 'background:#e6f6ec;color:#1f8a4c;'
+  : pct > 0 ? 'background:#e4ebf5;color:#1c3f73;'
+  : 'background:#f4f6f8;color:var(--muted);';
+ const pillLabel = done ? 'Complete' : pct > 0 ? 'In progress' : 'Not started';
+ const pill = document.getElementById('lb-ctr-pill-'+idx);
+ pill.style.cssText = `margin-top:6px;display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;${pillStyle}`;
+ pill.textContent = pillLabel;
+ const card = document.getElementById('lb-ctr-card-'+idx);
+ if (card) card.style.borderColor = done ? '#1D9E75' : 'var(--border)';
+ // debounce Firestore write
+ clearTimeout(lb_ctrSaveTimer);
+ lb_ctrSaveTimer = setTimeout(() => lb_ctrSaveProgress(), 800);
+}
+function lb_ctrNumUpdate(idx, val) {
+ const num = val.toUpperCase();
+ const input = document.querySelector(`#lb-ctr-card-${idx} .lb-ctr-num-input`);
+ if (input) input.value = num;
+ const slider = document.querySelector(`#lb-ctr-card-${idx} input[type=range]`);
+ const pct = slider ? parseInt(slider.value) : (lb_containerProgress[idx]?.pct || 0);
+ document.getElementById('lb-ctr-svg-'+idx).innerHTML = lb_ctrSVG(idx, pct, num);
+ clearTimeout(lb_ctrSaveTimer);
+ lb_ctrSaveTimer = setTimeout(() => lb_ctrSaveProgress(), 800);
+}
+let lb_ctrSaveTimer = null;
+
+async function lb_ctrSaveProgress() {
+ if (!lb_currentShiftDate) return;
+ const n = lb_containerGoals.shiftCount || 0;
+ const containers = [];
+ for (let i = 0; i < n; i++) {
+  const slider = document.querySelector(`#lb-ctr-card-${i} input[type=range]`);
+  const numInput = document.querySelector(`#lb-ctr-card-${i} .lb-ctr-num-input`);
+  containers.push({
+   pct: slider ? parseInt(slider.value) : (lb_containerProgress[i]?.pct || 0),
+   num: numInput ? numInput.value : (lb_containerProgress[i]?.num || '')
+  });
+ }
+ lb_containerProgress = containers;
+ try {
+  await lb_db.collection('lb_containerProgress').doc(lb_currentShiftDate).set({
+   shiftDate: lb_currentShiftDate, containers, updatedAt: new Date().toISOString()
+  }, { merge: true });
+  lb_loadContainerWeekly();
+ } catch(e) { console.warn('lb_ctrSaveProgress failed', e); }
+}
+
+async function lb_loadContainerWeekly() {
+ try {
+  const now = new Date();
+  const dow = now.getDay(); // 0=Sun
+  const msBack = (dow === 0 ? 0 : dow) * 86400000;
+  const sunday = new Date(now - msBack);
+  const sundayStr = sunday.toISOString().slice(0,10);
+  const snap = await lb_db.collection('lb_containerProgress')
+   .where('shiftDate','>=', sundayStr).get();
+  let total = 0;
+  snap.docs.forEach(d => {
+   (d.data().containers||[]).forEach(c => { if ((c.pct||0) >= 100) total++; });
+  });
+  lb_containerWeeklyCount = total;
+  const metricsEl = document.getElementById('lb-ctr-metrics');
+  if (metricsEl) lb_renderContainerSection();
+ } catch(e) { console.warn('lb_loadContainerWeekly failed', e); }
+}
+
+function lb_watchContainerProgress(shiftDate) {
+ if (lb_unsubContainerProgress) lb_unsubContainerProgress();
+ lb_unsubContainerProgress = lb_db.collection('lb_containerProgress').doc(shiftDate)
+  .onSnapshot(snap => {
+   lb_containerProgress = snap.exists ? (snap.data().containers || []) : [];
+   lb_renderContainerSection();
+  });
+ lb_loadContainerWeekly();
+}
+
+// Load container goals from Firestore and populate Shift Goals inputs
+lb_db.collection('lb_settings').doc('containerGoals').onSnapshot(snap => {
+ if (snap.exists) lb_containerGoals = { ...lb_containerGoals, ...snap.data() };
+ const sc = document.getElementById('lb-ctr-shift-count');
+ const dg = document.getElementById('lb-ctr-daily-goal');
+ const wg = document.getElementById('lb-ctr-weekly-goal');
+ if (sc) sc.value = lb_containerGoals.shiftCount;
+ if (dg) dg.value = lb_containerGoals.dailyGoal;
+ if (wg) wg.value = lb_containerGoals.weeklyGoal;
+ lb_renderContainerSection();
+});
+
+document.getElementById('lb-ctr-save-btn').addEventListener('click', async () => {
+ const shiftCount = parseInt(document.getElementById('lb-ctr-shift-count').value) || 0;
+ const dailyGoal  = parseInt(document.getElementById('lb-ctr-daily-goal').value)  || 0;
+ const weeklyGoal = parseInt(document.getElementById('lb-ctr-weekly-goal').value) || 0;
+ lb_containerGoals = { shiftCount, dailyGoal, weeklyGoal };
+ await lb_db.collection('lb_settings').doc('containerGoals').set({ shiftCount, dailyGoal, weeklyGoal });
+ lb_renderContainerSection();
 });
 
 function lb_renderGoalsAdmin() {
