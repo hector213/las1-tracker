@@ -13296,13 +13296,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  </div>
 
- <!-- Receiving/Inbound Putaway leaderboard -->
- <div class="fn-grid" id="inbound-assoc-numbers-grid" style="margin-top:16px;"></div>
-
- <!-- Container Unload — flex row: invisible left spacer (50%) + content (50%) aligns it under putaway -->
- <div style="display:flex;gap:16px;margin-top:16px;">
-  <div style="flex:1;"></div>
-  <div id="lb-container-section" style="flex:1;">
+ <!-- Associate leaderboard (left, auto-sized) + Container Unload (right) in the same row -->
+ <div style="display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start;margin-top:16px;">
+  <div class="fn-grid" id="inbound-assoc-numbers-grid"></div>
+  <div id="lb-container-section">
    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
     <h2 style="margin:0;font-size:16px;font-weight:600;color:var(--text);">Container Unload</h2>
     <span style="font-size:12px;color:var(--muted);">Set goals in Admin → Shift Goals</span>
