@@ -17051,7 +17051,7 @@ function lb_ctrSVG(idx, pct, num) {
   ${cc(bx,by,14,11)}${cc(bx+bw-14,by,14,11)}${cc(bx,by+bh-11,14,11)}${cc(bx+bw-14,by+bh-11,14,11)}
   <rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="none" stroke="#0A2A6A" stroke-width="1" rx="2"/>
   ${done ? `<circle cx="${W/2}" cy="${by+bodyH/2}" r="16" fill="#1D9E75" opacity="0.92"/><path d="M${W/2-8},${by+bodyH/2} L${W/2-2},${by+bodyH/2+7} L${W/2+9},${by+bodyH/2-8}" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>` : ''}
-  ${safeNum ? `<text x="${bx+18}" y="${by+22}" font-size="13" font-weight="700" fill="white" opacity="0.95" letter-spacing="1.2" font-family="monospace">${safeNum}</text>` : ''}
+  ${safeNum ? `<text x="${bx+18}" y="${by+24}" font-size="17" font-weight="700" fill="white" opacity="0.95" letter-spacing="1.2" font-family="monospace">${safeNum}</text>` : ''}
  </svg>`;
 }
 
@@ -17124,7 +17124,7 @@ function lb_renderContainerSection() {
   const done = pct >= 100;
   const card = document.createElement('div');
   card.className = 'lb-ctr-card';
-  card.style.cssText = `background:#fff;border:1px solid ${done?'#1D9E75':'var(--border)'};border-radius:12px;padding:14px;width:246px;flex-shrink:0;`;
+  card.style.cssText = `background:#fff;border:1px solid ${done?'#1D9E75':'var(--border)'};border-radius:12px;padding:14px;width:320px;flex-shrink:0;`;
   card.id = 'lb-ctr-card-'+i;
   card.innerHTML = `
    <div style="margin-bottom:8px;font-size:12px;font-weight:600;color:var(--muted);">Container ${i+1}</div>
@@ -17168,6 +17168,16 @@ function lb_renderCtrNumInputs() {
  const wrap = document.getElementById('lb-ctr-num-inputs');
  if (!wrap) return;
  const n = lb_containerGoals.shiftCount || 0;
+ // Soft update: if count matches, just refresh values without destroying elements
+ const existing = wrap.querySelectorAll('input[type=text]');
+ if (existing.length === n) {
+  for (let i = 0; i < n; i++) {
+   const savedVal = (lb_containerProgress[i]?.num || '').toUpperCase();
+   // Only overwrite if input doesn't have focus (user might be typing)
+   if (document.activeElement !== existing[i]) existing[i].value = savedVal;
+  }
+  return;
+ }
  wrap.innerHTML = '';
  for (let i = 0; i < n; i++) {
   const val = (lb_containerProgress[i]?.num || '').toUpperCase();
@@ -17176,6 +17186,7 @@ function lb_renderCtrNumInputs() {
   label.innerHTML = `<label style="font-size:11px;color:var(--muted);font-weight:600;">Container ${i+1} #</label>`;
   const inp = document.createElement('input');
   inp.type = 'text';
+  inp.id = 'lb-ctr-num-inp-' + i;
   inp.value = val;
   inp.maxLength = 16;
   inp.placeholder = 'Container #';
@@ -17207,9 +17218,10 @@ async function lb_ctrSaveProgress() {
  const containers = [];
  for (let i = 0; i < n; i++) {
   const slider = document.querySelector(`#lb-ctr-card-${i} input[type=range]`);
+  const numInp = document.getElementById('lb-ctr-num-inp-' + i);
   containers.push({
    pct: slider ? parseInt(slider.value) : (lb_containerProgress[i]?.pct || 0),
-   num: lb_containerProgress[i]?.num || ''
+   num: numInp ? numInp.value.toUpperCase() : (lb_containerProgress[i]?.num || '')
   });
  }
  lb_containerProgress = containers;
