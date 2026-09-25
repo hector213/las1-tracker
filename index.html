@@ -3131,12 +3131,13 @@ window.saveWatchNote = async () => {
  const text = document.getElementById('watchNoteText').value.trim();
  const category = document.getElementById('watchNoteCategory').value;
  if (!text) { alert('Please enter a note.'); return; }
+ const aiText = document.getElementById('watchActionItemText')?.value.trim();
+ const aiDue = document.getElementById('watchActionItemDue')?.value;
+ if (aiText && !aiDue) { alert('Please enter a due date for the action item.'); document.getElementById('watchActionItemDue')?.focus(); return; }
  const btn = document.getElementById('saveWatchNoteBtn');
  btn.disabled = true; btn.textContent = 'Saving…';
  try {
  const displayName = await _getActorName();
- const aiText = document.getElementById('watchActionItemText')?.value.trim();
- const aiDue = document.getElementById('watchActionItemDue')?.value;
  const aiOwner = document.getElementById('watchActionItemOwner')?.value.trim();
  const noteData = { category, text, author: displayName, authorUid: currentUser.uid, createdAt: new Date().toISOString() };
  if (aiText) noteData.actionItem = { text: aiText, dueDate: aiDue || null, owner: aiOwner || null, status: 'open' };
@@ -11920,7 +11921,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div onclick="togglePrivateNotes()" style="background:#1e3a5f;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer">
  <div class="d-flex align-items-center gap-2">
  <i class="fas fa-sticky-note" style="color:#60a5fa;font-size:1rem"></i>
- <span class="fw-bold" style="color:#fff;font-size:0.9rem">Private Notes</span>
+ <span class="fw-bold" style="color:#fff;font-size:0.9rem">Private Supervisor Notes</span>
  <span id="privateNotesCountBadge" style="background:#3b82f6;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:20px;line-height:1.4">0</span>
  </div>
  <div class="d-flex align-items-center gap-2">
@@ -12210,11 +12211,19 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  </div>
 
+ <!-- Private Supervisor Notes -->
+ <div class="col-lg-6">
+ <div class="admin-card">
+ <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-sticky-note me-2" style="color:#3b82f6"></i>Private Supervisor Notes</h6>
+ <p class="small text-muted">Visible to Supervisors, OMs, and Admins. Use this blue panel on each associate profile to log coaching conversations, performance observations, or anything you want to share across the leadership team without it appearing in the general notes feed. Notes do not affect attendance points. Only OMs and Admins can delete entries.</p>
+ </div>
+ </div>
+
  <!-- Private Watch Notes -->
  <div class="col-lg-6">
  <div class="admin-card">
  <h6 class="fw-bold mb-3" style="color:var(--navy)"><i class="fas fa-lock me-2" style="color:var(--orange)"></i>Private Watch Notes</h6>
- <p class="small text-muted">The amber dashed section at the bottom of each profile is only visible to Supervisors and Admins. Use it to track attendance patterns, early departures, tardiness, or behavioral observations you don't want in the general notes feed. These notes do not affect points.</p>
+ <p class="small text-muted">Visible to OMs and Admins only. Use the amber panel to track sensitive attendance patterns, behavioral concerns, or observations that should remain restricted to OM-level leadership. These notes do not affect points and are not visible to Supervisors or Leads.</p>
  </div>
  </div>
 
@@ -12421,8 +12430,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <tr><td>Nominate badges</td><td></td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
  <tr><td>View & add credentials</td><td></td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
  <tr><td>Schedule 1:1 meetings, manage time off</td><td></td><td></td><td>✓</td><td>✓</td><td>✓</td></tr>
+ <tr><td>View &amp; add private supervisor notes</td><td></td><td></td><td>✓</td><td>✓</td><td>✓</td></tr>
  <tr><td>Delete notes</td><td></td><td></td><td>✓</td><td>✓</td><td>✓</td></tr>
  <tr><td>View private watch notes</td><td></td><td></td><td></td><td>✓</td><td>✓</td></tr>
+ <tr><td>Delete private supervisor notes</td><td></td><td></td><td></td><td>✓</td><td>✓</td></tr>
  <tr><td>Approve/reject badges</td><td></td><td></td><td></td><td>✓</td><td>✓</td></tr>
  <tr><td>Delete credentials</td><td></td><td></td><td></td><td>✓</td><td>✓</td></tr>
  <tr><td>Grant associate portal access</td><td></td><td></td><td></td><td></td><td>✓</td></tr>
@@ -14366,7 +14377,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div class="modal-dialog modal-dialog-centered">
  <div class="modal-content">
  <div class="modal-header border-0 pb-0" style="background:linear-gradient(135deg,#1e3a5f 0%,#3b82f6 100%);border-radius:0.5rem 0.5rem 0 0">
- <h5 class="modal-title fw-bold text-white"><i class="fas fa-sticky-note me-2"></i>Add Private Note</h5>
+ <h5 class="modal-title fw-bold text-white"><i class="fas fa-sticky-note me-2"></i>Add Private Supervisor Note</h5>
  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
  </div>
  <div class="modal-body pt-4">
