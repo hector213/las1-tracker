@@ -2185,6 +2185,13 @@ window.openProfile = async (id) => {
  if (_cc) _cc.style.transform = '';
  document.getElementById('credsAddBtn').style.display = 'none';
 
+ // Reset private notes panel state
+ privateNotesOpen = false;
+ document.getElementById('privateNotesBody').classList.add('d-none');
+ const _pnc = document.getElementById('privateNotesChevron');
+ if (_pnc) _pnc.style.transform = '';
+ document.getElementById('privateNotesAddBtn').style.display = 'none';
+
  // Reset watch notes panel state
  watchNotesOpen = false;
  goalsOpen = false;
@@ -2224,6 +2231,7 @@ window.openProfile = async (id) => {
  listenBadges(id);
  listenCerts(id);
  listenCreds(id);
+ listenPrivateNotes(id);
  listenWatchNotes(id);
  listenGoals(id);
  onboardingPanelOpen = false;
@@ -2962,6 +2970,88 @@ window.deleteCred = async (credId) => {
  if (!confirm('Delete this credential entry?')) return;
  await deleteDoc(doc(db, 'credentials', currentAssociateId, 'entries', credId));
  listenCreds(currentAssociateId);
+};
+
+// ─── Private Notes (supervisor+) ──────────────────────────────────────
+let lastPrivateNotes = [];
+let privateNotesOpen = false;
+
+function listenPrivateNotes(associateId) {
+ const canSee = roleAtLeast('supervisor');
+ const section = document.getElementById('privateNotesSection');
+ if (!canSee) { section.classList.add('d-none'); return; }
+ section.classList.remove('d-none');
+ getDocs(collection(db, 'privatenotes', associateId, 'entries')).then(snap => {
+  const notes = [];
+  snap.forEach(d => notes.push({ id: d.id, ...d.data() }));
+  notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  lastPrivateNotes = notes;
+  document.getElementById('privateNotesCountBadge').textContent = notes.length;
+  if (privateNotesOpen) renderPrivateNotes(notes);
+ });
+}
+
+function renderPrivateNotes(notes) {
+ const container = document.getElementById('privateNotesContainer');
+ if (!notes.length) {
+  container.innerHTML = `<div class="text-center text-muted py-3 small"><i class="fas fa-sticky-note me-1"></i>No private notes yet.</div>`;
+  return;
+ }
+ container.innerHTML = notes.map(n => `
+  <div class="private-note-card">
+   <span class="private-note-category-badge"><i class="fas fa-tag me-1"></i>${escapeHtml(n.category || 'General')}</span>
+   <div class="private-note-text">${escapeHtml(n.text)}</div>
+   <div class="d-flex justify-content-between align-items-center mt-1">
+    <div class="private-note-meta"><i class="fas fa-user me-1"></i>${escapeHtml(n.author || '-')} · ${formatDate(n.createdAt)}</div>
+    ${roleAtLeast('om') ? `<button class="btn btn-sm btn-link text-danger p-0" style="font-size:0.75rem" onclick="deletePrivateNote('${n.id}')"><i class="fas fa-trash-alt"></i></button>` : ''}
+   </div>
+  </div>`).join('');
+}
+
+window.togglePrivateNotes = () => {
+ privateNotesOpen = !privateNotesOpen;
+ const body = document.getElementById('privateNotesBody');
+ const chevron = document.getElementById('privateNotesChevron');
+ const addBtn = document.getElementById('privateNotesAddBtn');
+ body.classList.toggle('d-none', !privateNotesOpen);
+ if (chevron) chevron.style.transform = privateNotesOpen ? 'rotate(90deg)' : '';
+ if (addBtn) addBtn.style.display = privateNotesOpen ? 'inline-flex' : 'none';
+ if (privateNotesOpen) renderPrivateNotes(lastPrivateNotes);
+};
+
+window.openAddPrivateNote = () => {
+ document.getElementById('privateNoteForm').reset();
+ bootstrap.Modal.getOrCreateInstance(document.getElementById('privateNoteModal')).show();
+};
+
+window.savePrivateNote = async () => {
+ const text = document.getElementById('privateNoteText').value.trim();
+ const category = document.getElementById('privateNoteCategory').value;
+ if (!text) { alert('Please enter a note.'); return; }
+ const btn = document.getElementById('savePrivateNoteBtn');
+ btn.disabled = true; btn.textContent = 'Saving…';
+ try {
+  const displayName = await _getActorName();
+  const noteData = {
+   text, category,
+   author: displayName,
+   createdAt: new Date().toISOString()
+  };
+  await addDoc(collection(db, 'privatenotes', currentAssociateId, 'entries'), noteData);
+  bootstrap.Modal.getInstance(document.getElementById('privateNoteModal')).hide();
+  listenPrivateNotes(currentAssociateId);
+ } catch(e) {
+  alert('Error saving note: ' + e.message);
+ } finally {
+  btn.disabled = false; btn.textContent = 'Save Note';
+ }
+};
+
+window.deletePrivateNote = async (noteId) => {
+ if (!roleAtLeast('om')) return;
+ if (!confirm('Delete this note?')) return;
+ await deleteDoc(doc(db, 'privatenotes', currentAssociateId, 'entries', noteId));
+ listenPrivateNotes(currentAssociateId);
 };
 
 // ─── Private Watch Notes ───────────────────────────────────────────────
@@ -10890,6 +10980,11 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 .cred-pw { font-family:monospace; letter-spacing:0.1em; }
 .cred-meta { font-size:0.72rem; color:#9ca3af; margin-top:0.35rem; }
 
+/* Private Notes (supervisor+) */
+.private-note-card { background:#fff; border-radius:8px; padding:0.85rem 1rem; border:1px solid #bfdbfe; border-left:4px solid #3b82f6; margin-bottom:0.6rem; }
+.private-note-category-badge { display:inline-block; font-size:0.68rem; font-weight:700; background:#dbeafe; color:#1e40af; border-radius:20px; padding:2px 8px; margin-bottom:0.4rem; }
+.private-note-text { color:#374151; font-size:0.875rem; line-height:1.6; white-space:pre-wrap; margin-bottom:0.35rem; }
+.private-note-meta { font-size:0.72rem; color:#9ca3af; }
 /* Private Watch Notes */
 .watch-panel { background:#fffbeb; border:1.5px dashed #f59e0b; border-radius:12px; padding:1rem 1.25rem; }
 .watch-toggle-btn { background:none; border:none; padding:0; cursor:pointer; }
@@ -11817,6 +11912,24 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div id="oneOnOneAssigned" class="mb-3" style="display:none"></div>
  <div style="font-size:0.78rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px">Meeting History</div>
  <div id="oneOnOneContainer"></div>
+ </div>
+ </div>
+
+ <!-- Private Notes (supervisor+) -->
+ <div id="privateNotesSection" class="d-none mt-4">
+ <div onclick="togglePrivateNotes()" style="background:#1e3a5f;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer">
+ <div class="d-flex align-items-center gap-2">
+ <i class="fas fa-sticky-note" style="color:#60a5fa;font-size:1rem"></i>
+ <span class="fw-bold" style="color:#fff;font-size:0.9rem">Private Notes</span>
+ <span id="privateNotesCountBadge" style="background:#3b82f6;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:20px;line-height:1.4">0</span>
+ </div>
+ <div class="d-flex align-items-center gap-2">
+ <button class="btn btn-sm" id="privateNotesAddBtn" style="display:none;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:0.75rem;padding:4px 12px;border-radius:6px" onclick="event.stopPropagation();openAddPrivateNote()"><i class="fas fa-plus me-1"></i>Add</button>
+ <i class="fas fa-chevron-right" id="privateNotesChevron" style="color:rgba(255,255,255,0.7);font-size:0.8rem;transition:transform 0.2s"></i>
+ </div>
+ </div>
+ <div id="privateNotesBody" class="d-none mt-3">
+ <div id="privateNotesContainer"></div>
  </div>
  </div>
 
@@ -14241,6 +14354,43 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div class="modal-footer border-0 pt-0">
  <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
  <button type="button" class="btn text-white fw-semibold" id="saveWatchNoteBtn" style="background:#92400e;border:none" onclick="saveWatchNote()">
+ <i class="fas fa-save me-1"></i>Save Note
+ </button>
+ </div>
+ </div>
+ </div>
+</div>
+
+<!-- Private Note Modal -->
+<div class="modal fade" id="privateNoteModal" tabindex="-1">
+ <div class="modal-dialog modal-dialog-centered">
+ <div class="modal-content">
+ <div class="modal-header border-0 pb-0" style="background:linear-gradient(135deg,#1e3a5f 0%,#3b82f6 100%);border-radius:0.5rem 0.5rem 0 0">
+ <h5 class="modal-title fw-bold text-white"><i class="fas fa-sticky-note me-2"></i>Add Private Note</h5>
+ <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+ </div>
+ <div class="modal-body pt-4">
+ <form id="privateNoteForm">
+ <div class="mb-3">
+ <label class="form-label fw-semibold small">Category</label>
+ <select class="form-select" id="privateNoteCategory">
+ <option value="General">General</option>
+ <option value="Performance">Performance</option>
+ <option value="Attendance">Attendance</option>
+ <option value="Coaching">Coaching</option>
+ <option value="Positive">Positive</option>
+ <option value="Other">Other</option>
+ </select>
+ </div>
+ <div class="mb-3">
+ <label class="form-label fw-semibold small">Note <span class="text-danger">*</span></label>
+ <textarea class="form-control" id="privateNoteText" rows="4" placeholder="Enter note…" style="resize:vertical"></textarea>
+ </div>
+ </form>
+ </div>
+ <div class="modal-footer border-0 pt-0">
+ <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+ <button type="button" class="btn text-white fw-semibold" id="savePrivateNoteBtn" style="background:#1e3a5f;border:none" onclick="savePrivateNote()">
  <i class="fas fa-save me-1"></i>Save Note
  </button>
  </div>
