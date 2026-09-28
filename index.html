@@ -670,19 +670,44 @@ onAuthStateChanged(auth, async (user) => {
  const assocSnap = await getDocs(assocQ); // use cache-first - avoids forced server round-trip on every login
  if (!assocSnap.empty) {
  const assocDoc = assocSnap.docs[0];
+ const aData = assocDoc.data();
+ // Enforce deactivation / expiry for associate portal accounts
+ const today = new Date().toISOString().slice(0,10);
+ if (aData.portalDisabled) {
+ await signOut(auth);
+ alert('Your portal access has been deactivated. Contact your supervisor for assistance.');
+ return;
+ }
+ if (aData.portalExpiresAt && aData.portalExpiresAt < today) {
+ await signOut(auth);
+ alert('Your portal access has expired. Contact your supervisor to renew access.');
+ return;
+ }
  // Populate allAssociates so manager name lookup works in the portal
  if (!allAssociates.length) {
  const allSnap = await getDocs(collection(db, 'associates'));
  allAssociates = allSnap.docs.map(d => ({ id: d.id, ...d.data() }));
  }
  showAssociatePortal();
- loadAssociatePortal(assocDoc.id, assocDoc.data());
+ loadAssociatePortal(assocDoc.id, aData);
  return;
  }
 
  const snap = await getDoc(doc(db, 'users', user.uid));
  if (snap.exists()) {
  const data = snap.data();
+ // Enforce deactivation / expiry for team accounts
+ const today = new Date().toISOString().slice(0,10);
+ if (data.disabled) {
+ await signOut(auth);
+ alert('Your account has been deactivated. Contact an admin for assistance.');
+ return;
+ }
+ if (data.expiresAt && data.expiresAt < today) {
+ await signOut(auth);
+ alert('Your account access has expired. Contact an admin to renew access.');
+ return;
+ }
  currentUserRole = data.role || 'viewer';
  // If stored displayName looks like an email, prefer Firebase Auth displayName
  let resolvedName = data.displayName || '';
@@ -8513,33 +8538,48 @@ window.loadAdminPanel = () => {
 
  activeListeners['users'] = onSnapshot(collection(db, 'users'), (snap) => {
  const tbody = document.getElementById('usersTbody');
- if (snap.empty) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No users</td></tr>'; return; }
+ if (snap.empty) { tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No users</td></tr>'; return; }
+ const today = new Date().toISOString().slice(0,10);
  const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
- tbody.innerHTML = users.map(u => `<tr>
- <td class="fw-semibold">${escapeHtml(u.displayName || '-')}</td>
- <td class="text-muted small">${escapeHtml(u.email || '-')}</td>
- <td><span class="badge ${u.role === 'admin' ? 'bg-danger' : u.role === 'om' ? 'bg-warning text-dark' : u.role === 'supervisor' ? 'bg-primary' : u.role === 'lead' ? 'bg-success' : 'bg-secondary'}">${u.role === 'om' ? 'OM' : capitalize(u.role || 'viewer')}</span></td>
+ tbody.innerHTML = users.map(u => {
+ const isExpired = u.expiresAt && u.expiresAt < today;
+ const isDisabled = u.disabled || isExpired;
+ const isSelf = u.uid === currentUser?.uid;
+ const statusBadge = u.disabled
+ ? '<span class="badge bg-secondary">Inactive</span>'
+ : isExpired
+ ? '<span class="badge" style="background:#dc2626">Expired</span>'
+ : '<span class="badge bg-success">Active</span>';
+ const roleBadge = `<span class="badge ${u.role==='admin'?'bg-danger':u.role==='om'?'bg-warning text-dark':u.role==='supervisor'?'bg-primary':u.role==='lead'?'bg-success':'bg-secondary'}">${u.role==='om'?'OM':capitalize(u.role||'viewer')}</span>`;
+ return `<tr style="${isDisabled?'opacity:0.55':''}">
+ <td class="fw-semibold">${escapeHtml(u.displayName||'-')}</td>
+ <td class="text-muted small">${escapeHtml(u.email||'-')}</td>
+ <td>${roleBadge}</td>
  <td>
  <div class="d-flex align-items-center gap-1">
- ${u._pw ? `
- <input type="password" value="${escapeHtml(u._pw)}" readonly class="form-control form-control-sm" style="width:110px;font-size:0.78rem" id="pw-${u.uid}">
- <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="togglePwView('${u.uid}')" title="Show/hide"><i class="fas fa-eye" style="font-size:0.72rem"></i></button>
- ` : ''}
- <button class="btn btn-sm btn-outline-warning py-0 px-2" onclick="editUserPw('${u.uid}')" title="${u._pw ? 'Update password' : 'Set password'}"><i class="fas fa-${u._pw ? 'sync-alt' : 'key'}" style="font-size:0.72rem"></i></button>
+ ${u._pw?`<input type="password" value="${escapeHtml(u._pw)}" readonly class="form-control form-control-sm" style="width:110px;font-size:0.78rem" id="pw-${u.uid}"><button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="togglePwView('${u.uid}')" title="Show/hide"><i class="fas fa-eye" style="font-size:0.72rem"></i></button>`:''}
+ <button class="btn btn-sm btn-outline-warning py-0 px-2" onclick="editUserPw('${u.uid}')" title="${u._pw?'Update password':'Set password'}"><i class="fas fa-${u._pw?'sync-alt':'key'}" style="font-size:0.72rem"></i></button>
  </div>
  </td>
- <td class="text-muted small">${formatDate(u.createdAt)}</td>
+ <td>${statusBadge}</td>
  <td>
- <select class="form-select form-select-sm d-inline-block me-1" style="width:auto" onchange="setRole('${u.uid}',this.value)" ${u.uid === currentUser?.uid ? 'disabled' : ''}>
- <option value="viewer" ${(u.role||'viewer')==='viewer' ? 'selected' : ''}>Viewer</option>
- <option value="lead" ${(u.role||'viewer')==='lead' ? 'selected' : ''}>Lead</option>
- <option value="supervisor" ${(u.role||'viewer')==='supervisor' ? 'selected' : ''}>Supervisor</option>
- <option value="om" ${(u.role||'viewer')==='om' ? 'selected' : ''}>OM</option>
- <option value="admin" ${(u.role||'viewer')==='admin' ? 'selected' : ''}>Admin</option>
- </select>
- ${u.uid !== currentUser?.uid ? `<button class="btn btn-sm btn-outline-danger py-0" onclick="removeUser('${u.uid}')"><i class="fas fa-trash-alt"></i></button>` : ''}
+ <input type="date" class="form-control form-control-sm" style="width:130px;font-size:0.78rem" value="${u.expiresAt||''}" onchange="setUserExpiry('${u.uid}',this.value)" title="Leave blank for no expiry">
  </td>
- </tr>`).join('');
+ <td>
+ <div class="d-flex gap-1 align-items-center flex-wrap">
+ <select class="form-select form-select-sm" style="width:auto" onchange="setRole('${u.uid}',this.value)" ${isSelf?'disabled':''}>
+ <option value="viewer" ${(u.role||'viewer')==='viewer'?'selected':''}>Viewer</option>
+ <option value="lead" ${(u.role||'viewer')==='lead'?'selected':''}>Lead</option>
+ <option value="supervisor" ${(u.role||'viewer')==='supervisor'?'selected':''}>Supervisor</option>
+ <option value="om" ${(u.role||'viewer')==='om'?'selected':''}>OM</option>
+ <option value="admin" ${(u.role||'viewer')==='admin'?'selected':''}>Admin</option>
+ </select>
+ ${!isSelf?`<button class="btn btn-sm py-0 px-2" style="background:${u.disabled?'#22c55e':'#f59e0b'};color:#fff;border:none;font-size:0.72rem" onclick="${u.disabled?'reactivateUser':'deactivateUser'}('${u.uid}')" title="${u.disabled?'Reactivate':'Deactivate'}">${u.disabled?'↺ Reactivate':'⊘ Deactivate'}</button>`:''}
+ ${!isSelf?`<button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="removeUser('${u.uid}')" title="Delete"><i class="fas fa-trash-alt" style="font-size:0.72rem"></i></button>`:''}
+ </div>
+ </td>
+ </tr>`;
+ }).join('');
  });
  loadOneOnOneRequests();
  loadPendingBadges();
@@ -8549,6 +8589,7 @@ window.loadAdminPanel = () => {
  loadAttResetPanel();
  loadCertResetPanel();
  loadPendingAccessRequests();
+ loadAssociateAccounts();
 };
 
 // ─── Tab Visibility ───────────────────────────────────────────────────
@@ -9489,6 +9530,67 @@ window.setRole = async (uid, newRole) => {
 window.removeUser = async (uid) => {
  if (!confirm('Remove this user?')) return;
  await deleteDoc(doc(db, 'users', uid));
+};
+
+window.deactivateUser = async (uid) => {
+ if (!confirm('Deactivate this account? The user will be signed out on their next login.')) return;
+ await updateDoc(doc(db, 'users', uid), { disabled: true });
+};
+window.reactivateUser = async (uid) => {
+ await updateDoc(doc(db, 'users', uid), { disabled: false });
+};
+window.setUserExpiry = async (uid, date) => {
+ await updateDoc(doc(db, 'users', uid), { expiresAt: date || null });
+};
+
+// ─── Associate Portal Accounts ────────────────────────────────────────
+window.loadAssociateAccounts = async () => {
+ const tbody = document.getElementById('assocAccountsTbody');
+ if (!tbody) return;
+ tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-2">Loading…</td></tr>';
+ const snap = await getDocs(query(collection(db, 'associates'), where('viewerUid', '!=', null)));
+ const today = new Date().toISOString().slice(0,10);
+ if (snap.empty) {
+ tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No associate portal accounts yet.</td></tr>';
+ return;
+ }
+ const rows = snap.docs.map(d => {
+ const a = d.data();
+ const isExpired = a.portalExpiresAt && a.portalExpiresAt < today;
+ const isDisabled = a.portalDisabled || isExpired;
+ const statusBadge = a.portalDisabled
+ ? '<span class="badge bg-secondary">Inactive</span>'
+ : isExpired
+ ? '<span class="badge" style="background:#dc2626">Expired</span>'
+ : '<span class="badge bg-success">Active</span>';
+ return `<tr style="${isDisabled?'opacity:0.55':''}">
+ <td class="fw-semibold">${escapeHtml(a.name||'-')}</td>
+ <td class="text-muted small">${escapeHtml(a.portalEmail||'-')}</td>
+ <td>${statusBadge}</td>
+ <td>
+ <input type="date" class="form-control form-control-sm" style="width:130px;font-size:0.78rem" value="${a.portalExpiresAt||''}" onchange="setAssocExpiry('${d.id}',this.value)" title="Leave blank for no expiry">
+ </td>
+ <td>
+ <div class="d-flex gap-1">
+ <button class="btn btn-sm py-0 px-2" style="background:${a.portalDisabled?'#22c55e':'#f59e0b'};color:#fff;border:none;font-size:0.72rem" onclick="${a.portalDisabled?'reactivateAssoc':'deactivateAssoc'}('${d.id}')">${a.portalDisabled?'↺ Reactivate':'⊘ Deactivate'}</button>
+ <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="revokePortalAccess('${d.id}')" title="Revoke portal access entirely"><i class="fas fa-user-slash" style="font-size:0.72rem"></i></button>
+ </div>
+ </td>
+ </tr>`;
+ });
+ tbody.innerHTML = rows.join('');
+};
+window.setAssocExpiry = async (assocId, date) => {
+ await updateDoc(doc(db, 'associates', assocId), { portalExpiresAt: date || null });
+};
+window.deactivateAssoc = async (assocId) => {
+ if (!confirm('Deactivate this associate\'s portal access? They will be signed out on next login.')) return;
+ await updateDoc(doc(db, 'associates', assocId), { portalDisabled: true });
+ loadAssociateAccounts();
+};
+window.reactivateAssoc = async (assocId) => {
+ await updateDoc(doc(db, 'associates', assocId), { portalDisabled: false });
+ loadAssociateAccounts();
 };
 
 // ─── Import Snapshot ──────────────────────────────────────────────────
@@ -13182,8 +13284,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <h6 class="fw-bold mb-3" style="color:var(--navy)">Team Accounts</h6>
  <div class="table-responsive">
  <table class="table table-hover small mb-0">
- <thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Password</th><th>Added</th><th>Actions</th></tr></thead>
- <tbody id="usersTbody"><tr><td colspan="6" class="text-center text-muted py-3">Loading…</td></tr></tbody>
+ <thead class="table-light"><tr><th>Name</th><th>Email</th><th>Role</th><th>Password</th><th>Status</th><th>Expires</th><th>Actions</th></tr></thead>
+ <tbody id="usersTbody"><tr><td colspan="7" class="text-center text-muted py-3">Loading…</td></tr></tbody>
  </table>
  </div>
  <div class="mt-3 p-3 bg-light rounded small text-muted">
@@ -13193,6 +13295,21 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <span class="badge bg-primary ms-1">Lead</span> add/edit associates, add notes, nominate badges, manage certs, log attendance, add credentials.
  <span class="badge bg-secondary ms-1">Viewer</span> read-only. Click the role dropdown to change.
  </div>
+ </div>
+
+ <!-- Associate Portal Accounts -->
+ <div class="admin-card admin-only-section mt-3">
+ <div class="d-flex justify-content-between align-items-center mb-3">
+ <h6 class="fw-bold mb-0" style="color:var(--navy)"><i class="fas fa-id-badge me-2" style="color:var(--orange)"></i>Associate Portal Accounts</h6>
+ <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="loadAssociateAccounts()" title="Refresh"><i class="fas fa-sync-alt me-1" style="font-size:0.72rem"></i>Refresh</button>
+ </div>
+ <div class="table-responsive">
+ <table class="table table-hover small mb-0">
+ <thead class="table-light"><tr><th>Associate Name</th><th>Portal Email</th><th>Status</th><th>Expires</th><th>Actions</th></tr></thead>
+ <tbody id="assocAccountsTbody"><tr><td colspan="5" class="text-center text-muted py-3">Loading…</td></tr></tbody>
+ </table>
+ </div>
+ <p class="text-muted small mt-2 mb-0"><i class="fas fa-info-circle me-1"></i>These are associates who have been granted portal login access. Manage initial access from each associate's profile page.</p>
  </div>
  </div>
 
