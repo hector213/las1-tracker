@@ -678,7 +678,7 @@ onAuthStateChanged(auth, async (user) => {
  alert('Your portal access has been deactivated. Contact your supervisor for assistance.');
  return;
  }
- if (aData.portalExpiresAt && aData.portalExpiresAt < today) {
+ if (aData.portalExpiresAt && aData.portalExpiresAt !== '' && aData.portalExpiresAt < today) {
  await signOut(auth);
  alert('Your portal access has expired. Contact your supervisor to renew access.');
  return;
@@ -703,7 +703,7 @@ onAuthStateChanged(auth, async (user) => {
  alert('Your account has been deactivated. Contact an admin for assistance.');
  return;
  }
- if (data.expiresAt && data.expiresAt < today) {
+ if (data.expiresAt && data.expiresAt !== '' && data.expiresAt < today) {
  await signOut(auth);
  alert('Your account access has expired. Contact an admin to renew access.');
  return;
@@ -8542,7 +8542,7 @@ window.loadAdminPanel = () => {
  const today = new Date().toISOString().slice(0,10);
  const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
  tbody.innerHTML = users.map(u => {
- const isExpired = u.expiresAt && u.expiresAt < today;
+ const isExpired = u.expiresAt && u.expiresAt !== '' && u.expiresAt < today;
  const isDisabled = u.disabled || isExpired;
  const isSelf = u.uid === currentUser?.uid;
  const statusBadge = u.disabled
@@ -9556,7 +9556,7 @@ window.loadAssociateAccounts = async () => {
  }
  const rows = snap.docs.map(d => {
  const a = d.data();
- const isExpired = a.portalExpiresAt && a.portalExpiresAt < today;
+ const isExpired = a.portalExpiresAt && a.portalExpiresAt !== '' && a.portalExpiresAt < today;
  const isDisabled = a.portalDisabled || isExpired;
  const statusBadge = a.portalDisabled
  ? '<span class="badge bg-secondary">Inactive</span>'
@@ -13909,6 +13909,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div class="field"><label>Core shift length (hours)</label><input type="number" step="0.25" id="set-shift-length"></div>
  <div class="field"><label>Extra-hour grace window (hours)</label><input type="number" step="0.25" id="set-shift-grace"></div>
  <div class="field"><label>Total production hours (for split auto-balance)</label><input type="number" step="0.01" id="set-production-hours"></div>
+ <div class="field"><label>Pivot tolerance (units behind before recommending pivot)</label><input type="number" min="1" id="set-pivot-tolerance" value="75"></div>
  <button class="btn" id="save-settings-btn">Save settings</button>
  </div>
  <div class="note">
@@ -15111,7 +15112,7 @@ const LB_FUNCTIONS = {
 };
 
 /* Default calc settings (overridden by /settings/lb_appSettings once saved) */
-let lb_appSettings = { avgUphWindowShifts: 15, trendRecentDays: 14, trendPriorDays: 14, shiftStartHour: 17, shiftLengthHours: 10.5, shiftGraceHours: 1, productionHoursPerShift: 9.16 };
+let lb_appSettings = { avgUphWindowShifts: 15, trendRecentDays: 14, trendPriorDays: 14, shiftStartHour: 17, shiftLengthHours: 10.5, shiftGraceHours: 1, productionHoursPerShift: 9.16, pivotToleranceUnits: 75 };
 
 /* Zones - purely a visual grouping of lb_stations on the Board (matches the floor-layout mockup).
  "column" pins a zone to a specific column in the 4-column floor grid so Replen/Consolidation
@@ -15310,6 +15311,7 @@ function lb_startListeners() {
  document.getElementById("set-shift-length").value = lb_appSettings.shiftLengthHours;
  document.getElementById("set-shift-grace").value = lb_appSettings.shiftGraceHours;
  document.getElementById("set-production-hours").value = lb_appSettings.productionHoursPerShift;
+ document.getElementById("set-pivot-tolerance").value = lb_appSettings.pivotToleranceUnits;
  lb_renderBoard();
  });
 
@@ -15876,12 +15878,12 @@ function lb_currentShiftPeriodLabel(elapsedMinNow) {
  ====================================================================== */
 // Status banner color, driven purely by variance vs ideal - independent of the pivot
 // recommendation text below it, so the banner always reflects the same 3-tier read: at/above
-// ideal is green, behind by up to 150 units is yellow (normal noise), behind by more than 150
+// ideal is green, behind by up to the pivot tolerance is yellow (normal noise), beyond that
 // is red. Matches the Labor Pivot Analysis table's own thresholds (lb_renderLaborPivot()).
 function lb_bannerStateForVariance(v) {
  if (v >= 10) return { cls: "ahead", label: `ON PACE | AHEAD BY ${Math.round(v).toLocaleString()} UNITS` };
  if (v >= 0) return { cls: "on-pace", label: `ON PACE | VARIANCE: +${Math.round(v).toLocaleString()}` };
- if (v > -151) return { cls: "caution", label: `ON PACE | VARIANCE: ${Math.round(v).toLocaleString()}` };
+ if (v > -(lb_appSettings.pivotToleranceUnits + 1)) return { cls: "caution", label: `ON PACE | VARIANCE: ${Math.round(v).toLocaleString()}` };
  return { cls: "behind", label: `BEHIND BY ${Math.abs(Math.round(v)).toLocaleString()} UNITS - PIVOT NEEDED` };
 }
 
@@ -15984,7 +15986,7 @@ function lb_renderPivotHero({ actual, totalGoal, totalProjected, headcount, uphS
  // production time is left via rateNeeded/prodHoursLeft - less time left means a higher rate
  // is needed to recover, which naturally recommends more people), it's just not surfaced as a
  // recommendation until the gap actually crosses -150.
- const PIVOT_VARIANCE_THRESHOLD = -150;
+ const PIVOT_VARIANCE_THRESHOLD = -(lb_appSettings.pivotToleranceUnits || 75);
  const remainingUnits = Math.max(0, totalGoal - actual);
  const rateNeeded = prodHoursLeft > 0 ? remainingUnits / prodHoursLeft : 0;
  const extraPeople = avgPersonUph > 0 && prodHoursLeft > 0 ? Math.ceil((rateNeeded - liveUph) / avgPersonUph) : 0;
@@ -16272,7 +16274,7 @@ function lb_renderLaborPivot(elapsedMinNow, pivotByFn) {
  // behind but within 150 units is yellow (normal noise, no pivot yet), beyond 150 behind is red
  // and calls for a pivot - headcount needed is driven by time left in the shift and the UPH
  // still required to close the gap, same math as the Combined Pack box.
- const ROW_PIVOT_VARIANCE_THRESHOLD = -150;
+ const ROW_PIVOT_VARIANCE_THRESHOLD = -(lb_appSettings.pivotToleranceUnits || 75);
 
  rows.forEach(r => {
  const remainingUnits = Math.max(0, r.targetUnits - r.actual);
@@ -17807,12 +17809,14 @@ document.getElementById("save-settings-btn").addEventListener("click", async () 
  const shiftLengthHours = parseFloat(document.getElementById("set-shift-length").value);
  const shiftGraceHours = parseFloat(document.getElementById("set-shift-grace").value);
  const productionHoursPerShift = parseFloat(document.getElementById("set-production-hours").value);
+ const pivotToleranceUnits = parseInt(document.getElementById("set-pivot-tolerance").value) || 75;
  await lb_db.collection("lb_settings").doc("appSettings").set({
  avgUphWindowShifts, trendRecentDays, trendPriorDays,
  shiftStartHour: isNaN(shiftStartHour) ? 17 : shiftStartHour,
  shiftLengthHours: isNaN(shiftLengthHours) ? 10.5 : shiftLengthHours,
  shiftGraceHours: isNaN(shiftGraceHours) ? 1 : shiftGraceHours,
- productionHoursPerShift: isNaN(productionHoursPerShift) ? 9.16 : productionHoursPerShift
+ productionHoursPerShift: isNaN(productionHoursPerShift) ? 9.16 : productionHoursPerShift,
+ pivotToleranceUnits
  });
 });
 
