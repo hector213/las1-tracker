@@ -13884,7 +13884,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- SHIFT CULTURE VIEW -->
  <div id="shiftCultureView" class="view d-none">
- <div class="container-fluid py-3" style="max-width:960px">
 
  <!-- ── Challenger Initiative ───────────────────────── -->
  <div style="background:#111F30;border-radius:12px;padding:20px;margin-bottom:24px;font-family:inherit">
@@ -13912,8 +13911,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div style="border-radius:8px;overflow:hidden;border:2px solid #FF7C1F">
  <div style="height:240px;background:linear-gradient(180deg,#1a1200 0%,#3d2000 100%);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden">
  <span style="position:absolute;top:6px;left:6px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:3px;font-weight:600;background:#FF7C1F;color:#111F30">Challenger</span>
- <div id="sc-left-photo" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px">
- <div id="sc-left-initials" style="width:140px;height:140px;border-radius:50%;background:#FF7C1F22;border:3px solid #FF7C1F55;display:flex;align-items:center;justify-content:center;font-size:42px;font-weight:700;color:#FF7C1F">?</div>
+ <div id="sc-left-photo" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column">
+ <div id="sc-left-initials" style="font-size:96px;font-weight:900;color:#FF7C1F55;line-height:1;letter-spacing:-.02em;text-shadow:0 0 40px rgba(255,124,31,0.3)">?</div>
  </div>
  <div id="sc-left-img-wrap" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0"><img id="sc-left-img" src="" style="width:100%;height:100%;object-fit:cover;object-position:center 20%"></div>
  <div style="position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,#1B2D42)"></div>
@@ -13950,8 +13949,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div style="border-radius:8px;overflow:hidden;border:2px solid #004C80">
  <div style="height:240px;background:linear-gradient(180deg,#001629 0%,#003560 100%);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden">
  <span style="position:absolute;top:6px;right:6px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:3px;font-weight:600;background:#004C80;color:#C2ECFF">Redvest</span>
- <div id="sc-right-photo" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px">
- <div id="sc-right-initials" style="width:140px;height:140px;border-radius:50%;background:#004C8022;border:3px solid #004C8055;display:flex;align-items:center;justify-content:center;font-size:42px;font-weight:700;color:#6CD3FC">?</div>
+ <div id="sc-right-photo" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column">
+ <div id="sc-right-initials" style="font-size:96px;font-weight:900;color:#6CD3FC55;line-height:1;letter-spacing:-.02em;text-shadow:0 0 40px rgba(108,211,252,0.3)">?</div>
  </div>
  <div id="sc-right-img-wrap" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0"><img id="sc-right-img" src="" style="width:100%;height:100%;object-fit:cover;object-position:center 20%"></div>
  <div style="position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,#1B2D42)"></div>
@@ -13979,21 +13978,19 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div><!-- /fighters -->
 
  <!-- scores -->
- <div style="display:flex;align-items:stretch;justify-content:space-between;gap:8px;margin-bottom:10px" id="sc-score-row">
- <div id="sc-score-left" style="text-align:center;flex:1;background:#1B2D42;border-radius:8px;padding:20px 16px;display:flex;flex-direction:column;align-items:center;justify-content:center">
- <div style="font-size:10px;color:#3F444F;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Score</div>
- <div id="sc-score-left-pts" style="font-size:52px;font-weight:800;color:#FF7C1F;line-height:1">—</div>
- <div style="width:32px;height:3px;background:#FF7C1F44;border-radius:2px;margin:8px auto"></div>
- <div id="sc-score-left-name" style="font-size:13px;color:#C2ECFF;font-weight:600">Challenger</div>
+ <div id="sc-score-row" style="background:#1B2D42;border-radius:8px;margin-bottom:10px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:16px 20px">
+ <div id="sc-score-left" style="text-align:center">
+ <div style="font-size:9px;color:#3F444F;text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px">Score</div>
+ <div id="sc-score-left-pts" style="font-size:56px;font-weight:900;color:#FF7C1F;line-height:1;margin-bottom:6px">—</div>
+ <div id="sc-score-left-name" style="font-size:14px;color:#FF7C1F;font-weight:700">Challenger</div>
  </div>
- <div style="display:flex;align-items:center;justify-content:center;padding:0 4px">
- <div style="font-size:14px;color:#3F444F;font-weight:600;writing-mode:vertical-rl;letter-spacing:.15em;text-transform:uppercase">vs</div>
+ <div style="display:flex;align-items:center;justify-content:center;padding:0 16px">
+ <img src="https://firebasestorage.googleapis.com/v0/b/las1-tracker.firebasestorage.app/o/assets%2FStreet_Fighter_VS_logo.png?alt=media&token=d9fe5c0e-0590-4cf1-90a9-7da5b02fd447" alt="VS" style="width:40px;height:auto;opacity:0.5">
  </div>
- <div id="sc-score-right" style="text-align:center;flex:1;background:#1B2D42;border-radius:8px;padding:20px 16px;display:flex;flex-direction:column;align-items:center;justify-content:center">
- <div style="font-size:10px;color:#3F444F;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Score</div>
- <div id="sc-score-right-pts" style="font-size:52px;font-weight:800;color:#6CD3FC;line-height:1">—</div>
- <div style="width:32px;height:3px;background:#004C8044;border-radius:2px;margin:8px auto"></div>
- <div id="sc-score-right-name" style="font-size:13px;color:#C2ECFF;font-weight:600">Redvest</div>
+ <div id="sc-score-right" style="text-align:center">
+ <div style="font-size:9px;color:#3F444F;text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px">Score</div>
+ <div id="sc-score-right-pts" style="font-size:56px;font-weight:900;color:#6CD3FC;line-height:1;margin-bottom:6px">—</div>
+ <div id="sc-score-right-name" style="font-size:14px;color:#6CD3FC;font-weight:700">Redvest</div>
  </div>
  </div>
 
@@ -14146,7 +14143,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div class="modal-footer">
  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
  <button type="button" class="btn btn-orange" onclick="savePhoto()">Post</button>
- </div>
  </div>
  </div>
  </div>
