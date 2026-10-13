@@ -1403,7 +1403,19 @@ window.dismissNotifBanner = () => {
  if (chevron) chevron.textContent = '▾';
 };
 
+async function isTabAllowed(view) {
+ if (currentUserRole === 'admin') return true;
+ if (!CONTROLLABLE_TABS.includes(view)) return true;
+ const snap = await getDoc(doc(db, 'settings', 'tabs'));
+ const settings = snap.exists() ? snap.data() : {};
+ return settings[view] !== false;
+}
+
 function showView(view) {
+ // Guard: non-admins cannot access tabs that have been disabled
+ isTabAllowed(view).then(allowed => {
+ if (!allowed) { showView('dashboard'); return; }
+ });
  if (view === 'production' && typeof lb_init === 'function') { lb_init(); }
  if (view === 'shiftCulture') { if (window.loadShiftCulture) window.loadShiftCulture(); }
  document.querySelectorAll('.view').forEach(v => v.classList.add('d-none'));
@@ -1444,7 +1456,11 @@ async function autoRunAttendanceCheckIfNeeded() {
 }
 
 async function restoreLastView() {
- const view = sessionStorage.getItem('lastView') || 'dashboard';
+ let view = sessionStorage.getItem('lastView') || 'dashboard';
+ // If the stored view is a controllable tab that's been disabled, fall back to dashboard
+ if (CONTROLLABLE_TABS.includes(view) && !(await isTabAllowed(view))) {
+ view = 'dashboard';
+ }
  if (view === 'profile') {
  const assocId = sessionStorage.getItem('lastAssocId');
  if (assocId) { await openProfile(assocId); return; }
@@ -11196,7 +11212,7 @@ function renderPhotoWall() {
  const imgH = i === 0 ? '220px' : '110px';
  return `<div style="border-radius:10px;overflow:hidden;border:.5px solid #e5e7eb;background:#f9fafb;${featuredStyle}">
  <div style="height:${imgH};position:relative;overflow:hidden;background:#f3f4f6;display:flex;align-items:center;justify-content:center">
- ${p.photoUrl ? `<img src="${escapeHtml(p.photoUrl)}" style="width:100%;height:100%;object-fit:contain;background:#111;object-position:center" loading="lazy">` : `<i class="fas fa-image" style="font-size:${i===0?'36':'22'}px;color:#d1d5db"></i>`}
+ ${p.photoUrl ? `<img src="${escapeHtml(p.photoUrl)}" onclick="openScreenshotLightbox('${escapeHtml(p.photoUrl)}')" style="width:100%;height:100%;object-fit:cover;object-position:center;cursor:zoom-in" loading="lazy" title="Click to enlarge">` : `<i class="fas fa-image" style="font-size:${i===0?'36':'22'}px;color:#d1d5db"></i>`}
  <div style="position:absolute;top:8px;left:8px"><span style="font-size:9px;padding:2px 7px;border-radius:20px;font-weight:500;${tagStyle}">${escapeHtml(p.category||'Shift')}</span></div>
  ${canEdit ? `<button onclick="deletePhoto('${p.id}')" style="position:absolute;top:6px;right:6px;background:#111F3099;border:none;color:#9DA0B2;border-radius:3px;font-size:10px;padding:2px 6px;cursor:pointer" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
  </div>
@@ -13869,9 +13885,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
 
  <!-- function bar -->
- <div id="sc-ch-funcbar" style="background:#1B2D42;border-radius:6px;padding:8px 12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
+ <div id="sc-ch-funcbar" style="background:#1B2D42;border-radius:6px;padding:10px 12px;margin-bottom:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:3px">
  <span style="font-size:10px;color:#3F444F;text-transform:uppercase;letter-spacing:.08em">Function</span>
- <span id="sc-ch-func" style="font-size:12px;color:#C2ECFF">—</span>
+ <span id="sc-ch-func" style="font-size:17px;color:#C2ECFF;font-weight:500">—</span>
  </div>
 
  <!-- fighters -->
@@ -13879,29 +13895,29 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- left: challenger -->
  <div style="border-radius:8px;overflow:hidden;border:2px solid #FF7C1F">
- <div style="height:140px;background:linear-gradient(180deg,#1a1200 0%,#3d2000 100%);position:relative;display:flex;align-items:flex-end;justify-content:center;overflow:hidden">
+ <div style="height:200px;background:linear-gradient(180deg,#1a1200 0%,#3d2000 100%);position:relative;display:flex;align-items:flex-end;justify-content:center;overflow:hidden">
  <span style="position:absolute;top:6px;left:6px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:3px;font-weight:600;background:#FF7C1F;color:#111F30">Challenger</span>
  <div id="sc-left-photo" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">
- <div id="sc-left-initials" style="width:72px;height:72px;border-radius:50%;background:#FF7C1F33;border:2px solid #FF7C1F44;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:500;color:#FF7C1F">?</div>
+ <div id="sc-left-initials" style="width:100px;height:100px;border-radius:50%;background:#FF7C1F33;border:2px solid #FF7C1F44;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:500;color:#FF7C1F">?</div>
  </div>
  <div id="sc-left-img-wrap" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0"><img id="sc-left-img" src="" style="width:100%;height:100%;object-fit:cover;object-position:top"></div>
  <div style="position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,#1B2D42)"></div>
  <label id="sc-left-upload-btn" style="position:absolute;bottom:6px;right:6px;font-size:9px;padding:2px 7px;border-radius:3px;background:#111F3099;color:#9DA0B2;border:1px solid #3F444F;cursor:pointer;display:none"><i class="fas fa-camera me-1"></i>Photo<input type="file" accept="image/*" style="display:none" onchange="uploadChallengerPhoto('left',this)"></label>
  </div>
  <div style="background:#1B2D42;padding:10px 12px">
- <div id="sc-left-name" style="font-size:15px;font-weight:500;color:#fff;margin-bottom:2px">—</div>
- <div style="margin-bottom:8px"><span id="sc-left-role-pill" style="font-size:9px;padding:1px 6px;border-radius:20px;background:#FF7C1F22;color:#FF7C1F;border:1px solid #FF7C1F44">Associate</span></div>
+ <div id="sc-left-name" style="font-size:26px;font-weight:700;color:#FF7C1F;margin-bottom:3px">—</div>
+ <div style="margin-bottom:10px"><span id="sc-left-role-pill" style="font-size:10px;padding:2px 8px;border-radius:20px;background:#FF7C1F22;color:#FF7C1F;border:1px solid #FF7C1F44">Associate</span></div>
  <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
- <span style="font-size:10px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:44px">UPH</span>
- <div style="flex:1;height:5px;background:#111F30;border-radius:3px;overflow:hidden"><div id="sc-left-uph-bar" style="height:100%;background:#FF7C1F;border-radius:3px;width:0%"></div></div>
- <span id="sc-left-uph-val" style="font-size:11px;color:#C2ECFF;min-width:36px;text-align:right">—</span>
+ <span style="font-size:11px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:48px">UPH</span>
+ <div style="flex:1;height:6px;background:#111F30;border-radius:3px;overflow:hidden"><div id="sc-left-uph-bar" style="height:100%;background:#FF7C1F;border-radius:3px;width:0%"></div></div>
+ <span id="sc-left-uph-val" style="font-size:13px;color:#C2ECFF;min-width:40px;text-align:right;font-weight:500">—</span>
  <span id="sc-left-uph-pts" style="font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;min-width:30px;text-align:center"></span>
  </div>
- <div style="font-size:9px;color:#3F444F;margin-top:-1px;margin-bottom:6px">units per hour</div>
+ <div style="font-size:9px;color:#3F444F;margin-top:-1px;margin-bottom:8px">units per hour</div>
  <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
- <span style="font-size:10px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:44px">Units</span>
- <div style="flex:1;height:5px;background:#111F30;border-radius:3px;overflow:hidden"><div id="sc-left-units-bar" style="height:100%;background:#FF7C1F;border-radius:3px;width:0%"></div></div>
- <span id="sc-left-units-val" style="font-size:11px;color:#C2ECFF;min-width:36px;text-align:right">—</span>
+ <span style="font-size:11px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:48px">Units</span>
+ <div style="flex:1;height:6px;background:#111F30;border-radius:3px;overflow:hidden"><div id="sc-left-units-bar" style="height:100%;background:#FF7C1F;border-radius:3px;width:0%"></div></div>
+ <span id="sc-left-units-val" style="font-size:13px;color:#C2ECFF;min-width:40px;text-align:right;font-weight:500">—</span>
  <span id="sc-left-units-pts" style="font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;min-width:30px;text-align:center"></span>
  </div>
  <div style="font-size:9px;color:#3F444F;margin-top:-1px">units in 2 hrs</div>
@@ -13909,37 +13925,37 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
 
  <!-- VS -->
- <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
- <div style="width:1px;height:24px;background:#1B2D42"></div>
- <img src="https://firebasestorage.googleapis.com/v0/b/las1-tracker.firebasestorage.app/o/assets%2FStreet_Fighter_VS_logo.png?alt=media&token=d9fe5c0e-0590-4cf1-90a9-7da5b02fd447" alt="VS" style="width:64px;height:auto;filter:drop-shadow(0 0 8px rgba(255,124,31,0.6))">
- <div style="width:1px;height:24px;background:#1B2D42"></div>
+ <div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:44px">
+ <div style="width:1px;height:16px;background:#1B2D42"></div>
+ <img src="https://firebasestorage.googleapis.com/v0/b/las1-tracker.firebasestorage.app/o/assets%2FStreet_Fighter_VS_logo.png?alt=media&token=d9fe5c0e-0590-4cf1-90a9-7da5b02fd447" alt="VS" style="width:44px;height:auto;filter:drop-shadow(0 0 8px rgba(255,124,31,0.6))">
+ <div style="width:1px;height:16px;background:#1B2D42"></div>
  </div>
 
  <!-- right: redvest -->
  <div style="border-radius:8px;overflow:hidden;border:2px solid #004C80">
- <div style="height:140px;background:linear-gradient(180deg,#001629 0%,#003560 100%);position:relative;display:flex;align-items:flex-end;justify-content:center;overflow:hidden">
+ <div style="height:200px;background:linear-gradient(180deg,#001629 0%,#003560 100%);position:relative;display:flex;align-items:flex-end;justify-content:center;overflow:hidden">
  <span style="position:absolute;top:6px;right:6px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:3px;font-weight:600;background:#004C80;color:#C2ECFF">Redvest</span>
  <div id="sc-right-photo" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">
- <div id="sc-right-initials" style="width:72px;height:72px;border-radius:50%;background:#004C8033;border:2px solid #004C8044;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:500;color:#6CD3FC">?</div>
+ <div id="sc-right-initials" style="width:100px;height:100px;border-radius:50%;background:#004C8033;border:2px solid #004C8044;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:500;color:#6CD3FC">?</div>
  </div>
  <div id="sc-right-img-wrap" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0"><img id="sc-right-img" src="" style="width:100%;height:100%;object-fit:cover;object-position:top"></div>
  <div style="position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,#1B2D42)"></div>
  <label id="sc-right-upload-btn" style="position:absolute;bottom:6px;left:6px;font-size:9px;padding:2px 7px;border-radius:3px;background:#111F3099;color:#9DA0B2;border:1px solid #3F444F;cursor:pointer;display:none"><i class="fas fa-camera me-1"></i>Photo<input type="file" accept="image/*" style="display:none" onchange="uploadChallengerPhoto('right',this)"></label>
  </div>
  <div style="background:#1B2D42;padding:10px 12px">
- <div id="sc-right-name" style="font-size:15px;font-weight:500;color:#fff;margin-bottom:2px;text-align:right">—</div>
- <div style="margin-bottom:8px;text-align:right"><span id="sc-right-role-pill" style="font-size:9px;padding:1px 6px;border-radius:20px;background:#004C8033;color:#6CD3FC;border:1px solid #004C8066">Lead</span></div>
+ <div id="sc-right-name" style="font-size:26px;font-weight:700;color:#6CD3FC;margin-bottom:3px;text-align:right">—</div>
+ <div style="margin-bottom:10px;text-align:right"><span id="sc-right-role-pill" style="font-size:10px;padding:2px 8px;border-radius:20px;background:#004C8033;color:#6CD3FC;border:1px solid #004C8066">Lead</span></div>
  <div style="display:flex;flex-direction:row-reverse;align-items:center;gap:6px;margin-bottom:3px">
- <span style="font-size:10px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:44px;text-align:right">UPH</span>
- <div style="flex:1;height:5px;background:#111F30;border-radius:3px;overflow:hidden"><div id="sc-right-uph-bar" style="height:100%;background:#004C80;border-radius:3px;width:0%;margin-left:auto"></div></div>
- <span id="sc-right-uph-val" style="font-size:11px;color:#C2ECFF;min-width:36px;text-align:left">—</span>
+ <span style="font-size:11px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:48px;text-align:right">UPH</span>
+ <div style="flex:1;height:6px;background:#111F30;border-radius:3px;overflow:hidden"><div id="sc-right-uph-bar" style="height:100%;background:#004C80;border-radius:3px;width:0%;margin-left:auto"></div></div>
+ <span id="sc-right-uph-val" style="font-size:13px;color:#C2ECFF;min-width:40px;text-align:left;font-weight:500">—</span>
  <span id="sc-right-uph-pts" style="font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;min-width:30px;text-align:center"></span>
  </div>
- <div style="font-size:9px;color:#3F444F;margin-top:-1px;margin-bottom:6px;text-align:right">units per hour</div>
+ <div style="font-size:9px;color:#3F444F;margin-top:-1px;margin-bottom:8px;text-align:right">units per hour</div>
  <div style="display:flex;flex-direction:row-reverse;align-items:center;gap:6px;margin-bottom:3px">
- <span style="font-size:10px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:44px;text-align:right">Units</span>
- <div style="flex:1;height:5px;background:#111F30;border-radius:3px;overflow:hidden"><div id="sc-right-units-bar" style="height:100%;background:#004C80;border-radius:3px;width:0%;margin-left:auto"></div></div>
- <span id="sc-right-units-val" style="font-size:11px;color:#C2ECFF;min-width:36px;text-align:left">—</span>
+ <span style="font-size:11px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:48px;text-align:right">Units</span>
+ <div style="flex:1;height:6px;background:#111F30;border-radius:3px;overflow:hidden"><div id="sc-right-units-bar" style="height:100%;background:#004C80;border-radius:3px;width:0%;margin-left:auto"></div></div>
+ <span id="sc-right-units-val" style="font-size:13px;color:#C2ECFF;min-width:40px;text-align:left;font-weight:500">—</span>
  <span id="sc-right-units-pts" style="font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;min-width:30px;text-align:center"></span>
  </div>
  <div style="font-size:9px;color:#3F444F;margin-top:-1px;text-align:right">units in 2 hrs</div>
@@ -13949,14 +13965,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- scores -->
  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px" id="sc-score-row">
- <div id="sc-score-left" style="text-align:center;flex:1;background:#1B2D42;border-radius:8px;padding:10px 8px">
- <div id="sc-score-left-pts" style="font-size:28px;font-weight:500;color:#FF7C1F;line-height:1">—</div>
- <div id="sc-score-left-name" style="font-size:10px;color:#9DA0B2;margin-top:4px">Challenger</div>
+ <div id="sc-score-left" style="text-align:center;flex:1;background:#1B2D42;border-radius:8px;padding:16px 12px">
+ <div id="sc-score-left-pts" style="font-size:40px;font-weight:700;color:#FF7C1F;line-height:1">—</div>
+ <div id="sc-score-left-name" style="font-size:12px;color:#9DA0B2;margin-top:6px;font-weight:500">Challenger</div>
  </div>
- <div style="font-size:14px;color:#3F444F">—</div>
- <div id="sc-score-right" style="text-align:center;flex:1;background:#1B2D42;border-radius:8px;padding:10px 8px">
- <div id="sc-score-right-pts" style="font-size:28px;font-weight:500;color:#6CD3FC;line-height:1">—</div>
- <div id="sc-score-right-name" style="font-size:10px;color:#9DA0B2;margin-top:4px">Redvest</div>
+ <div style="font-size:18px;color:#3F444F;font-weight:600">vs</div>
+ <div id="sc-score-right" style="text-align:center;flex:1;background:#1B2D42;border-radius:8px;padding:16px 12px">
+ <div id="sc-score-right-pts" style="font-size:40px;font-weight:700;color:#6CD3FC;line-height:1">—</div>
+ <div id="sc-score-right-name" style="font-size:12px;color:#9DA0B2;margin-top:6px;font-weight:500">Redvest</div>
  </div>
  </div>
 
