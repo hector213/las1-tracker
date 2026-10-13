@@ -10953,6 +10953,8 @@ function renderChallenger(d) {
 
  // left fighter
  document.getElementById('sc-left-name').textContent = d.leftName || '—';
+ const lQuoteEl = document.getElementById('sc-left-quote');
+ if (lQuoteEl) { lQuoteEl.textContent = d.leftQuote ? `"${d.leftQuote}"` : ''; lQuoteEl.style.display = d.leftQuote ? 'block' : 'none'; }
  document.getElementById('sc-left-initials').textContent = initials(d.leftName);
  document.getElementById('sc-score-left-name').textContent = d.leftName || 'Challenger';
  if (d.leftPhotoUrl) {
@@ -10963,6 +10965,8 @@ function renderChallenger(d) {
 
  // right fighter
  document.getElementById('sc-right-name').textContent = d.rightName || '—';
+ const rQuoteEl = document.getElementById('sc-right-quote');
+ if (rQuoteEl) { rQuoteEl.textContent = d.rightQuote ? `"${d.rightQuote}"` : ''; rQuoteEl.style.display = d.rightQuote ? 'block' : 'none'; }
  document.getElementById('sc-right-initials').textContent = initials(d.rightName);
  document.getElementById('sc-right-role-pill').textContent = d.rightRole || 'Lead';
  document.getElementById('sc-score-right-name').textContent = d.rightName || 'Redvest';
@@ -11078,7 +11082,9 @@ window.openChallengerModal = function() {
  if (!roleAtLeast('lead')) return;
  const d = _scChallengerData || {};
  document.getElementById('ch-left-name').value = d.leftName || '';
+ document.getElementById('ch-left-quote').value = d.leftQuote || '';
  document.getElementById('ch-right-name').value = d.rightName || '';
+ document.getElementById('ch-right-quote').value = d.rightQuote || '';
  document.getElementById('ch-right-role').value = d.rightRole || 'Lead';
  document.getElementById('ch-function').value = d.function || '';
  document.getElementById('ch-month').value = d.month || new Date().toLocaleString('default',{month:'long',year:'numeric'});
@@ -11093,7 +11099,9 @@ window.openChallengerModal = function() {
 window.saveChallenger = async function() {
  const data = {
  leftName: document.getElementById('ch-left-name').value.trim(),
+ leftQuote: document.getElementById('ch-left-quote').value.trim(),
  rightName: document.getElementById('ch-right-name').value.trim(),
+ rightQuote: document.getElementById('ch-right-quote').value.trim(),
  rightRole: document.getElementById('ch-right-role').value,
  function: document.getElementById('ch-function').value.trim(),
  month: document.getElementById('ch-month').value.trim(),
@@ -14011,6 +14019,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  <div style="background:#1B2D42;padding:10px 12px">
  <div id="sc-left-name" style="font-size:26px;font-weight:700;color:#FF7C1F;margin-bottom:3px">—</div>
+ <div id="sc-left-quote" style="display:none;font-size:11px;color:#FF7C1Faa;font-style:italic;margin-bottom:5px;line-height:1.3"></div>
  <div style="margin-bottom:10px"><span id="sc-left-role-pill" style="font-size:10px;padding:2px 8px;border-radius:20px;background:#FF7C1F22;color:#FF7C1F;border:1px solid #FF7C1F44">Associate</span></div>
  <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
  <span style="font-size:11px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:48px">UPH</span>
@@ -14044,6 +14053,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  <div style="background:#1B2D42;padding:10px 12px">
  <div id="sc-right-name" style="font-size:26px;font-weight:700;color:#6CD3FC;margin-bottom:3px;text-align:right">—</div>
+ <div id="sc-right-quote" style="display:none;font-size:11px;color:#6CD3FCaa;font-style:italic;margin-bottom:5px;line-height:1.3;text-align:right"></div>
  <div style="margin-bottom:10px;text-align:right"><span id="sc-right-role-pill" style="font-size:10px;padding:2px 8px;border-radius:20px;background:#004C8033;color:#6CD3FC;border:1px solid #004C8066">Lead</span></div>
  <div style="display:flex;flex-direction:row-reverse;align-items:center;gap:6px;margin-bottom:3px">
  <span style="font-size:11px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:48px;text-align:right">UPH</span>
@@ -14155,10 +14165,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div class="col-md-6">
  <label class="form-label fw-bold" style="color:#FF7C1F">Challenger (Associate)</label>
  <input type="text" id="ch-left-name" class="form-control" placeholder="Full name">
+ <input type="text" id="ch-left-quote" class="form-control mt-2" placeholder='Quote / trash talk (optional)' maxlength="80">
  </div>
  <div class="col-md-6">
  <label class="form-label fw-bold" style="color:#6CD3FC">Redvest</label>
  <input type="text" id="ch-right-name" class="form-control" placeholder="Full name">
+ <input type="text" id="ch-right-quote" class="form-control mt-2" placeholder='Quote / trash talk (optional)' maxlength="80">
  <select id="ch-right-role" class="form-select mt-2">
  <option value="Lead">Lead</option>
  <option value="Supervisor">Supervisor</option>
