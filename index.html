@@ -11223,23 +11223,24 @@ function renderPhotoWall() {
  const liked = (p.likes || []).includes(currentUser?.uid || currentUser?.email || '');
  const likeCount = (p.likes || []).length;
  const tagStyle = tagColors[p.category] || tagColors.Shift;
- const featuredStyle = i === 0 ? 'grid-column:span 2;grid-row:span 2;' : '';
- return `<div style="border-radius:10px;overflow:hidden;border:.5px solid #e5e7eb;background:#111;${featuredStyle}">
- <div style="position:relative;background:#111;">
- ${p.photoUrl ? `<img src="${escapeHtml(p.photoUrl)}" onclick="openScreenshotLightbox('${escapeHtml(p.photoUrl)}')" style="width:100%;height:auto;display:block;cursor:zoom-in" loading="lazy" title="Click to enlarge">` : `<div style="height:120px;display:flex;align-items:center;justify-content:center"><i class="fas fa-image" style="font-size:${i===0?'36':'22'}px;color:#555"></i></div>`}
+ return `<div style="break-inside:avoid;margin-bottom:10px;border-radius:10px;overflow:hidden;border:.5px solid #e5e7eb;background:#111;">
+ <div style="position:relative;">
+ ${p.photoUrl
+ ? `<img src="${escapeHtml(p.photoUrl)}" onclick="openScreenshotLightbox('${escapeHtml(p.photoUrl)}')" style="width:100%;height:auto;display:block;cursor:zoom-in;" loading="lazy" title="Click to enlarge">`
+ : `<div style="height:120px;display:flex;align-items:center;justify-content:center;"><i class="fas fa-image" style="font-size:28px;color:#555"></i></div>`}
  <div style="position:absolute;top:8px;left:8px"><span style="font-size:9px;padding:2px 7px;border-radius:20px;font-weight:500;${tagStyle}">${escapeHtml(p.category||'Shift')}</span></div>
  ${canEdit ? `<button onclick="deletePhoto('${p.id}')" style="position:absolute;top:6px;right:6px;background:#111F3099;border:none;color:#9DA0B2;border-radius:3px;font-size:10px;padding:2px 6px;cursor:pointer" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
  </div>
- <div style="padding:8px 10px 10px">
- <div style="font-size:${i===0?'14':'12'}px;font-weight:500;color:#111;margin-bottom:3px">${escapeHtml(p.caption||'')}</div>
- <div style="font-size:11px;color:#6b7280;margin-bottom:6px">${p.postedBy?.split('@')[0]||'—'} · ${p.postedAt ? new Date(p.postedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''}</div>
+ <div style="padding:7px 10px 9px;background:#fff;">
+ ${p.caption ? `<div style="font-size:12px;font-weight:500;color:#111;margin-bottom:3px">${escapeHtml(p.caption)}</div>` : ''}
+ <div style="font-size:11px;color:#6b7280;margin-bottom:5px">${p.postedBy?.split('@')[0]||'—'} · ${p.postedAt ? new Date(p.postedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''}</div>
  <button onclick="likePhoto('${p.id}')" style="font-size:11px;color:${liked?'#FF7C1F':'#9ca3af'};background:none;border:none;cursor:pointer;padding:0"><i class="fas fa-heart me-1"></i>${likeCount}</button>
  </div>
  </div>`;
  }).join('');
 
  if (canPost) {
- html += `<div onclick="openAddPhotoModal()" style="border-radius:10px;border:1px dashed #d1d5db;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:100px;cursor:pointer;color:#9ca3af">
+ html += `<div onclick="openAddPhotoModal()" style="break-inside:avoid;margin-bottom:10px;border-radius:10px;border:1px dashed #d1d5db;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:120px;cursor:pointer;color:#9ca3af">
  <i class="fas fa-camera-retro" style="font-size:22px"></i><span style="font-size:12px">Add a moment</span>
  </div>`;
  }
@@ -13908,7 +13909,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- left: challenger -->
  <div style="border-radius:8px;overflow:hidden;border:2px solid #FF7C1F">
- <div style="height:340px;background:linear-gradient(180deg,#1a1200 0%,#3d2000 100%);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden">
+ <div style="height:740px;background:linear-gradient(180deg,#1a1200 0%,#3d2000 100%);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden">
  <span style="position:absolute;top:6px;left:6px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:3px;font-weight:600;background:#FF7C1F;color:#111F30">Challenger</span>
  <div id="sc-left-photo" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column">
  <div id="sc-left-initials" style="font-size:96px;font-weight:900;color:#FF7C1F55;line-height:1;letter-spacing:-.02em;text-shadow:0 0 40px rgba(255,124,31,0.3)">?</div>
@@ -13946,7 +13947,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- right: redvest -->
  <div style="border-radius:8px;overflow:hidden;border:2px solid #004C80">
- <div style="height:340px;background:linear-gradient(180deg,#001629 0%,#003560 100%);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden">
+ <div style="height:740px;background:linear-gradient(180deg,#001629 0%,#003560 100%);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden">
  <span style="position:absolute;top:6px;right:6px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:3px;font-weight:600;background:#004C80;color:#C2ECFF">Redvest</span>
  <div id="sc-right-photo" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column">
  <div id="sc-right-initials" style="font-size:96px;font-weight:900;color:#6CD3FC55;line-height:1;letter-spacing:-.02em;text-shadow:0 0 40px rgba(108,211,252,0.3)">?</div>
@@ -14044,7 +14045,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <button id="sc-add-photo-btn" onclick="openAddPhotoModal()" style="font-size:12px;padding:6px 14px;border-radius:6px;border:none;background:#FF7C1F;color:#111F30;cursor:pointer;font-weight:500;display:none"><i class="fas fa-plus me-1"></i>Add photo</button>
  </div>
  </div>
- <div id="sc-photo-grid" style="padding:16px;padding-top:28px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+ <div id="sc-photo-grid" style="padding:16px;padding-top:28px;columns:3;column-gap:10px">
  <div style="text-align:center;padding:40px 20px;color:#9ca3af;font-size:13px;grid-column:1/-1"><i class="fas fa-images" style="font-size:24px;display:block;margin-bottom:8px;opacity:0.4"></i>Loading…</div>
  </div>
  <div style="text-align:center;padding:10px;border-top:.5px solid #e5e7eb">
