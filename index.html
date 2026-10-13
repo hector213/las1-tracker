@@ -11286,36 +11286,41 @@ function renderPhotoWall() {
  // pinned photos float to top
  const sorted = [...filtered].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 
+ // deterministic rotations — varied but never uniform
+ const ROTATIONS = [-3, 2, -1.5, 3.5, 1, -4, 2.5, -2, -3.8, 1.8, 4, -2.2, -1, 3, -4.5, 0.8];
+
  let html = sorted.map((p, i) => {
  const liked = (p.likes || []).includes(currentUser?.uid || currentUser?.email || '');
  const likeCount = (p.likes || []).length;
  const tagStyle = tagColors[p.category] || tagColors.Shift;
  const isPinned = !!p.pinned;
- return `<div style="break-inside:avoid;margin-bottom:10px;border-radius:10px;overflow:hidden;border:${isPinned?'1.5px solid #FF7C1F88':'.5px solid #e5e7eb'};background:#111;">
- <div style="position:relative;">
+ const rot = ROTATIONS[i % ROTATIONS.length];
+ const dateStr = p.postedAt ? new Date(p.postedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
+ const byStr = p.postedBy?.split('@')[0] || '';
+ return `<div style="break-inside:avoid;margin-bottom:16px;transform:rotate(${rot}deg);background:#fff;padding:6px 6px 24px 6px;border-radius:2px;box-shadow:2px 4px 12px rgba(0,0,0,0.22);${isPinned?'outline:2px solid #FF7C1F;outline-offset:2px;':''}" >
+ <div style="position:relative;overflow:hidden;border-radius:1px;">
  ${p.photoUrl
  ? `<img src="${escapeHtml(p.photoUrl)}" onclick="openScreenshotLightbox('${escapeHtml(p.photoUrl)}')" style="width:100%;height:auto;display:block;cursor:zoom-in;" loading="lazy" title="Click to enlarge">`
- : `<div style="height:120px;display:flex;align-items:center;justify-content:center;"><i class="fas fa-image" style="font-size:28px;color:#555"></i></div>`}
- <div style="position:absolute;top:8px;left:8px;display:flex;gap:4px;align-items:center">
- <span style="font-size:9px;padding:2px 7px;border-radius:20px;font-weight:500;${tagStyle}">${escapeHtml(p.category||'Shift')}</span>
- ${isPinned ? `<span style="font-size:9px;padding:2px 6px;border-radius:20px;font-weight:600;background:#FF7C1F;color:#111F30"><i class="fas fa-thumbtack me-1" style="font-size:8px"></i>Pinned</span>` : ''}
+ : `<div style="height:110px;background:#e5e7eb;display:flex;align-items:center;justify-content:center;"><i class="fas fa-image" style="font-size:26px;color:#9ca3af"></i></div>`}
+ <div style="position:absolute;top:5px;left:5px;display:flex;gap:3px;align-items:center">
+ ${isPinned ? `<span style="font-size:8px;padding:1px 5px;border-radius:20px;font-weight:700;background:#FF7C1F;color:#111"><i class="fas fa-thumbtack me-1" style="font-size:7px"></i>Pinned</span>` : ''}
  </div>
- ${canEdit ? `<div style="position:absolute;top:6px;right:6px;display:flex;gap:4px">
- <button onclick="togglePinPhoto('${p.id}',${isPinned})" style="background:${isPinned?'#FF7C1F':'#111F3099'};border:none;color:${isPinned?'#111F30':'#9DA0B2'};border-radius:3px;font-size:10px;padding:2px 6px;cursor:pointer" title="${isPinned?'Unpin':'Pin to top'}"><i class="fas fa-thumbtack"></i></button>
- <button onclick="deletePhoto('${p.id}')" style="background:#111F3099;border:none;color:#9DA0B2;border-radius:3px;font-size:10px;padding:2px 6px;cursor:pointer" title="Delete"><i class="fas fa-trash"></i></button>
+ ${canEdit ? `<div style="position:absolute;top:4px;right:4px;display:flex;gap:3px;opacity:0.85">
+ <button onclick="togglePinPhoto('${p.id}',${isPinned})" style="background:${isPinned?'#FF7C1F':'rgba(0,0,0,0.55)'};border:none;color:${isPinned?'#111':'#fff'};border-radius:3px;font-size:9px;padding:2px 5px;cursor:pointer" title="${isPinned?'Unpin':'Pin'}"><i class="fas fa-thumbtack"></i></button>
+ <button onclick="deletePhoto('${p.id}')" style="background:rgba(0,0,0,0.55);border:none;color:#fff;border-radius:3px;font-size:9px;padding:2px 5px;cursor:pointer" title="Delete"><i class="fas fa-trash"></i></button>
  </div>` : ''}
  </div>
- <div style="padding:7px 10px 9px;background:#fff;">
- ${p.caption ? `<div style="font-size:12px;font-weight:500;color:#111;margin-bottom:3px">${escapeHtml(p.caption)}</div>` : ''}
- <div style="font-size:11px;color:#6b7280;margin-bottom:5px">${p.postedBy?.split('@')[0]||'—'} · ${p.postedAt ? new Date(p.postedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''}</div>
- <button onclick="likePhoto('${p.id}')" style="font-size:11px;color:${liked?'#FF7C1F':'#9ca3af'};background:none;border:none;cursor:pointer;padding:0"><i class="fas fa-heart me-1"></i>${likeCount}</button>
+ <div style="text-align:center;padding:5px 2px 0;font-family:Georgia,serif;">
+ ${p.caption ? `<div style="font-size:11px;color:#333;font-style:italic;line-height:1.3;margin-bottom:2px">${escapeHtml(p.caption)}</div>` : ''}
+ <div style="font-size:9px;color:#888;margin-bottom:3px">${byStr}${byStr && dateStr ? ' · ' : ''}${dateStr}</div>
+ <button onclick="likePhoto('${p.id}')" style="font-size:10px;color:${liked?'#e11d48':'#bbb'};background:none;border:none;cursor:pointer;padding:0"><i class="fas fa-heart me-1"></i>${likeCount}</button>
  </div>
  </div>`;
  }).join('');
 
  if (canPost) {
- html += `<div onclick="openAddPhotoModal()" style="break-inside:avoid;margin-bottom:10px;border-radius:10px;border:1px dashed #d1d5db;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:120px;cursor:pointer;color:#9ca3af">
- <i class="fas fa-camera-retro" style="font-size:22px"></i><span style="font-size:12px">Add a moment</span>
+ html += `<div onclick="openAddPhotoModal()" style="break-inside:avoid;margin-bottom:16px;background:#fff;padding:6px 6px 24px 6px;border-radius:2px;box-shadow:2px 4px 12px rgba(0,0,0,0.1);transform:rotate(1.5deg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:100px;cursor:pointer;color:#9ca3af;border:1.5px dashed #d1d5db">
+ <i class="fas fa-camera-retro" style="font-size:20px"></i><span style="font-size:11px;font-family:Georgia,serif;font-style:italic">Add a moment</span>
  </div>`;
  }
 
@@ -14126,7 +14131,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <button id="sc-add-photo-btn" onclick="openAddPhotoModal()" style="font-size:12px;padding:6px 14px;border-radius:6px;border:none;background:#FF7C1F;color:#111F30;cursor:pointer;font-weight:500;display:none"><i class="fas fa-plus me-1"></i>Add photo</button>
  </div>
  </div>
- <div id="sc-photo-grid" style="padding:16px;padding-top:28px;columns:3;column-gap:10px">
+ <div id="sc-photo-grid" style="padding:16px;padding-top:28px;columns:4;column-gap:14px">
  <div style="text-align:center;padding:40px 20px;color:#9ca3af;font-size:13px;grid-column:1/-1"><i class="fas fa-images" style="font-size:24px;display:block;margin-bottom:8px;opacity:0.4"></i>Loading…</div>
  </div>
  <div style="text-align:center;padding:10px;border-top:.5px solid #e5e7eb">
