@@ -327,6 +327,19 @@ window.autoCheckPerfectAttendance = async function(showAlert = true) {
 
  const weekMon = _lastCompletedWeekMonday();
 
+ // Guard: check if already ran for this week
+ const lastRunSnap = await getDocFromServer(doc(db, 'system', 'attCheckLastRun'));
+ if (lastRunSnap.exists() && lastRunSnap.data().weekKey === weekMon) {
+ if (!showAlert) { return { weeklyAwarded: 0, monthlyAwarded: 0 }; } // silent auto-run: skip
+ const ranAt = lastRunSnap.data().ranAt ? new Date(lastRunSnap.data().ranAt).toLocaleString() : 'earlier';
+ const ranBy = lastRunSnap.data().ranBy || 'System';
+ const proceed = confirm(`⚠️ Already ran for week of ${weekMon} (by ${ranBy} at ${ranAt}).\n\nRe-running will re-award badges to anyone whose badges were deleted. Continue?`);
+ if (!proceed) {
+ if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-calendar-check me-1"></i>Run Attendance Badge Check'; }
+ return { weeklyAwarded: 0, monthlyAwarded: 0 };
+ }
+ }
+
  // Build last 4 week Mondays (oldest first)
  const fourWeeks = [];
  for (let i = 3; i >= 0; i--) {
@@ -1251,6 +1264,8 @@ async function checkPendingNotifications() {
  const crossedAt = a.attThresholdCrossings?.[tier.key] || null;
  const alreadyIssued = wSnap.docs.some(d => {
  if (d.data().type !== tier.key) return false;
+ // Pre-existing flag: marked as already issued with no date — always suppresses alert
+ if (d.data().preExisting) return true;
  // If we have a crossing timestamp, the warning must have been issued AFTER that crossing
  // to count as "already handled" — an older warning means points re-crossed the threshold
  if (crossedAt) return new Date(d.data().issuedAt) >= new Date(crossedAt);
@@ -1476,6 +1491,9 @@ async function restoreLastView() {
  if (CONTROLLABLE_TABS.includes(view) && !(await isTabAllowed(view))) {
  view = 'dashboard';
  }
+ // Auto-run attendance badge check + backup once per week, for all views
+ setTimeout(autoRunAttendanceCheckIfNeeded, 3000);
+ setTimeout(autoBackupAttPointsIfNeeded, 6000);
  if (view === 'profile') {
  const assocId = sessionStorage.getItem('lastAssocId');
  if (assocId) { await openProfile(assocId); return; }
@@ -1492,10 +1510,6 @@ async function restoreLastView() {
  if (view === 'hrrecords') { loadHRRecords(); return; }
  if (view === 'help') { showView('help'); return; }
  loadDashboard();
- // Auto-run attendance badge check in background after view loads
- setTimeout(autoRunAttendanceCheckIfNeeded, 3000);
- // Auto-backup attendance points once per week
- setTimeout(autoBackupAttPointsIfNeeded, 6000);
 }
 
 async function autoBackupAttPointsIfNeeded() {
@@ -3649,6 +3663,7 @@ window.loadLeaderNotifications = async function () {
  const crossedAt = a.attThresholdCrossings?.[tier.key] || null;
  const alreadyIssued = wSnap.docs.some(d => {
  if (d.data().type !== tier.key) return false;
+ if (d.data().preExisting) return true;
  if (crossedAt) return new Date(d.data().issuedAt) >= new Date(crossedAt);
  return true;
  });
