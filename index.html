@@ -11001,6 +11001,9 @@ function renderChallenger(d) {
  document.getElementById('sc-score-right-pts').textContent = rTotal;
 
  // winner banner
+ // winner badges on cards
+ _renderChallengerWinnerBadges(d.winner || null);
+
  const banner = document.getElementById('sc-winner-banner');
  banner.style.display = 'block';
  const challengerWins = lTotal >= rTotal; // ties go to challenger
@@ -11068,6 +11071,7 @@ window.openChallengerModal = function() {
  document.getElementById('ch-left-units').value = d.leftUnits || '';
  document.getElementById('ch-right-uph').value = d.rightUph || '';
  document.getElementById('ch-right-units').value = d.rightUnits || '';
+ _updateWinnerModalDisplay(d.winner || null);
  bootstrap.Modal.getOrCreateInstance(document.getElementById('challengerModal')).show();
 };
 
@@ -11084,9 +11088,12 @@ window.saveChallenger = async function() {
  rightUnits: Number(document.getElementById('ch-right-units').value) || 0,
  updatedAt: new Date().toISOString(),
  updatedBy: currentUser?.email || '',
- // preserve existing photos
+ // preserve existing photos and winner
  leftPhotoUrl: _scChallengerData?.leftPhotoUrl || null,
  rightPhotoUrl: _scChallengerData?.rightPhotoUrl || null,
+ winner: _scChallengerData?.winner || null,
+ winnerConfirmedBy: _scChallengerData?.winnerConfirmedBy || null,
+ winnerConfirmedAt: _scChallengerData?.winnerConfirmedAt || null,
  createdAt: _scChallengerData?.createdAt || new Date().toISOString(),
  };
  try {
@@ -11100,6 +11107,48 @@ window.saveChallenger = async function() {
  loadPastChallenges();
  } catch(e) { alert('Error saving: ' + e.message); }
 };
+
+window.confirmWinner = async function(side) {
+ try {
+ await updateDoc(doc(db, 'culture', 'challenger'), {
+ winner: side || null,
+ winnerConfirmedBy: currentUser?.email || '',
+ winnerConfirmedAt: new Date().toISOString()
+ });
+ if (_scChallengerData) {
+ _scChallengerData.winner = side;
+ _scChallengerData.winnerConfirmedBy = currentUser?.email || '';
+ _scChallengerData.winnerConfirmedAt = new Date().toISOString();
+ }
+ _updateWinnerModalDisplay(side);
+ _renderChallengerWinnerBadges(side);
+ } catch(e) { alert('Error confirming winner: ' + e.message); }
+};
+
+function _updateWinnerModalDisplay(side) {
+ const d = _scChallengerData || {};
+ const leftLabel = document.getElementById('ch-win-left-label');
+ const rightLabel = document.getElementById('ch-win-right-label');
+ const display = document.getElementById('ch-winner-display');
+ const leftBtn = document.getElementById('ch-win-left-btn');
+ const rightBtn = document.getElementById('ch-win-right-btn');
+ if (leftLabel) leftLabel.textContent = (d.leftName || 'Challenger') + ' wins';
+ if (rightLabel) rightLabel.textContent = (d.rightName || 'Redvest') + ' wins';
+ if (leftBtn) { leftBtn.style.opacity = (!side || side === 'left') ? '1' : '0.4'; leftBtn.style.outline = side === 'left' ? '2px solid #FF7C1F' : 'none'; }
+ if (rightBtn) { rightBtn.style.opacity = (!side || side === 'right') ? '1' : '0.4'; rightBtn.style.outline = side === 'right' ? '2px solid #6CD3FC' : 'none'; }
+ if (display) {
+ if (side === 'left') display.innerHTML = `<span style="color:#FF7C1F;font-size:12px;font-weight:600">🏆 Winner confirmed: ${escapeHtml(d.leftName||'Challenger')}</span>`;
+ else if (side === 'right') display.innerHTML = `<span style="color:#6CD3FC;font-size:12px;font-weight:600">🏆 Winner confirmed: ${escapeHtml(d.rightName||'Redvest')}</span>`;
+ else display.innerHTML = '<span style="color:#3F444F;font-size:12px">No winner confirmed yet</span>';
+ }
+}
+
+function _renderChallengerWinnerBadges(side) {
+ const lb = document.getElementById('sc-left-winner-badge');
+ const rb = document.getElementById('sc-right-winner-badge');
+ if (lb) lb.style.display = side === 'left' ? 'block' : 'none';
+ if (rb) rb.style.display = side === 'right' ? 'block' : 'none';
+}
 
 window.uploadChallengerPhoto = async function(side, input) {
  if (!input.files[0]) return;
@@ -13917,6 +13966,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  <div id="sc-left-img-wrap" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0"><img id="sc-left-img" src="" style="width:100%;height:100%;object-fit:cover;object-position:center 20%"></div>
  <div style="position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,#1B2D42)"></div>
+ <div id="sc-left-winner-badge" style="display:none;position:absolute;bottom:0;left:0;right:0;text-align:center;padding:14px 0 10px;z-index:6;background:linear-gradient(transparent,rgba(255,124,31,0.25))"><span style="font-size:20px;font-weight:900;color:#FF7C1F;text-transform:uppercase;letter-spacing:.14em">🏆 WINNER</span></div>
  <label id="sc-left-upload-btn" style="position:absolute;bottom:6px;right:6px;font-size:9px;padding:2px 7px;border-radius:3px;background:#111F3099;color:#9DA0B2;border:1px solid #3F444F;cursor:pointer;display:none"><i class="fas fa-camera me-1"></i>Photo<input type="file" accept="image/*" style="display:none" onchange="uploadChallengerPhoto('left',this)"></label>
  </div>
  <div style="background:#1B2D42;padding:10px 12px">
@@ -13949,6 +13999,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  <div id="sc-right-img-wrap" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0"><img id="sc-right-img" src="" style="width:100%;height:100%;object-fit:cover;object-position:center 20%"></div>
  <div style="position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,#1B2D42)"></div>
+ <div id="sc-right-winner-badge" style="display:none;position:absolute;bottom:0;left:0;right:0;text-align:center;padding:14px 0 10px;z-index:6;background:linear-gradient(transparent,rgba(0,76,128,0.25))"><span style="font-size:20px;font-weight:900;color:#6CD3FC;text-transform:uppercase;letter-spacing:.14em">🏆 WINNER</span></div>
  <label id="sc-right-upload-btn" style="position:absolute;bottom:6px;left:6px;font-size:9px;padding:2px 7px;border-radius:3px;background:#111F3099;color:#9DA0B2;border:1px solid #3F444F;cursor:pointer;display:none"><i class="fas fa-camera me-1"></i>Photo<input type="file" accept="image/*" style="display:none" onchange="uploadChallengerPhoto('right',this)"></label>
  </div>
  <div style="background:#1B2D42;padding:10px 12px">
@@ -14099,6 +14150,16 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div class="col-md-3">
  <label class="form-label" style="color:#6CD3FC">Redvest Units</label>
  <input type="number" id="ch-right-units" class="form-control" placeholder="e.g. 202">
+ </div>
+ </div>
+ <hr class="mt-3 mb-3">
+ <div>
+ <label class="form-label fw-bold">Confirm Winner <span class="text-muted small">(official result)</span></label>
+ <div id="ch-winner-display" style="min-height:22px;margin-bottom:8px"><span style="color:#3F444F;font-size:12px">No winner confirmed yet</span></div>
+ <div class="d-flex gap-2 align-items-center">
+ <button type="button" id="ch-win-left-btn" onclick="confirmWinner('left')" class="btn flex-fill" style="background:#FF7C1F22;color:#FF7C1F;border:1px solid #FF7C1F44;font-weight:600;transition:outline .1s"><i class="fas fa-trophy me-1"></i><span id="ch-win-left-label">Challenger wins</span></button>
+ <button type="button" id="ch-win-right-btn" onclick="confirmWinner('right')" class="btn flex-fill" style="background:#004C8022;color:#6CD3FC;border:1px solid #004C8044;font-weight:600;transition:outline .1s"><i class="fas fa-shield-alt me-1"></i><span id="ch-win-right-label">Redvest wins</span></button>
+ <button type="button" onclick="confirmWinner(null)" class="btn btn-sm" style="background:transparent;color:#9DA0B2;border:1px solid #3F444F;font-size:11px;white-space:nowrap">Clear</button>
  </div>
  </div>
  </div>
