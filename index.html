@@ -19,7 +19,6 @@
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFirestore, collection, collectionGroup, doc, getDoc, getDocFromServer, getDocs, getDocsFromServer, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, increment, deleteField, query, orderBy, limit, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 const firebaseConfig = {
  apiKey: "AIzaSyCMPDpzhZEWZjP9SptREKVSB4dmdhY5cpM",
@@ -34,7 +33,18 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
+// Storage loaded dynamically on first use to avoid blocking module load
+let _storageReady = null;
+async function getStorageModule() {
+ if (!_storageReady) {
+ try {
+ const m = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js");
+ const st = m.getStorage(app);
+ _storageReady = { storage: st, ref: m.ref, uploadBytes: m.uploadBytes, getDownloadURL: m.getDownloadURL, deleteObject: m.deleteObject };
+ } catch(e) { console.error('Firebase Storage unavailable:', e); return null; }
+ }
+ return _storageReady;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────
 const BADGES = [
@@ -18677,9 +18687,11 @@ window.uploadChallengerPhoto = async function(side, input) {
  const file = input.files[0];
  const path = `culture/challenger_${side}_${Date.now()}.${file.name.split('.').pop()}`;
  try {
- const ref = storageRef(storage, path);
- await uploadBytes(ref, file);
- const url = await getDownloadURL(ref);
+ const s = await getStorageModule();
+ if (!s) { alert('Storage not available. Try refreshing.'); return; }
+ const ref = s.ref(s.storage, path);
+ await s.uploadBytes(ref, file);
+ const url = await s.getDownloadURL(ref);
  const field = side === 'left' ? 'leftPhotoUrl' : 'rightPhotoUrl';
  await updateDoc(doc(db, 'culture', 'challenger'), { [field]: url });
  if (_scChallengerData) _scChallengerData[field] = url;
@@ -18803,10 +18815,12 @@ window.savePhoto = async function() {
  let photoUrl = null;
  if (fileInput.files[0]) {
  try {
+ const s = await getStorageModule();
+ if (!s) { alert('Storage not available. Try refreshing.'); return; }
  const file = fileInput.files[0];
- const ref = storageRef(storage, `culture/photos/${Date.now()}_${file.name}`);
- await uploadBytes(ref, file);
- photoUrl = await getDownloadURL(ref);
+ const ref = s.ref(s.storage, `culture/photos/${Date.now()}_${file.name}`);
+ await s.uploadBytes(ref, file);
+ photoUrl = await s.getDownloadURL(ref);
  } catch(e) { alert('Photo upload failed: ' + e.message); return; }
  }
 
@@ -18844,7 +18858,10 @@ window.deletePhoto = async function(photoId) {
  const p = _scPhotos.find(x => x.id === photoId);
  await deleteDoc(doc(db, 'culture_photos', photoId));
  if (p?.photoUrl) {
- try { await deleteObject(storageRef(storage, p.photoUrl)); } catch(_){}
+ try {
+ const s = await getStorageModule();
+ if (s) await s.deleteObject(s.ref(s.storage, p.photoUrl));
+ } catch(_){}
  }
  _scPhotos = _scPhotos.filter(x => x.id !== photoId);
  renderPhotoWall();
