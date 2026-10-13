@@ -1405,7 +1405,7 @@ window.dismissNotifBanner = () => {
 
 function showView(view) {
  if (view === 'production' && typeof lb_init === 'function') { lb_init(); }
- if (view === 'shiftCulture') { loadShiftCulture(); }
+ if (view === 'shiftCulture') { if (window.loadShiftCulture) window.loadShiftCulture(); }
  document.querySelectorAll('.view').forEach(v => v.classList.add('d-none'));
  document.getElementById(view + 'View').classList.remove('d-none');
  document.querySelectorAll('.nav-link[data-view]').forEach(l => l.classList.remove('active'));
@@ -10800,6 +10800,414 @@ window.submitEOMVote = async (monthKey, voterType) => {
 };
 
 
+
+
+// ═══════════════════════════════════════════════════════════════════
+// SHIFT CULTURE TAB
+// ═══════════════════════════════════════════════════════════════════
+
+let _scPhotos = [];
+let _scPhotoFilter = 'all';
+let _scPhotoLimit = 12;
+let _scChallengerData = null;
+
+// ── Load everything when the tab opens ──────────────────────────────
+window.loadShiftCulture = async function() {
+ loadChallengerData();
+ loadPhotoWall();
+ // show/hide add-photo button based on role (lead+)
+ const addBtn = document.getElementById('sc-add-photo-btn');
+ if (addBtn) addBtn.style.display = roleAtLeast('lead') ? 'inline-block' : 'none';
+};
+
+// ── Challenger Initiative ────────────────────────────────────────────
+async function loadChallengerData() {
+ try {
+ const snap = await getDoc(doc(db, 'culture', 'challenger'));
+ _scChallengerData = snap.exists() ? snap.data() : null;
+ renderChallenger(_scChallengerData);
+ loadPastChallenges();
+ } catch(e) { console.error('loadChallengerData:', e); }
+}
+
+function renderChallenger(d) {
+ const hasData = d && (d.leftName || d.rightName);
+ document.getElementById('sc-no-challenge').style.display = hasData ? 'none' : 'block';
+ document.getElementById('sc-fighters').style.opacity = hasData ? '1' : '0.3';
+ document.getElementById('sc-score-row').style.opacity = hasData ? '1' : '0.3';
+
+ const canEdit = roleAtLeast('lead');
+ const editBtn = document.getElementById('sc-edit-btn');
+ const newBtn = document.getElementById('sc-new-btn');
+ const galleryBtn = document.getElementById('sc-gallery-btn');
+ if (editBtn) editBtn.style.display = canEdit && hasData ? 'inline-block' : 'none';
+ if (newBtn) newBtn.style.display = canEdit && !hasData ? 'inline-block' : 'none';
+ if (galleryBtn) galleryBtn.style.display = canEdit && hasData && d.leftUph && d.rightUph ? 'inline-block' : 'none';
+
+ // show photo upload buttons for leads+
+ const showUpload = roleAtLeast('lead') && hasData;
+ const lu = document.getElementById('sc-left-upload-btn');
+ const ru = document.getElementById('sc-right-upload-btn');
+ if (lu) lu.style.display = showUpload ? 'block' : 'none';
+ if (ru) ru.style.display = showUpload ? 'block' : 'none';
+
+ if (!hasData) return;
+
+ // month / function bar
+ document.getElementById('sc-ch-month').textContent = d.month || '—';
+ document.getElementById('sc-ch-func').textContent = d.function || '—';
+
+ // left fighter
+ document.getElementById('sc-left-name').textContent = d.leftName || '—';
+ document.getElementById('sc-left-initials').textContent = initials(d.leftName);
+ document.getElementById('sc-score-left-name').textContent = d.leftName || 'Challenger';
+ if (d.leftPhotoUrl) {
+ document.getElementById('sc-left-img').src = d.leftPhotoUrl;
+ document.getElementById('sc-left-img-wrap').style.display = 'block';
+ document.getElementById('sc-left-photo').style.display = 'none';
+ }
+
+ // right fighter
+ document.getElementById('sc-right-name').textContent = d.rightName || '—';
+ document.getElementById('sc-right-initials').textContent = initials(d.rightName);
+ document.getElementById('sc-right-role-pill').textContent = d.rightRole || 'Lead';
+ document.getElementById('sc-score-right-name').textContent = d.rightName || 'Redvest';
+ if (d.rightPhotoUrl) {
+ document.getElementById('sc-right-img').src = d.rightPhotoUrl;
+ document.getElementById('sc-right-img-wrap').style.display = 'block';
+ document.getElementById('sc-right-photo').style.display = 'none';
+ }
+
+ // stats & points
+ const lUph = Number(d.leftUph) || 0;
+ const rUph = Number(d.rightUph) || 0;
+ const lUnits = Number(d.leftUnits) || 0;
+ const rUnits = Number(d.rightUnits) || 0;
+ const hasResults = lUph > 0 || rUph > 0 || lUnits > 0 || rUnits > 0;
+
+ if (hasResults) {
+ const maxUph = Math.max(lUph, rUph, 1);
+ const maxUnits = Math.max(lUnits, rUnits, 1);
+
+ // bars
+ document.getElementById('sc-left-uph-bar').style.width = Math.round(lUph / maxUph * 100) + '%';
+ document.getElementById('sc-right-uph-bar').style.width = Math.round(rUph / maxUph * 100) + '%';
+ document.getElementById('sc-left-units-bar').style.width = Math.round(lUnits / maxUnits * 100) + '%';
+ document.getElementById('sc-right-units-bar').style.width = Math.round(rUnits / maxUnits * 100) + '%';
+
+ // values
+ document.getElementById('sc-left-uph-val').textContent = lUph || '—';
+ document.getElementById('sc-right-uph-val').textContent = rUph || '—';
+ document.getElementById('sc-left-units-val').textContent = lUnits ? lUnits.toLocaleString() : '—';
+ document.getElementById('sc-right-units-val').textContent = rUnits ? rUnits.toLocaleString() : '—';
+
+ // scoring: 2pts to winner, 1pt to loser per category. Ties go to challenger.
+ const lUphPts = lUph >= rUph ? 2 : 1;
+ const rUphPts = rUph > lUph ? 2 : 1;
+ const lUnitsPts = lUnits >= rUnits ? 2 : 1;
+ const rUnitsPts = rUnits > lUnits ? 2 : 1;
+ const lTotal = lUphPts + lUnitsPts;
+ const rTotal = rUphPts + rUnitsPts;
+
+ const winStyle = 'background:#FF7C1F33;color:#FF7C1F';
+ const loseStyle = 'background:#1B2D42;color:#3F444F';
+ const winStyleBlue = 'background:#004C8033;color:#6CD3FC';
+
+ setPtsBadge('sc-left-uph-pts', lUphPts, lUphPts >= rUphPts, false);
+ setPtsBadge('sc-right-uph-pts', rUphPts, rUphPts > lUphPts, true);
+ setPtsBadge('sc-left-units-pts', lUnitsPts, lUnitsPts >= rUnitsPts, false);
+ setPtsBadge('sc-right-units-pts', rUnitsPts, rUnitsPts > lUnitsPts, true);
+
+ document.getElementById('sc-score-left-pts').textContent = lTotal;
+ document.getElementById('sc-score-right-pts').textContent = rTotal;
+
+ // winner banner
+ const banner = document.getElementById('sc-winner-banner');
+ banner.style.display = 'block';
+ const challengerWins = lTotal >= rTotal; // ties go to challenger
+ if (challengerWins) {
+ banner.style.background = '#FF7C1F18';
+ banner.style.border = '1px solid #FF7C1F44';
+ const isUpset = true; // always an upset when associate beats redvest
+ banner.innerHTML = `<div style="font-size:12px;color:#FF7C1F;letter-spacing:.06em;text-transform:uppercase">🔥 ${isUpset ? 'Upset! ' : ''}Associate wins — ${escapeHtml(d.leftName || '')}</div><div style="font-size:10px;color:#9DA0B2;margin-top:3px">${escapeHtml(d.leftName || 'Challenger')} earns a $20 gift card · Ties go to the challenger</div>`;
+ } else {
+ banner.style.background = '#004C8018';
+ banner.style.border = '1px solid #004C8044';
+ banner.innerHTML = `<div style="font-size:12px;color:#6CD3FC;letter-spacing:.06em;text-transform:uppercase">🛡️ Redvest defends — ${escapeHtml(d.rightName || '')}</div><div style="font-size:10px;color:#9DA0B2;margin-top:3px">Better luck next month, ${escapeHtml(d.leftName || 'challenger')}!</div>`;
+ }
+ }
+}
+
+function setPtsBadge(id, pts, isWinner, isBlue) {
+ const el = document.getElementById(id);
+ if (!el) return;
+ el.textContent = pts + ' pt' + (pts !== 1 ? 's' : '');
+ if (isWinner && isBlue) el.style = 'font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;background:#004C8033;color:#6CD3FC';
+ else if (isWinner) el.style = 'font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;background:#FF7C1F33;color:#FF7C1F';
+ else el.style = 'font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;background:#1B2D42;color:#3F444F';
+}
+
+function initials(name) {
+ if (!name) return '?';
+ return name.trim().split(/\s+/).map(w => w[0].toUpperCase()).slice(0,2).join('');
+}
+
+async function loadPastChallenges() {
+ try {
+ const snap = await getDocs(query(collection(db, 'culture_challenges'), orderBy('createdAt', 'desc'), limit(8)));
+ const grid = document.getElementById('sc-past-grid');
+ if (!grid) return;
+ if (snap.empty) { grid.innerHTML = '<div style="color:#3F444F;font-size:11px;text-align:center;grid-column:1/-1">No past challenges yet.</div>'; return; }
+ grid.innerHTML = snap.docs.map(d => {
+ const ch = d.data();
+ const lTotal = (ch.leftUph >= ch.rightUph ? 2 : 1) + (ch.leftUnits >= ch.rightUnits ? 2 : 1);
+ const rTotal = (ch.rightUph > ch.leftUph ? 2 : 1) + (ch.rightUnits > ch.leftUnits ? 2 : 1);
+ const challengerWon = lTotal >= rTotal;
+ return `<div style="background:#1B2D42;border-radius:6px;border:1px solid #243548;padding:8px;text-align:center">
+ <div style="font-size:9px;color:#3F444F;margin-bottom:3px">${escapeHtml(ch.month||'')}</div>
+ <div style="display:flex;justify-content:center;gap:4px;margin-bottom:4px">
+ <div style="width:28px;height:28px;border-radius:50%;background:#FF7C1F33;border:1px solid #FF7C1F44;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:#FF7C1F">${initials(ch.leftName)}</div>
+ <div style="width:28px;height:28px;border-radius:50%;background:#004C8033;border:1px solid #004C8044;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:#6CD3FC">${initials(ch.rightName)}</div>
+ </div>
+ <div style="font-size:10px;color:${challengerWon?'#FF7C1F':'#9DA0B2'}">${escapeHtml(ch.leftName||'?')}${challengerWon?' 🏆':''}</div>
+ <div style="font-size:10px;color:${!challengerWon?'#6CD3FC':'#9DA0B2'}">vs ${escapeHtml(ch.rightName||'?')}${!challengerWon?' 🛡️':''}</div>
+ ${challengerWon?'<div style="font-size:9px;color:#FF7C1F;margin-top:2px">🔥 Upset</div>':''}
+ </div>`;
+ }).join('');
+ } catch(e) { console.error('loadPastChallenges:', e); }
+}
+
+window.openChallengerModal = function() {
+ if (!roleAtLeast('lead')) return;
+ const d = _scChallengerData || {};
+ document.getElementById('ch-left-name').value = d.leftName || '';
+ document.getElementById('ch-right-name').value = d.rightName || '';
+ document.getElementById('ch-right-role').value = d.rightRole || 'Lead';
+ document.getElementById('ch-function').value = d.function || '';
+ document.getElementById('ch-month').value = d.month || new Date().toLocaleString('default',{month:'long',year:'numeric'});
+ document.getElementById('ch-left-uph').value = d.leftUph || '';
+ document.getElementById('ch-left-units').value = d.leftUnits || '';
+ document.getElementById('ch-right-uph').value = d.rightUph || '';
+ document.getElementById('ch-right-units').value = d.rightUnits || '';
+ bootstrap.Modal.getOrCreateInstance(document.getElementById('challengerModal')).show();
+};
+
+window.saveChallenger = async function() {
+ const data = {
+ leftName: document.getElementById('ch-left-name').value.trim(),
+ rightName: document.getElementById('ch-right-name').value.trim(),
+ rightRole: document.getElementById('ch-right-role').value,
+ function: document.getElementById('ch-function').value.trim(),
+ month: document.getElementById('ch-month').value.trim(),
+ leftUph: Number(document.getElementById('ch-left-uph').value) || 0,
+ leftUnits: Number(document.getElementById('ch-left-units').value) || 0,
+ rightUph: Number(document.getElementById('ch-right-uph').value) || 0,
+ rightUnits: Number(document.getElementById('ch-right-units').value) || 0,
+ updatedAt: new Date().toISOString(),
+ updatedBy: currentUser?.email || '',
+ // preserve existing photos
+ leftPhotoUrl: _scChallengerData?.leftPhotoUrl || null,
+ rightPhotoUrl: _scChallengerData?.rightPhotoUrl || null,
+ createdAt: _scChallengerData?.createdAt || new Date().toISOString(),
+ };
+ try {
+ await setDoc(doc(db, 'culture', 'challenger'), data);
+ // archive to history collection keyed by month
+ const monthKey = data.month.replace(/\s+/g,'_').toLowerCase();
+ await setDoc(doc(db, 'culture_challenges', monthKey), data, { merge: true });
+ _scChallengerData = data;
+ bootstrap.Modal.getOrCreateInstance(document.getElementById('challengerModal')).hide();
+ renderChallenger(_scChallengerData);
+ loadPastChallenges();
+ } catch(e) { alert('Error saving: ' + e.message); }
+};
+
+window.uploadChallengerPhoto = async function(side, input) {
+ if (!input.files[0]) return;
+ const file = input.files[0];
+ const path = `culture/challenger_${side}_${Date.now()}.${file.name.split('.').pop()}`;
+ try {
+ const s = await getStorageModule();
+ if (!s) { alert('Storage not available. Try refreshing.'); return; }
+ const ref = s.ref(s.storage, path);
+ await s.uploadBytes(ref, file);
+ const url = await s.getDownloadURL(ref);
+ const field = side === 'left' ? 'leftPhotoUrl' : 'rightPhotoUrl';
+ await updateDoc(doc(db, 'culture', 'challenger'), { [field]: url });
+ if (_scChallengerData) _scChallengerData[field] = url;
+ // update UI immediately
+ const imgEl = document.getElementById(`sc-${side}-img`);
+ const wrapEl = document.getElementById(`sc-${side}-img-wrap`);
+ const photoEl = document.getElementById(`sc-${side}-photo`);
+ if (imgEl) imgEl.src = url;
+ if (wrapEl) wrapEl.style.display = 'block';
+ if (photoEl) photoEl.style.display = 'none';
+ } catch(e) { alert('Photo upload failed: ' + e.message); }
+};
+
+window.postChallengerToGallery = async function() {
+ if (!_scChallengerData) return;
+ const d = _scChallengerData;
+ const lTotal = (d.leftUph >= d.rightUph ? 2 : 1) + (d.leftUnits >= d.rightUnits ? 2 : 1);
+ const rTotal = (d.rightUph > d.leftUph ? 2 : 1) + (d.rightUnits > d.leftUnits ? 2 : 1);
+ const challengerWon = lTotal >= rTotal;
+ const caption = challengerWon
+ ? `🔥 Upset! ${d.leftName} (${d.leftUph} UPH / ${Number(d.leftUnits).toLocaleString()} units) beat ${d.rightName} (${d.rightRole}) ${lTotal}–${rTotal}!`
+ : `🛡️ ${d.rightName} (${d.rightRole}) defended the challenge against ${d.leftName} ${rTotal}–${lTotal}.`;
+ try {
+ await addDoc(collection(db, 'culture_photos'), {
+ caption, category: 'Challenger',
+ photoUrl: d.leftPhotoUrl || null,
+ postedBy: currentUser?.email || '',
+ postedAt: new Date().toISOString(),
+ likes: [],
+ month: d.month,
+ });
+ alert('Posted to gallery!');
+ loadPhotoWall();
+ } catch(e) { alert('Error: ' + e.message); }
+};
+
+// ── Photo Wall ───────────────────────────────────────────────────────
+async function loadPhotoWall() {
+ try {
+ const snap = await getDocs(query(collection(db, 'culture_photos'), orderBy('postedAt', 'desc'), limit(_scPhotoLimit)));
+ _scPhotos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+ renderPhotoWall();
+ const loadMoreBtn = document.getElementById('sc-load-more-btn');
+ if (loadMoreBtn) loadMoreBtn.style.display = snap.docs.length >= _scPhotoLimit ? 'inline-block' : 'none';
+ } catch(e) { console.error('loadPhotoWall:', e); }
+}
+
+function renderPhotoWall() {
+ const grid = document.getElementById('sc-photo-grid');
+ if (!grid) return;
+ const filtered = _scPhotoFilter === 'all' ? _scPhotos : _scPhotos.filter(p => p.category === _scPhotoFilter);
+ const canEdit = roleAtLeast('lead');
+ const canPost = roleAtLeast('lead');
+
+ const tagColors = {
+ Shift: 'background:#FF7C1Fcc;color:#111F30',
+ Challenger: 'background:#004C80cc;color:#C2ECFF',
+ Milestone: 'background:#111F30cc;color:#C2ECFF;border:1px solid #004C8066',
+ Event: 'background:#22863acc;color:#fff',
+ };
+
+ let html = filtered.map((p, i) => {
+ const liked = (p.likes || []).includes(currentUser?.uid || currentUser?.email || '');
+ const likeCount = (p.likes || []).length;
+ const tagStyle = tagColors[p.category] || tagColors.Shift;
+ const featuredStyle = i === 0 ? 'grid-column:span 2;grid-row:span 2;' : '';
+ const imgH = i === 0 ? '220px' : '110px';
+ return `<div style="border-radius:10px;overflow:hidden;border:.5px solid #e5e7eb;background:#f9fafb;${featuredStyle}">
+ <div style="height:${imgH};position:relative;overflow:hidden;background:#f3f4f6;display:flex;align-items:center;justify-content:center">
+ ${p.photoUrl ? `<img src="${escapeHtml(p.photoUrl)}" style="width:100%;height:100%;object-fit:cover;object-position:top" loading="lazy">` : `<i class="fas fa-image" style="font-size:${i===0?'36':'22'}px;color:#d1d5db"></i>`}
+ <div style="position:absolute;top:8px;left:8px"><span style="font-size:9px;padding:2px 7px;border-radius:20px;font-weight:500;${tagStyle}">${escapeHtml(p.category||'Shift')}</span></div>
+ ${canEdit ? `<button onclick="deletePhoto('${p.id}')" style="position:absolute;top:6px;right:6px;background:#111F3099;border:none;color:#9DA0B2;border-radius:3px;font-size:10px;padding:2px 6px;cursor:pointer" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
+ </div>
+ <div style="padding:8px 10px 10px">
+ <div style="font-size:${i===0?'14':'12'}px;font-weight:500;color:#111;margin-bottom:3px">${escapeHtml(p.caption||'')}</div>
+ <div style="font-size:11px;color:#6b7280;margin-bottom:6px">${p.postedBy?.split('@')[0]||'—'} · ${p.postedAt ? new Date(p.postedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''}</div>
+ <button onclick="likePhoto('${p.id}')" style="font-size:11px;color:${liked?'#FF7C1F':'#9ca3af'};background:none;border:none;cursor:pointer;padding:0"><i class="fas fa-heart me-1"></i>${likeCount}</button>
+ </div>
+ </div>`;
+ }).join('');
+
+ if (canPost) {
+ html += `<div onclick="openAddPhotoModal()" style="border-radius:10px;border:1px dashed #d1d5db;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:100px;cursor:pointer;color:#9ca3af">
+ <i class="fas fa-camera-retro" style="font-size:22px"></i><span style="font-size:12px">Add a moment</span>
+ </div>`;
+ }
+
+ grid.innerHTML = html || '<div style="text-align:center;padding:40px;color:#9ca3af;grid-column:1/-1">No photos yet.</div>';
+}
+
+window.filterPhotos = function(cat) {
+ _scPhotoFilter = cat;
+ document.querySelectorAll('.sc-filter-pill').forEach(b => {
+ const isActive = (cat === 'all' && b.textContent.trim() === 'All') || b.textContent.trim() === cat;
+ b.style.background = isActive ? '#FF7C1F18' : '#f9fafb';
+ b.style.color = isActive ? '#FF7C1F' : '#6b7280';
+ b.style.borderColor = isActive ? '#FF7C1F55' : '#e5e7eb';
+ });
+ renderPhotoWall();
+};
+
+window.loadMorePhotos = function() {
+ _scPhotoLimit += 12;
+ loadPhotoWall();
+};
+
+window.openAddPhotoModal = function() {
+ if (!roleAtLeast('lead')) return;
+ document.getElementById('ph-file').value = '';
+ document.getElementById('ph-caption').value = '';
+ document.getElementById('ph-category').value = 'Shift';
+ bootstrap.Modal.getOrCreateInstance(document.getElementById('addPhotoModal')).show();
+};
+
+window.savePhoto = async function() {
+ const caption = document.getElementById('ph-caption').value.trim();
+ const category = document.getElementById('ph-category').value;
+ const fileInput = document.getElementById('ph-file');
+ if (!caption) { alert('Please add a caption.'); return; }
+
+ let photoUrl = null;
+ if (fileInput.files[0]) {
+ try {
+ const s = await getStorageModule();
+ if (!s) { alert('Storage not available. Try refreshing.'); return; }
+ const file = fileInput.files[0];
+ const ref = s.ref(s.storage, `culture/photos/${Date.now()}_${file.name}`);
+ await s.uploadBytes(ref, file);
+ photoUrl = await s.getDownloadURL(ref);
+ } catch(e) { alert('Photo upload failed: ' + e.message); return; }
+ }
+
+ try {
+ await addDoc(collection(db, 'culture_photos'), {
+ caption, category, photoUrl,
+ postedBy: currentUser?.email || '',
+ postedAt: new Date().toISOString(),
+ likes: [],
+ });
+ bootstrap.Modal.getOrCreateInstance(document.getElementById('addPhotoModal')).hide();
+ _scPhotoLimit = 12;
+ loadPhotoWall();
+ } catch(e) { alert('Error saving: ' + e.message); }
+};
+
+window.likePhoto = async function(photoId) {
+ const uid = currentUser?.uid || currentUser?.email || '';
+ if (!uid) return;
+ const p = _scPhotos.find(x => x.id === photoId);
+ if (!p) return;
+ const likes = p.likes || [];
+ const newLikes = likes.includes(uid) ? likes.filter(x => x !== uid) : [...likes, uid];
+ try {
+ await updateDoc(doc(db, 'culture_photos', photoId), { likes: newLikes });
+ p.likes = newLikes;
+ renderPhotoWall();
+ } catch(e) { console.error('likePhoto:', e); }
+};
+
+window.deletePhoto = async function(photoId) {
+ if (!roleAtLeast('lead')) return;
+ if (!confirm('Delete this photo?')) return;
+ try {
+ const p = _scPhotos.find(x => x.id === photoId);
+ await deleteDoc(doc(db, 'culture_photos', photoId));
+ if (p?.photoUrl) {
+ try {
+ const s = await getStorageModule();
+ if (s) await s.deleteObject(s.ref(s.storage, p.photoUrl));
+ } catch(_){}
+ }
+ _scPhotos = _scPhotos.filter(x => x.id !== photoId);
+ renderPhotoWall();
+ } catch(e) { alert('Error: ' + e.message); }
+};
+
 </script>
 
 <style>
@@ -18459,414 +18867,6 @@ function lb_aggregateToUPH(rows, log) {
  return out;
 }
 
-
-})(); // end IIFE - Production Tab
-
-// ═══════════════════════════════════════════════════════════════════
-// SHIFT CULTURE TAB
-// ═══════════════════════════════════════════════════════════════════
-
-let _scPhotos = [];
-let _scPhotoFilter = 'all';
-let _scPhotoLimit = 12;
-let _scChallengerData = null;
-
-// ── Load everything when the tab opens ──────────────────────────────
-window.loadShiftCulture = async function() {
- loadChallengerData();
- loadPhotoWall();
- // show/hide add-photo button based on role (lead+)
- const addBtn = document.getElementById('sc-add-photo-btn');
- if (addBtn) addBtn.style.display = roleAtLeast('lead') ? 'inline-block' : 'none';
-};
-
-// ── Challenger Initiative ────────────────────────────────────────────
-async function loadChallengerData() {
- try {
- const snap = await getDoc(doc(db, 'culture', 'challenger'));
- _scChallengerData = snap.exists() ? snap.data() : null;
- renderChallenger(_scChallengerData);
- loadPastChallenges();
- } catch(e) { console.error('loadChallengerData:', e); }
-}
-
-function renderChallenger(d) {
- const hasData = d && (d.leftName || d.rightName);
- document.getElementById('sc-no-challenge').style.display = hasData ? 'none' : 'block';
- document.getElementById('sc-fighters').style.opacity = hasData ? '1' : '0.3';
- document.getElementById('sc-score-row').style.opacity = hasData ? '1' : '0.3';
-
- const canEdit = roleAtLeast('lead');
- const editBtn = document.getElementById('sc-edit-btn');
- const newBtn = document.getElementById('sc-new-btn');
- const galleryBtn = document.getElementById('sc-gallery-btn');
- if (editBtn) editBtn.style.display = canEdit && hasData ? 'inline-block' : 'none';
- if (newBtn) newBtn.style.display = canEdit && !hasData ? 'inline-block' : 'none';
- if (galleryBtn) galleryBtn.style.display = canEdit && hasData && d.leftUph && d.rightUph ? 'inline-block' : 'none';
-
- // show photo upload buttons for leads+
- const showUpload = roleAtLeast('lead') && hasData;
- const lu = document.getElementById('sc-left-upload-btn');
- const ru = document.getElementById('sc-right-upload-btn');
- if (lu) lu.style.display = showUpload ? 'block' : 'none';
- if (ru) ru.style.display = showUpload ? 'block' : 'none';
-
- if (!hasData) return;
-
- // month / function bar
- document.getElementById('sc-ch-month').textContent = d.month || '—';
- document.getElementById('sc-ch-func').textContent = d.function || '—';
-
- // left fighter
- document.getElementById('sc-left-name').textContent = d.leftName || '—';
- document.getElementById('sc-left-initials').textContent = initials(d.leftName);
- document.getElementById('sc-score-left-name').textContent = d.leftName || 'Challenger';
- if (d.leftPhotoUrl) {
- document.getElementById('sc-left-img').src = d.leftPhotoUrl;
- document.getElementById('sc-left-img-wrap').style.display = 'block';
- document.getElementById('sc-left-photo').style.display = 'none';
- }
-
- // right fighter
- document.getElementById('sc-right-name').textContent = d.rightName || '—';
- document.getElementById('sc-right-initials').textContent = initials(d.rightName);
- document.getElementById('sc-right-role-pill').textContent = d.rightRole || 'Lead';
- document.getElementById('sc-score-right-name').textContent = d.rightName || 'Redvest';
- if (d.rightPhotoUrl) {
- document.getElementById('sc-right-img').src = d.rightPhotoUrl;
- document.getElementById('sc-right-img-wrap').style.display = 'block';
- document.getElementById('sc-right-photo').style.display = 'none';
- }
-
- // stats & points
- const lUph = Number(d.leftUph) || 0;
- const rUph = Number(d.rightUph) || 0;
- const lUnits = Number(d.leftUnits) || 0;
- const rUnits = Number(d.rightUnits) || 0;
- const hasResults = lUph > 0 || rUph > 0 || lUnits > 0 || rUnits > 0;
-
- if (hasResults) {
- const maxUph = Math.max(lUph, rUph, 1);
- const maxUnits = Math.max(lUnits, rUnits, 1);
-
- // bars
- document.getElementById('sc-left-uph-bar').style.width = Math.round(lUph / maxUph * 100) + '%';
- document.getElementById('sc-right-uph-bar').style.width = Math.round(rUph / maxUph * 100) + '%';
- document.getElementById('sc-left-units-bar').style.width = Math.round(lUnits / maxUnits * 100) + '%';
- document.getElementById('sc-right-units-bar').style.width = Math.round(rUnits / maxUnits * 100) + '%';
-
- // values
- document.getElementById('sc-left-uph-val').textContent = lUph || '—';
- document.getElementById('sc-right-uph-val').textContent = rUph || '—';
- document.getElementById('sc-left-units-val').textContent = lUnits ? lUnits.toLocaleString() : '—';
- document.getElementById('sc-right-units-val').textContent = rUnits ? rUnits.toLocaleString() : '—';
-
- // scoring: 2pts to winner, 1pt to loser per category. Ties go to challenger.
- const lUphPts = lUph >= rUph ? 2 : 1;
- const rUphPts = rUph > lUph ? 2 : 1;
- const lUnitsPts = lUnits >= rUnits ? 2 : 1;
- const rUnitsPts = rUnits > lUnits ? 2 : 1;
- const lTotal = lUphPts + lUnitsPts;
- const rTotal = rUphPts + rUnitsPts;
-
- const winStyle = 'background:#FF7C1F33;color:#FF7C1F';
- const loseStyle = 'background:#1B2D42;color:#3F444F';
- const winStyleBlue = 'background:#004C8033;color:#6CD3FC';
-
- setPtsBadge('sc-left-uph-pts', lUphPts, lUphPts >= rUphPts, false);
- setPtsBadge('sc-right-uph-pts', rUphPts, rUphPts > lUphPts, true);
- setPtsBadge('sc-left-units-pts', lUnitsPts, lUnitsPts >= rUnitsPts, false);
- setPtsBadge('sc-right-units-pts', rUnitsPts, rUnitsPts > lUnitsPts, true);
-
- document.getElementById('sc-score-left-pts').textContent = lTotal;
- document.getElementById('sc-score-right-pts').textContent = rTotal;
-
- // winner banner
- const banner = document.getElementById('sc-winner-banner');
- banner.style.display = 'block';
- const challengerWins = lTotal >= rTotal; // ties go to challenger
- if (challengerWins) {
- banner.style.background = '#FF7C1F18';
- banner.style.border = '1px solid #FF7C1F44';
- const isUpset = true; // always an upset when associate beats redvest
- banner.innerHTML = `<div style="font-size:12px;color:#FF7C1F;letter-spacing:.06em;text-transform:uppercase">🔥 ${isUpset ? 'Upset! ' : ''}Associate wins — ${escapeHtml(d.leftName || '')}</div><div style="font-size:10px;color:#9DA0B2;margin-top:3px">${escapeHtml(d.leftName || 'Challenger')} earns a $20 gift card · Ties go to the challenger</div>`;
- } else {
- banner.style.background = '#004C8018';
- banner.style.border = '1px solid #004C8044';
- banner.innerHTML = `<div style="font-size:12px;color:#6CD3FC;letter-spacing:.06em;text-transform:uppercase">🛡️ Redvest defends — ${escapeHtml(d.rightName || '')}</div><div style="font-size:10px;color:#9DA0B2;margin-top:3px">Better luck next month, ${escapeHtml(d.leftName || 'challenger')}!</div>`;
- }
- }
-}
-
-function setPtsBadge(id, pts, isWinner, isBlue) {
- const el = document.getElementById(id);
- if (!el) return;
- el.textContent = pts + ' pt' + (pts !== 1 ? 's' : '');
- if (isWinner && isBlue) el.style = 'font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;background:#004C8033;color:#6CD3FC';
- else if (isWinner) el.style = 'font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;background:#FF7C1F33;color:#FF7C1F';
- else el.style = 'font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;background:#1B2D42;color:#3F444F';
-}
-
-function initials(name) {
- if (!name) return '?';
- return name.trim().split(/\s+/).map(w => w[0].toUpperCase()).slice(0,2).join('');
-}
-
-async function loadPastChallenges() {
- try {
- const snap = await getDocs(query(collection(db, 'culture_challenges'), orderBy('createdAt', 'desc'), limit(8)));
- const grid = document.getElementById('sc-past-grid');
- if (!grid) return;
- if (snap.empty) { grid.innerHTML = '<div style="color:#3F444F;font-size:11px;text-align:center;grid-column:1/-1">No past challenges yet.</div>'; return; }
- grid.innerHTML = snap.docs.map(d => {
- const ch = d.data();
- const lTotal = (ch.leftUph >= ch.rightUph ? 2 : 1) + (ch.leftUnits >= ch.rightUnits ? 2 : 1);
- const rTotal = (ch.rightUph > ch.leftUph ? 2 : 1) + (ch.rightUnits > ch.leftUnits ? 2 : 1);
- const challengerWon = lTotal >= rTotal;
- return `<div style="background:#1B2D42;border-radius:6px;border:1px solid #243548;padding:8px;text-align:center">
- <div style="font-size:9px;color:#3F444F;margin-bottom:3px">${escapeHtml(ch.month||'')}</div>
- <div style="display:flex;justify-content:center;gap:4px;margin-bottom:4px">
- <div style="width:28px;height:28px;border-radius:50%;background:#FF7C1F33;border:1px solid #FF7C1F44;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:#FF7C1F">${initials(ch.leftName)}</div>
- <div style="width:28px;height:28px;border-radius:50%;background:#004C8033;border:1px solid #004C8044;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:#6CD3FC">${initials(ch.rightName)}</div>
- </div>
- <div style="font-size:10px;color:${challengerWon?'#FF7C1F':'#9DA0B2'}">${escapeHtml(ch.leftName||'?')}${challengerWon?' 🏆':''}</div>
- <div style="font-size:10px;color:${!challengerWon?'#6CD3FC':'#9DA0B2'}">vs ${escapeHtml(ch.rightName||'?')}${!challengerWon?' 🛡️':''}</div>
- ${challengerWon?'<div style="font-size:9px;color:#FF7C1F;margin-top:2px">🔥 Upset</div>':''}
- </div>`;
- }).join('');
- } catch(e) { console.error('loadPastChallenges:', e); }
-}
-
-window.openChallengerModal = function() {
- if (!roleAtLeast('lead')) return;
- const d = _scChallengerData || {};
- document.getElementById('ch-left-name').value = d.leftName || '';
- document.getElementById('ch-right-name').value = d.rightName || '';
- document.getElementById('ch-right-role').value = d.rightRole || 'Lead';
- document.getElementById('ch-function').value = d.function || '';
- document.getElementById('ch-month').value = d.month || new Date().toLocaleString('default',{month:'long',year:'numeric'});
- document.getElementById('ch-left-uph').value = d.leftUph || '';
- document.getElementById('ch-left-units').value = d.leftUnits || '';
- document.getElementById('ch-right-uph').value = d.rightUph || '';
- document.getElementById('ch-right-units').value = d.rightUnits || '';
- bootstrap.Modal.getOrCreateInstance(document.getElementById('challengerModal')).show();
-};
-
-window.saveChallenger = async function() {
- const data = {
- leftName: document.getElementById('ch-left-name').value.trim(),
- rightName: document.getElementById('ch-right-name').value.trim(),
- rightRole: document.getElementById('ch-right-role').value,
- function: document.getElementById('ch-function').value.trim(),
- month: document.getElementById('ch-month').value.trim(),
- leftUph: Number(document.getElementById('ch-left-uph').value) || 0,
- leftUnits: Number(document.getElementById('ch-left-units').value) || 0,
- rightUph: Number(document.getElementById('ch-right-uph').value) || 0,
- rightUnits: Number(document.getElementById('ch-right-units').value) || 0,
- updatedAt: new Date().toISOString(),
- updatedBy: currentUser?.email || '',
- // preserve existing photos
- leftPhotoUrl: _scChallengerData?.leftPhotoUrl || null,
- rightPhotoUrl: _scChallengerData?.rightPhotoUrl || null,
- createdAt: _scChallengerData?.createdAt || new Date().toISOString(),
- };
- try {
- await setDoc(doc(db, 'culture', 'challenger'), data);
- // archive to history collection keyed by month
- const monthKey = data.month.replace(/\s+/g,'_').toLowerCase();
- await setDoc(doc(db, 'culture_challenges', monthKey), data, { merge: true });
- _scChallengerData = data;
- bootstrap.Modal.getOrCreateInstance(document.getElementById('challengerModal')).hide();
- renderChallenger(_scChallengerData);
- loadPastChallenges();
- } catch(e) { alert('Error saving: ' + e.message); }
-};
-
-window.uploadChallengerPhoto = async function(side, input) {
- if (!input.files[0]) return;
- const file = input.files[0];
- const path = `culture/challenger_${side}_${Date.now()}.${file.name.split('.').pop()}`;
- try {
- const s = await getStorageModule();
- if (!s) { alert('Storage not available. Try refreshing.'); return; }
- const ref = s.ref(s.storage, path);
- await s.uploadBytes(ref, file);
- const url = await s.getDownloadURL(ref);
- const field = side === 'left' ? 'leftPhotoUrl' : 'rightPhotoUrl';
- await updateDoc(doc(db, 'culture', 'challenger'), { [field]: url });
- if (_scChallengerData) _scChallengerData[field] = url;
- // update UI immediately
- const imgEl = document.getElementById(`sc-${side}-img`);
- const wrapEl = document.getElementById(`sc-${side}-img-wrap`);
- const photoEl = document.getElementById(`sc-${side}-photo`);
- if (imgEl) imgEl.src = url;
- if (wrapEl) wrapEl.style.display = 'block';
- if (photoEl) photoEl.style.display = 'none';
- } catch(e) { alert('Photo upload failed: ' + e.message); }
-};
-
-window.postChallengerToGallery = async function() {
- if (!_scChallengerData) return;
- const d = _scChallengerData;
- const lTotal = (d.leftUph >= d.rightUph ? 2 : 1) + (d.leftUnits >= d.rightUnits ? 2 : 1);
- const rTotal = (d.rightUph > d.leftUph ? 2 : 1) + (d.rightUnits > d.leftUnits ? 2 : 1);
- const challengerWon = lTotal >= rTotal;
- const caption = challengerWon
- ? `🔥 Upset! ${d.leftName} (${d.leftUph} UPH / ${Number(d.leftUnits).toLocaleString()} units) beat ${d.rightName} (${d.rightRole}) ${lTotal}–${rTotal}!`
- : `🛡️ ${d.rightName} (${d.rightRole}) defended the challenge against ${d.leftName} ${rTotal}–${lTotal}.`;
- try {
- await addDoc(collection(db, 'culture_photos'), {
- caption, category: 'Challenger',
- photoUrl: d.leftPhotoUrl || null,
- postedBy: currentUser?.email || '',
- postedAt: new Date().toISOString(),
- likes: [],
- month: d.month,
- });
- alert('Posted to gallery!');
- loadPhotoWall();
- } catch(e) { alert('Error: ' + e.message); }
-};
-
-// ── Photo Wall ───────────────────────────────────────────────────────
-async function loadPhotoWall() {
- try {
- const snap = await getDocs(query(collection(db, 'culture_photos'), orderBy('postedAt', 'desc'), limit(_scPhotoLimit)));
- _scPhotos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
- renderPhotoWall();
- const loadMoreBtn = document.getElementById('sc-load-more-btn');
- if (loadMoreBtn) loadMoreBtn.style.display = snap.docs.length >= _scPhotoLimit ? 'inline-block' : 'none';
- } catch(e) { console.error('loadPhotoWall:', e); }
-}
-
-function renderPhotoWall() {
- const grid = document.getElementById('sc-photo-grid');
- if (!grid) return;
- const filtered = _scPhotoFilter === 'all' ? _scPhotos : _scPhotos.filter(p => p.category === _scPhotoFilter);
- const canEdit = roleAtLeast('lead');
- const canPost = roleAtLeast('lead');
-
- const tagColors = {
- Shift: 'background:#FF7C1Fcc;color:#111F30',
- Challenger: 'background:#004C80cc;color:#C2ECFF',
- Milestone: 'background:#111F30cc;color:#C2ECFF;border:1px solid #004C8066',
- Event: 'background:#22863acc;color:#fff',
- };
-
- let html = filtered.map((p, i) => {
- const liked = (p.likes || []).includes(currentUser?.uid || currentUser?.email || '');
- const likeCount = (p.likes || []).length;
- const tagStyle = tagColors[p.category] || tagColors.Shift;
- const featuredStyle = i === 0 ? 'grid-column:span 2;grid-row:span 2;' : '';
- const imgH = i === 0 ? '220px' : '110px';
- return `<div style="border-radius:10px;overflow:hidden;border:.5px solid #e5e7eb;background:#f9fafb;${featuredStyle}">
- <div style="height:${imgH};position:relative;overflow:hidden;background:#f3f4f6;display:flex;align-items:center;justify-content:center">
- ${p.photoUrl ? `<img src="${escapeHtml(p.photoUrl)}" style="width:100%;height:100%;object-fit:cover;object-position:top" loading="lazy">` : `<i class="fas fa-image" style="font-size:${i===0?'36':'22'}px;color:#d1d5db"></i>`}
- <div style="position:absolute;top:8px;left:8px"><span style="font-size:9px;padding:2px 7px;border-radius:20px;font-weight:500;${tagStyle}">${escapeHtml(p.category||'Shift')}</span></div>
- ${canEdit ? `<button onclick="deletePhoto('${p.id}')" style="position:absolute;top:6px;right:6px;background:#111F3099;border:none;color:#9DA0B2;border-radius:3px;font-size:10px;padding:2px 6px;cursor:pointer" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
- </div>
- <div style="padding:8px 10px 10px">
- <div style="font-size:${i===0?'14':'12'}px;font-weight:500;color:#111;margin-bottom:3px">${escapeHtml(p.caption||'')}</div>
- <div style="font-size:11px;color:#6b7280;margin-bottom:6px">${p.postedBy?.split('@')[0]||'—'} · ${p.postedAt ? new Date(p.postedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''}</div>
- <button onclick="likePhoto('${p.id}')" style="font-size:11px;color:${liked?'#FF7C1F':'#9ca3af'};background:none;border:none;cursor:pointer;padding:0"><i class="fas fa-heart me-1"></i>${likeCount}</button>
- </div>
- </div>`;
- }).join('');
-
- if (canPost) {
- html += `<div onclick="openAddPhotoModal()" style="border-radius:10px;border:1px dashed #d1d5db;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:100px;cursor:pointer;color:#9ca3af">
- <i class="fas fa-camera-retro" style="font-size:22px"></i><span style="font-size:12px">Add a moment</span>
- </div>`;
- }
-
- grid.innerHTML = html || '<div style="text-align:center;padding:40px;color:#9ca3af;grid-column:1/-1">No photos yet.</div>';
-}
-
-window.filterPhotos = function(cat) {
- _scPhotoFilter = cat;
- document.querySelectorAll('.sc-filter-pill').forEach(b => {
- const isActive = (cat === 'all' && b.textContent.trim() === 'All') || b.textContent.trim() === cat;
- b.style.background = isActive ? '#FF7C1F18' : '#f9fafb';
- b.style.color = isActive ? '#FF7C1F' : '#6b7280';
- b.style.borderColor = isActive ? '#FF7C1F55' : '#e5e7eb';
- });
- renderPhotoWall();
-};
-
-window.loadMorePhotos = function() {
- _scPhotoLimit += 12;
- loadPhotoWall();
-};
-
-window.openAddPhotoModal = function() {
- if (!roleAtLeast('lead')) return;
- document.getElementById('ph-file').value = '';
- document.getElementById('ph-caption').value = '';
- document.getElementById('ph-category').value = 'Shift';
- bootstrap.Modal.getOrCreateInstance(document.getElementById('addPhotoModal')).show();
-};
-
-window.savePhoto = async function() {
- const caption = document.getElementById('ph-caption').value.trim();
- const category = document.getElementById('ph-category').value;
- const fileInput = document.getElementById('ph-file');
- if (!caption) { alert('Please add a caption.'); return; }
-
- let photoUrl = null;
- if (fileInput.files[0]) {
- try {
- const s = await getStorageModule();
- if (!s) { alert('Storage not available. Try refreshing.'); return; }
- const file = fileInput.files[0];
- const ref = s.ref(s.storage, `culture/photos/${Date.now()}_${file.name}`);
- await s.uploadBytes(ref, file);
- photoUrl = await s.getDownloadURL(ref);
- } catch(e) { alert('Photo upload failed: ' + e.message); return; }
- }
-
- try {
- await addDoc(collection(db, 'culture_photos'), {
- caption, category, photoUrl,
- postedBy: currentUser?.email || '',
- postedAt: new Date().toISOString(),
- likes: [],
- });
- bootstrap.Modal.getOrCreateInstance(document.getElementById('addPhotoModal')).hide();
- _scPhotoLimit = 12;
- loadPhotoWall();
- } catch(e) { alert('Error saving: ' + e.message); }
-};
-
-window.likePhoto = async function(photoId) {
- const uid = currentUser?.uid || currentUser?.email || '';
- if (!uid) return;
- const p = _scPhotos.find(x => x.id === photoId);
- if (!p) return;
- const likes = p.likes || [];
- const newLikes = likes.includes(uid) ? likes.filter(x => x !== uid) : [...likes, uid];
- try {
- await updateDoc(doc(db, 'culture_photos', photoId), { likes: newLikes });
- p.likes = newLikes;
- renderPhotoWall();
- } catch(e) { console.error('likePhoto:', e); }
-};
-
-window.deletePhoto = async function(photoId) {
- if (!roleAtLeast('lead')) return;
- if (!confirm('Delete this photo?')) return;
- try {
- const p = _scPhotos.find(x => x.id === photoId);
- await deleteDoc(doc(db, 'culture_photos', photoId));
- if (p?.photoUrl) {
- try {
- const s = await getStorageModule();
- if (s) await s.deleteObject(s.ref(s.storage, p.photoUrl));
- } catch(_){}
- }
- _scPhotos = _scPhotos.filter(x => x.id !== photoId);
- renderPhotoWall();
- } catch(e) { alert('Error: ' + e.message); }
-};
 
 })(); // end IIFE - Production Tab
 
