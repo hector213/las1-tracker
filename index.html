@@ -326,7 +326,6 @@ window.autoCheckPerfectAttendance = async function(showAlert = true) {
  }
 
  const weekMon = _lastCompletedWeekMonday();
- const weekDates = new Set(_weekDates(weekMon));
 
  // Build last 4 week Mondays (oldest first)
  const fourWeeks = [];
@@ -339,10 +338,21 @@ window.autoCheckPerfectAttendance = async function(showAlert = true) {
  const eligibleAssociates = allAssociates.filter(a => a.status === 'active' && !a.position);
  let weeklyAwarded = 0, monthlyAwarded = 0;
 
+ // weekSun = last day of the checked week (Sunday)
+ const weekSun = (() => {
+ const d = new Date(weekMon + 'T00:00:00');
+ d.setDate(d.getDate() + 6);
+ return d.toISOString().slice(0, 10);
+ })();
+
  for (const assoc of eligibleAssociates) {
- // Load attendance + badge entries
+ // Load badge entries (all) + attendance entries ONLY within the week date range
  const [attSnap, badgeSnap] = await Promise.all([
- getDocsFromServer(collection(db, 'attendance', assoc.id, 'entries')),
+ getDocs(query(
+ collection(db, 'attendance', assoc.id, 'entries'),
+ where('date', '>=', weekMon),
+ where('date', '<=', weekSun)
+ )),
  getDocsFromServer(collection(db, 'badges', assoc.id, 'entries')),
  ]);
 
@@ -354,7 +364,8 @@ window.autoCheckPerfectAttendance = async function(showAlert = true) {
  b.badge === 'Weekly Perfect Attendance' && b.weekKey === weekMon && b.status === 'approved'
  );
  if (!alreadyHasWeekly) {
- const hasBadAtt = attEntries.some(e => weekDates.has(e.date) && _isBadType(e.type));
+ // Any bad attendance event within the checked week disqualifies
+ const hasBadAtt = attEntries.some(e => _isBadType(e.type));
  if (!hasBadAtt) {
  // Award weekly badge
  const newBadgeRef = await addDoc(collection(db, 'badges', assoc.id, 'entries'), {
@@ -407,6 +418,10 @@ window.autoCheckPerfectAttendance = async function(showAlert = true) {
  }
  }
 
+ // Always stamp attCheckLastRun so the auto-run won't fire again for this week
+ await setDoc(doc(db, 'system', 'attCheckLastRun'), {
+ weekKey: weekMon, ranAt: new Date().toISOString(), ranBy: currentUser?.email || 'System'
+ });
  if (showAlert) {
  alert(`✅ Attendance check complete for week of ${weekMon}.\n\nWeekly badges awarded: ${weeklyAwarded}\nPerfect Month badges awarded: ${monthlyAwarded}`);
  }
@@ -13895,12 +13910,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- left: challenger -->
  <div style="border-radius:8px;overflow:hidden;border:2px solid #FF7C1F">
- <div style="height:200px;background:linear-gradient(180deg,#1a1200 0%,#3d2000 100%);position:relative;display:flex;align-items:flex-end;justify-content:center;overflow:hidden">
+ <div style="height:240px;background:linear-gradient(180deg,#1a1200 0%,#3d2000 100%);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden">
  <span style="position:absolute;top:6px;left:6px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:3px;font-weight:600;background:#FF7C1F;color:#111F30">Challenger</span>
- <div id="sc-left-photo" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">
- <div id="sc-left-initials" style="width:100px;height:100px;border-radius:50%;background:#FF7C1F33;border:2px solid #FF7C1F44;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:500;color:#FF7C1F">?</div>
+ <div id="sc-left-photo" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px">
+ <div id="sc-left-initials" style="width:140px;height:140px;border-radius:50%;background:#FF7C1F22;border:3px solid #FF7C1F55;display:flex;align-items:center;justify-content:center;font-size:42px;font-weight:700;color:#FF7C1F">?</div>
  </div>
- <div id="sc-left-img-wrap" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0"><img id="sc-left-img" src="" style="width:100%;height:100%;object-fit:cover;object-position:top"></div>
+ <div id="sc-left-img-wrap" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0"><img id="sc-left-img" src="" style="width:100%;height:100%;object-fit:cover;object-position:center 20%"></div>
  <div style="position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,#1B2D42)"></div>
  <label id="sc-left-upload-btn" style="position:absolute;bottom:6px;right:6px;font-size:9px;padding:2px 7px;border-radius:3px;background:#111F3099;color:#9DA0B2;border:1px solid #3F444F;cursor:pointer;display:none"><i class="fas fa-camera me-1"></i>Photo<input type="file" accept="image/*" style="display:none" onchange="uploadChallengerPhoto('left',this)"></label>
  </div>
@@ -13933,12 +13948,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- right: redvest -->
  <div style="border-radius:8px;overflow:hidden;border:2px solid #004C80">
- <div style="height:200px;background:linear-gradient(180deg,#001629 0%,#003560 100%);position:relative;display:flex;align-items:flex-end;justify-content:center;overflow:hidden">
+ <div style="height:240px;background:linear-gradient(180deg,#001629 0%,#003560 100%);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden">
  <span style="position:absolute;top:6px;right:6px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:3px;font-weight:600;background:#004C80;color:#C2ECFF">Redvest</span>
- <div id="sc-right-photo" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">
- <div id="sc-right-initials" style="width:100px;height:100px;border-radius:50%;background:#004C8033;border:2px solid #004C8044;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:500;color:#6CD3FC">?</div>
+ <div id="sc-right-photo" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px">
+ <div id="sc-right-initials" style="width:140px;height:140px;border-radius:50%;background:#004C8022;border:3px solid #004C8055;display:flex;align-items:center;justify-content:center;font-size:42px;font-weight:700;color:#6CD3FC">?</div>
  </div>
- <div id="sc-right-img-wrap" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0"><img id="sc-right-img" src="" style="width:100%;height:100%;object-fit:cover;object-position:top"></div>
+ <div id="sc-right-img-wrap" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0"><img id="sc-right-img" src="" style="width:100%;height:100%;object-fit:cover;object-position:center 20%"></div>
  <div style="position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,#1B2D42)"></div>
  <label id="sc-right-upload-btn" style="position:absolute;bottom:6px;left:6px;font-size:9px;padding:2px 7px;border-radius:3px;background:#111F3099;color:#9DA0B2;border:1px solid #3F444F;cursor:pointer;display:none"><i class="fas fa-camera me-1"></i>Photo<input type="file" accept="image/*" style="display:none" onchange="uploadChallengerPhoto('right',this)"></label>
  </div>
@@ -13964,15 +13979,21 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div><!-- /fighters -->
 
  <!-- scores -->
- <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px" id="sc-score-row">
- <div id="sc-score-left" style="text-align:center;flex:1;background:#1B2D42;border-radius:8px;padding:16px 12px">
- <div id="sc-score-left-pts" style="font-size:40px;font-weight:700;color:#FF7C1F;line-height:1">—</div>
- <div id="sc-score-left-name" style="font-size:12px;color:#9DA0B2;margin-top:6px;font-weight:500">Challenger</div>
+ <div style="display:flex;align-items:stretch;justify-content:space-between;gap:8px;margin-bottom:10px" id="sc-score-row">
+ <div id="sc-score-left" style="text-align:center;flex:1;background:#1B2D42;border-radius:8px;padding:20px 16px;display:flex;flex-direction:column;align-items:center;justify-content:center">
+ <div style="font-size:10px;color:#3F444F;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Score</div>
+ <div id="sc-score-left-pts" style="font-size:52px;font-weight:800;color:#FF7C1F;line-height:1">—</div>
+ <div style="width:32px;height:3px;background:#FF7C1F44;border-radius:2px;margin:8px auto"></div>
+ <div id="sc-score-left-name" style="font-size:13px;color:#C2ECFF;font-weight:600">Challenger</div>
  </div>
- <div style="font-size:18px;color:#3F444F;font-weight:600">vs</div>
- <div id="sc-score-right" style="text-align:center;flex:1;background:#1B2D42;border-radius:8px;padding:16px 12px">
- <div id="sc-score-right-pts" style="font-size:40px;font-weight:700;color:#6CD3FC;line-height:1">—</div>
- <div id="sc-score-right-name" style="font-size:12px;color:#9DA0B2;margin-top:6px;font-weight:500">Redvest</div>
+ <div style="display:flex;align-items:center;justify-content:center;padding:0 4px">
+ <div style="font-size:14px;color:#3F444F;font-weight:600;writing-mode:vertical-rl;letter-spacing:.15em;text-transform:uppercase">vs</div>
+ </div>
+ <div id="sc-score-right" style="text-align:center;flex:1;background:#1B2D42;border-radius:8px;padding:20px 16px;display:flex;flex-direction:column;align-items:center;justify-content:center">
+ <div style="font-size:10px;color:#3F444F;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Score</div>
+ <div id="sc-score-right-pts" style="font-size:52px;font-weight:800;color:#6CD3FC;line-height:1">—</div>
+ <div style="width:32px;height:3px;background:#004C8044;border-radius:2px;margin:8px auto"></div>
+ <div id="sc-score-right-name" style="font-size:13px;color:#C2ECFF;font-weight:600">Redvest</div>
  </div>
  </div>
 
