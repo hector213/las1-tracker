@@ -17373,13 +17373,17 @@ function lb_computeTrendSeries(tranType) {
  let soFarIdx = lb_bucketIndexForHour(hh, buckets);
  if (soFarIdx === -1) soFarIdx = buckets.length - 1;
  const actualSoFar = actualCum[soFarIdx] || 0;
- const idealSoFar = idealCum[soFarIdx] || 0;
 
- // Team avg UPH (live): actual units so far / production hours elapsed since shift start.
+ // Compute idealSoFar at exact clock time (mirrors hero card formula) rather than at the end
+ // of the current 30-min bucket — bucket-end overstates by up to ~30 min of ideal progress.
  let shiftStart = new Date(lb_currentShiftDate + "T00:00:00");
  shiftStart.setHours(Math.floor(lb_appSettings.shiftStartHour), (lb_appSettings.shiftStartHour % 1) * 60, 0, 0);
  let elapsedMs = now - shiftStart;
  if (elapsedMs < 0) elapsedMs += 24 * 3600000;
+ const elapsedMinNow = elapsedMs / 60000;
+ const nominalProdMin = lb_productionMinutesElapsed(nominalWindowMin, breaks);
+ const prodMinElapsedNow = nominalProdMin > 0 ? Math.min(nominalProdMin, lb_productionMinutesElapsed(Math.max(0, elapsedMinNow), breaks)) : 0;
+ const idealSoFar = nominalProdMin > 0 ? dailyTarget * (prodMinElapsedNow / nominalProdMin) : 0;
  const windowHours = lb_appSettings.shiftLengthHours + (lb_appSettings.shiftGraceHours || 0);
  const elapsedHours = Math.max(0, Math.min(elapsedMs / 3600000, windowHours));
  const avgUphLive = elapsedHours > 0 ? actualSoFar / elapsedHours : 0;
