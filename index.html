@@ -16097,11 +16097,6 @@ let lb_unsubAssocTrendToday = null;
 let lb_assocTrendDocsToday = {}; // `${associateId}_${tranType}` -> {buckets: [{label, units}]}, every associate/Tran Type for lb_currentShiftDate
 let lb_selectedTrendTran = "315";
 let lb_trendChartInstance = null;
-// Cached floor-computed goals (summed from assigned stations) — kept in sync by lb_renderLaborBoard
-// so lb_computeTrendSeries can use the same number the hero cards display instead of re-summing
-// from lb_shiftGoalsToday (which can include goals for functions not on the floor right now).
-let lb_floorPackGoal = 0;
-let lb_floorPickGoal = 0;
 let lb_unsubAssocTrend = null;
 let lb_assocTrendDoc = null; // currently subscribed {buckets: [{label, units}]}, or null
 let lb_assocTrendChartInstance = null;
@@ -16783,10 +16778,6 @@ function lb_renderBoard() {
  if (elapsedMs < 0) elapsedMs += 24 * 3600000; // wrapped past midnight into the next calendar day
  const elapsedMinNow = elapsedMs / 60000;
 
- // Keep trend chart in sync with the hero cards — both must use the same goal source.
- lb_floorPackGoal = totalGoal;
- lb_floorPickGoal = pickTotalGoal;
-
  lb_renderPivotHero({
  actual: packoutSoFar, totalGoal, totalProjected,
  headcount: packHeadcount, uphSum: packUphSum, atRateUnits: packAtRateUnits,
@@ -17347,20 +17338,15 @@ function lb_computeTrendSeries(tranType) {
  doc.buckets.forEach((b, i) => { if (i < bucketUnits.length) bucketUnits[i] = b.units || 0; });
  }
 
- // Use the floor-computed goal (same source as the hero cards) so Ideal Target here matches
- // the hero card exactly. Fall back to summing lb_shiftGoalsToday only for tran types that
- // don't have a floor-cached value (inbound charts etc.).
- let dailyTarget;
- if (tranType === LB_PACKOUT_TRAN_TYPE && lb_floorPackGoal > 0) {
- dailyTarget = lb_floorPackGoal;
- } else if (tranType === LB_PICK_TRAN_TYPE && lb_floorPickGoal > 0) {
- dailyTarget = lb_floorPickGoal;
- } else {
- const groupFnKeys = Object.keys(LB_FUNCTIONS).filter(k => LB_FUNCTIONS[k].tranType === tranType);
- dailyTarget = lb_shiftGoalsToday
- .filter(g => groupFnKeys.includes(g.functionKey))
- .reduce((s, g) => s + (g.targetUnits || 0), 0);
- }
+ // Mirror the hero card exactly: only sum goals for function keys that have a station
+ // on the floor right now (lb_stations), NOT all goals in lb_shiftGoalsToday for this
+ // tran type. If a function has a saved goal but no station placed, it doesn't count —
+ // same rule the hero card uses. Falls back to the full-goals sum only when lb_stations
+ // has no entries for this tran type (e.g. inbound functions).
+ const floorFnKeys = [...new Set(lb_stations.filter(s => s.tranType === tranType).map(s => s.functionKey))];
+ const dailyTarget = floorFnKeys.length > 0
+ ? floorFnKeys.reduce((sum, fk) => { const g = lb_shiftGoalsToday.find(x => x.functionKey === fk); return sum + (g ? (g.targetUnits || 0) : 0); }, 0)
+ : lb_shiftGoalsToday.filter(g => { const fn = LB_FUNCTIONS[g.functionKey]; return fn && fn.tranType === tranType; }).reduce((s, g) => s + (g.targetUnits || 0), 0);
 
  const breaks = lb_shiftBreakOffsetsMinutes();
  const nominalWindowMin = lb_appSettings.shiftLengthHours * 60;
