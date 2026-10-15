@@ -10937,6 +10937,12 @@ function pl_shiftsFor(dateStr) {
 function pl_shiftColor(shift) {
  return shift==='A1'?'#FF7C1F':shift==='A2'?'#6CD3FC':'#4ade80';
 }
+// Vend for a day: multi-shift days store vend in _day doc; single-shift (B1) in the shift doc
+function pl_vendForDay(data, dateStr) {
+ const shifts = pl_shiftsFor(dateStr);
+ if (shifts.length > 1) return (data[`${dateStr}_day`]||{}).vend||0;
+ return shifts.reduce((s,sh) => s + ((data[`${dateStr}_${sh}`]||{}).vend||0), 0);
+}
 
 window.pl_init = function pl_init() {
  try {
@@ -10998,8 +11004,10 @@ function pl_renderWeekKpis() {
  try {
   if (!pl_weekStart || !pl_chartMonth) return; // not yet initialized
   // --- This-week totals ---
-  let totPack=0, totPut=0, totVend=0;
-  Object.values(pl_weekData).forEach(d => { totPack+=d.packOut||0; totPut+=d.putaway||0; totVend+=d.vend||0; });
+  let totPack=0, totPut=0, totVend=0, totRcv=0;
+  const thisWeekDaysList = pl_weekDays(pl_weekStart);
+  Object.values(pl_weekData).forEach(d => { totPack+=d.packOut||0; totPut+=d.putaway||0; totRcv+=d.received||0; });
+  thisWeekDaysList.forEach(ds => { totVend += pl_vendForDay(pl_weekData, ds); });
 
   // --- Last-week comparison: same days elapsed only ---
   const todayStr = pl_dateStr(new Date());
@@ -11008,10 +11016,11 @@ function pl_renderWeekKpis() {
   const daysElapsed = isCurrentWeek ? thisWeekDays.indexOf(todayStr)+1 : 7;
   const lastMon = new Date(pl_weekStart); lastMon.setDate(lastMon.getDate()-7);
   const cutoffDays = new Set(pl_weekDays(lastMon).slice(0, daysElapsed));
-  let lwPack=0, lwPut=0, lwVend=0;
+  let lwPack=0, lwPut=0, lwVend=0, lwRcv=0;
   Object.values(pl_lastWeekData).forEach(d => {
-   if (cutoffDays.has(d.shiftDate)) { lwPack+=d.packOut||0; lwPut+=d.putaway||0; lwVend+=d.vend||0; }
+   if (cutoffDays.has(d.shiftDate)) { lwPack+=d.packOut||0; lwPut+=d.putaway||0; lwRcv+=d.received||0; }
   });
+  cutoffDays.forEach(ds => { lwVend += pl_vendForDay(pl_lastWeekData, ds); });
   const dayLabel = isCurrentWeek ? `same ${daysElapsed} day${daysElapsed>1?'s':''} last wk` : 'last week';
   const delta = (cur, prev) => {
    if (!prev) return `<div style="font-size:10px;color:#6b7280">no prior data</div>`;
@@ -11022,7 +11031,9 @@ function pl_renderWeekKpis() {
   const pvLast  = lwVend>0?(lwPack/lwVend*100).toFixed(0)+'%':'—';
 
   const kpiRow = document.getElementById('pl-kpi-row');
-  if (kpiRow) kpiRow.innerHTML = `
+  if (kpiRow) {
+   kpiRow.style.gridTemplateColumns = 'repeat(5,1fr)';
+   kpiRow.innerHTML = `
    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Pack Out</div>
     <div style="font-size:22px;font-weight:700;color:#FF7C1F">${totPack>0?totPack.toLocaleString():'—'}</div>
@@ -11042,21 +11053,31 @@ function pl_renderWeekKpis() {
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Pack / Vend</div>
     <div style="font-size:22px;font-weight:700;color:#1f2937">${pvRatio}</div>
     <div style="font-size:10px;color:#6b7280">${lwVend?dayLabel+': '+pvLast:'no prior data'}</div>
+   </div>
+   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Received</div>
+    <div style="font-size:22px;font-weight:700;color:#7c3aed">${totRcv>0?totRcv.toLocaleString():'—'}</div>
+    ${delta(totRcv,lwRcv)}
    </div>`;
+  }
 
   // --- MTD from pl_monthData ---
-  let mtdPack=0, mtdPut=0, mtdVend=0; const mtdDays=new Set();
+  let mtdPack=0, mtdPut=0, mtdVend=0, mtdRcv=0; const mtdDays=new Set();
   Object.values(pl_monthData).forEach(d => {
-   mtdPack+=d.packOut||0; mtdPut+=d.putaway||0; mtdVend+=d.vend||0;
-   if (d.packOut||d.putaway||d.vend) mtdDays.add(d.shiftDate);
+   mtdPack+=d.packOut||0; mtdPut+=d.putaway||0; mtdRcv+=d.received||0;
+   if (d.packOut||d.putaway||d.vend||d.received) mtdDays.add(d.shiftDate);
   });
+  // Vend: sum once per day using the day-level doc logic
+  mtdDays.forEach(ds => { mtdVend += pl_vendForDay(pl_monthData, ds); });
   const daysLogged = mtdDays.size;
   const avgVend = daysLogged>0?Math.round(mtdVend/daysLogged):0;
   const {year,month} = pl_chartMonth;
   const mtdLbl = document.getElementById('pl-kpi-mtd-label');
   if (mtdLbl) mtdLbl.textContent = `Month to date — ${PL_MONTH_NAMES[month-1]} ${year}`;
   const mtdRow = document.getElementById('pl-kpi-mtd-row');
-  if (mtdRow) mtdRow.innerHTML = `
+  if (mtdRow) {
+   mtdRow.style.gridTemplateColumns = 'repeat(5,1fr)';
+   mtdRow.innerHTML = `
    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center;border-top:2px solid #FF7C1F">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Pack Out MTD</div>
     <div style="font-size:22px;font-weight:700;color:#FF7C1F">${mtdPack>0?mtdPack.toLocaleString():'—'}</div>
@@ -11076,7 +11097,13 @@ function pl_renderWeekKpis() {
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Avg Daily Vend</div>
     <div style="font-size:22px;font-weight:700;color:#1f2937">${avgVend>0?avgVend.toLocaleString():'—'}</div>
     <div style="font-size:10px;color:#6b7280">per logged day</div>
+   </div>
+   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center;border-top:2px solid #7c3aed">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Received MTD</div>
+    <div style="font-size:22px;font-weight:700;color:#7c3aed">${mtdRcv>0?mtdRcv.toLocaleString():'—'}</div>
+    <div style="font-size:10px;color:#6b7280">${daysLogged} days logged</div>
    </div>`;
+  }
  } catch(e) {
   console.error('pl_renderWeekKpis error:', e);
   const r = document.getElementById('pl-kpi-row');
@@ -11106,23 +11133,26 @@ function pl_renderWeek() {
   const pillBrd = s => s==='A1'?'rgba(255,124,31,.3)':s==='A2'?'rgba(108,211,252,.3)':'rgba(74,222,128,.3)';
   const fmt2 = n => n>0?n.toLocaleString():'—';
 
-  let totPack=0, totPut=0, totVend=0;
-  Object.values(pl_weekData).forEach(d => { totPack+=d.packOut||0; totPut+=d.putaway||0; totVend+=d.vend||0; });
+  let totPack=0, totPut=0, totVend=0, totRcv=0;
+  Object.values(pl_weekData).forEach(d => { totPack+=d.packOut||0; totPut+=d.putaway||0; totRcv+=d.received||0; });
+  days.forEach(ds => { totVend += pl_vendForDay(pl_weekData, ds); });
 
   let html = `<table style="width:100%;border-collapse:collapse;font-size:12px;">
    <thead><tr>
-    <th style="width:40%;border-bottom:1px solid #e5e7eb;padding:6px 8px;text-align:left;">Date</th>
+    <th style="width:35%;border-bottom:1px solid #e5e7eb;padding:6px 8px;text-align:left;">Date</th>
     <th style="text-align:right;color:#c95e00;border-bottom:1px solid #e5e7eb;padding:6px 8px;">Pack Out</th>
     <th style="text-align:right;color:#0588a3;border-bottom:1px solid #e5e7eb;padding:6px 8px;">Putaway</th>
     <th style="text-align:right;color:#16803c;border-bottom:1px solid #e5e7eb;padding:6px 8px;">Vend</th>
+    <th style="text-align:right;color:#7c3aed;border-bottom:1px solid #e5e7eb;padding:6px 8px;">Received</th>
    </tr></thead><tbody>`;
 
   days.forEach(dateStr => {
    const shifts = pl_shiftsFor(dateStr);
    const d = new Date(dateStr+'T12:00:00');
    const dayLbl = `${PL_DAY_NAMES[d.getDay()]} ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
-   let dayPack=0, dayPut=0, dayVend=0;
-   shifts.forEach(sh => { const r=pl_weekData[`${dateStr}_${sh}`]||{}; dayPack+=r.packOut||0; dayPut+=r.putaway||0; dayVend+=r.vend||0; });
+   let dayPack=0, dayPut=0, dayRcv=0;
+   shifts.forEach(sh => { const r=pl_weekData[`${dateStr}_${sh}`]||{}; dayPack+=r.packOut||0; dayPut+=r.putaway||0; dayRcv+=r.received||0; });
+   const dayVend = pl_vendForDay(pl_weekData, dateStr);
    const isOpen = pl_openDay === dateStr;
    const pillsHtml = shifts.map(s=>`<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:${pillBg(s)};color:${pillClr(s)};border:1px solid ${pillBrd(s)};margin-left:4px">${s}</span>`).join('');
 
@@ -11134,9 +11164,11 @@ function pl_renderWeek() {
     <td style="text-align:right;padding:8px;font-weight:600;color:#c95e00">${fmt2(dayPack)}</td>
     <td style="text-align:right;padding:8px;font-weight:600;color:#0588a3">${fmt2(dayPut)}</td>
     <td style="text-align:right;padding:8px;font-weight:600;color:#16803c">${fmt2(dayVend)}</td>
+    <td style="text-align:right;padding:8px;font-weight:600;color:#7c3aed">${fmt2(dayRcv)}</td>
    </tr>`;
 
    if (isOpen) {
+    const isMultiShift = shifts.length > 1;
     html += `<tr><td colspan="4" style="padding:0;border-bottom:1px solid #e5e7eb">
      <div style="background:#f8f9fa;padding:12px 16px;display:flex;flex-direction:column;gap:10px">`;
     shifts.forEach(sh => {
@@ -11152,8 +11184,11 @@ function pl_renderWeek() {
        <label style="font-size:11px;color:#6b7280">Putaway</label>
        <input type="number" min="0" step="1" value="${rec.putaway||''}" placeholder="—" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="putaway"
         style="width:80px;padding:4px 6px;border:1px solid #e5e7eb;border-radius:4px;font-size:12px;text-align:right">
-       <label style="font-size:11px;color:#6b7280">Vend</label>
+       ${!isMultiShift ? `<label style="font-size:11px;color:#6b7280">Vend</label>
        <input type="number" min="0" step="1" value="${rec.vend||''}" placeholder="—" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="vend"
+        style="width:80px;padding:4px 6px;border:1px solid #e5e7eb;border-radius:4px;font-size:12px;text-align:right">` : ''}
+       <label style="font-size:11px;color:#7c3aed">Received</label>
+       <input type="number" min="0" step="1" value="${rec.received||''}" placeholder="—" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="received"
         style="width:80px;padding:4px 6px;border:1px solid #e5e7eb;border-radius:4px;font-size:12px;text-align:right">
        <button onclick="event.stopPropagation();pl_saveRow('${docId}','${dateStr}','${sh}')"
         style="padding:4px 14px;font-size:11px;font-weight:600;border:none;border-radius:4px;background:#1e3a5f;color:#fff;cursor:pointer">Save</button>
@@ -11163,10 +11198,32 @@ function pl_renderWeek() {
        <span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;background:${bg};color:${clr};border:1px solid ${brd}">${sh}</span>
        <span style="font-size:11px;color:#6b7280">Pack Out</span><strong>${fmt2(rec.packOut)}</strong>
        <span style="font-size:11px;color:#6b7280">Putaway</span><strong>${fmt2(rec.putaway)}</strong>
-       <span style="font-size:11px;color:#6b7280">Vend</span><strong>${fmt2(rec.vend)}</strong>
+       ${!isMultiShift ? `<span style="font-size:11px;color:#6b7280">Vend</span><strong>${fmt2(rec.vend)}</strong>` : ''}
+       <span style="font-size:11px;color:#7c3aed">Received</span><strong>${fmt2(rec.received)}</strong>
       </div>`;
      }
     });
+    // Single daily vend row for multi-shift days (A1+A2)
+    if (isMultiShift) {
+     const dayDocId = `${dateStr}_day`;
+     const dayRec = pl_weekData[dayDocId] || {};
+     if (canEdit) {
+      html += `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px dashed #e5e7eb;padding-top:8px;margin-top:2px">
+       <span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;background:rgba(74,222,128,.12);color:#16803c;border:1px solid rgba(74,222,128,.3);min-width:28px;text-align:center">Day</span>
+       <label style="font-size:11px;color:#6b7280">Vend</label>
+       <input type="number" min="0" step="1" value="${dayRec.vend||''}" placeholder="—" data-doc="${dayDocId}" data-date="${dateStr}" data-shift="day" data-field="vend"
+        style="width:80px;padding:4px 6px;border:1px solid #e5e7eb;border-radius:4px;font-size:12px;text-align:right">
+       <span style="font-size:10px;color:#6b7280;font-style:italic">total for the day</span>
+       <button onclick="event.stopPropagation();pl_saveDayVend('${dateStr}')"
+        style="padding:4px 14px;font-size:11px;font-weight:600;border:none;border-radius:4px;background:#1e3a5f;color:#fff;cursor:pointer">Save</button>
+      </div>`;
+     } else {
+      html += `<div style="display:flex;align-items:center;gap:16px;border-top:1px dashed #e5e7eb;padding-top:8px;margin-top:2px">
+       <span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;background:rgba(74,222,128,.12);color:#16803c;border:1px solid rgba(74,222,128,.3)">Day</span>
+       <span style="font-size:11px;color:#6b7280">Vend</span><strong>${fmt2(dayRec.vend)}</strong>
+      </div>`;
+     }
+    }
     html += `</div></td></tr>`;
    }
   });
@@ -11176,6 +11233,7 @@ function pl_renderWeek() {
    <td style="text-align:right;padding:7px 8px;color:#ffb57a">${fmt2(totPack)}</td>
    <td style="text-align:right;padding:7px 8px;color:#a8d8ff">${fmt2(totPut)}</td>
    <td style="text-align:right;padding:7px 8px;color:#a7f3d0">${fmt2(totVend)}</td>
+   <td style="text-align:right;padding:7px 8px;color:#c4b5fd">${fmt2(totRcv)}</td>
   </tr></tbody></table>`;
 
   const wrap = document.getElementById('pl-week-table-wrap');
@@ -11191,17 +11249,42 @@ window.pl_saveRow = async function(docId, shiftDate, shift) {
  const vals = {};
  inputs.forEach(inp => { vals[inp.dataset.field] = parseInt(inp.value,10)||0; });
  const existing = pl_weekData[docId] || {};
- const updated = { ...existing, shiftDate, shift, packOut:vals.packOut||0, putaway:vals.putaway||0, vend:vals.vend||0,
+ // For multi-shift days (A1/A2), don't overwrite vend — vend lives in _day doc
+ const isMultiShift = pl_shiftsFor(shiftDate).length > 1;
+ const updated = { ...existing, shiftDate, shift,
+  packOut: vals.packOut||0,
+  putaway: vals.putaway||0,
+  received: vals.received||0,
+  ...((!isMultiShift) ? { vend: vals.vend||0 } : {}),
   updatedAt: new Date().toISOString(), updatedBy: currentUser?.email||'' };
  try {
   const btn = document.querySelector(`button[onclick*="pl_saveRow('${docId}'"]`);
   if (btn) { btn.textContent='Saving…'; btn.disabled=true; }
   await window.lb_db.collection('production_log').doc(docId).set(updated, {merge:true});
   pl_weekData[docId] = updated;
-  // Also update month data if same month
   const docMonth = shiftDate.slice(0,7);
   const chartMonthStr = `${pl_chartMonth.year}-${String(pl_chartMonth.month).padStart(2,'0')}`;
   if (docMonth === chartMonthStr) pl_monthData[docId] = updated;
+  pl_renderWeek();
+  pl_renderMonth();
+ } catch(e) { alert('Save failed: '+e.message); }
+};
+
+window.pl_saveDayVend = async function(dateStr) {
+ const dayDocId = `${dateStr}_day`;
+ const inp = document.querySelector(`input[data-doc="${dayDocId}"][data-field="vend"]`);
+ const vend = inp ? (parseInt(inp.value,10)||0) : 0;
+ const existing = pl_weekData[dayDocId] || {};
+ const updated = { ...existing, shiftDate: dateStr, shift: 'day', vend,
+  updatedAt: new Date().toISOString(), updatedBy: currentUser?.email||'' };
+ try {
+  const btn = document.querySelector(`button[onclick*="pl_saveDayVend('${dateStr}')"]`);
+  if (btn) { btn.textContent='Saving…'; btn.disabled=true; }
+  await window.lb_db.collection('production_log').doc(dayDocId).set(updated, {merge:true});
+  pl_weekData[dayDocId] = updated;
+  const docMonth = dateStr.slice(0,7);
+  const chartMonthStr = `${pl_chartMonth.year}-${String(pl_chartMonth.month).padStart(2,'0')}`;
+  if (docMonth === chartMonthStr) pl_monthData[dayDocId] = updated;
   pl_renderWeek();
   pl_renderMonth();
  } catch(e) { alert('Save failed: '+e.message); }
@@ -11219,8 +11302,14 @@ function pl_renderMonth() {
  for (let d=1; d<=daysInMonth; d++) daily[d] = {pack:0,put:0,vend:0};
  Object.values(pl_monthData).forEach(rec => {
   const day = parseInt(rec.shiftDate.slice(8,10),10);
-  if (daily[day]) { daily[day].pack+=rec.packOut||0; daily[day].put+=rec.putaway||0; daily[day].vend+=rec.vend||0; }
+  if (daily[day]) { daily[day].pack+=rec.packOut||0; daily[day].put+=rec.putaway||0; }
  });
+ // Vend per day: use pl_vendForDay helper to avoid double-counting
+ for (let d=1; d<=daysInMonth; d++) {
+  const pad = n => String(n).padStart(2,'0');
+  const ds = `${year}-${pad(month)}-${pad(d)}`;
+  daily[d].vend = pl_vendForDay(pl_monthData, ds);
+ }
 
  const labels = Array.from({length:daysInMonth},(_,i)=>String(i+1));
  const packData = labels.map((_,i) => daily[i+1].pack || null);
@@ -11252,6 +11341,114 @@ function pl_renderMonth() {
    }
   });
  }
+ pl_renderShiftCompareChart();
+}
+
+// ── Shift comparison chart ───────────────────────────────────────────
+let pl_shiftMetric = 'packOut';
+let pl_shiftCompareChartInst = null;
+
+function pl_styleShiftMetricBtns() {
+ const colors = { packOut:'#c95e00', putaway:'#0588a3', received:'#7c3aed' };
+ const active = { packOut:'rgba(255,124,31,.12)', putaway:'rgba(108,211,252,.12)', received:'rgba(124,58,237,.12)' };
+ const border = { packOut:'rgba(255,124,31,.4)', putaway:'rgba(108,211,252,.4)', received:'rgba(124,58,237,.4)' };
+ ['packOut','putaway','received'].forEach(m => {
+  const btn = document.getElementById('pl-sm-'+m);
+  if (!btn) return;
+  const isActive = m === pl_shiftMetric;
+  btn.style.background = isActive ? active[m] : '#fff';
+  btn.style.borderColor = isActive ? border[m] : '#e5e7eb';
+  btn.style.color = colors[m];
+ });
+}
+window.pl_setShiftMetric = function(metric) {
+ pl_shiftMetric = metric;
+ pl_styleShiftMetricBtns();
+ pl_renderShiftCompareChart();
+};
+
+function pl_renderShiftCompareChart() {
+ const canvas = document.getElementById('pl-shift-compare-chart');
+ if (!canvas || typeof Chart === 'undefined' || !pl_chartMonth) return;
+ const {year, month} = pl_chartMonth;
+ const pad = n => String(n).padStart(2,'0');
+ const daysInMonth = new Date(year, month, 0).getDate();
+ const labels = Array.from({length:daysInMonth}, (_,i) => String(i+1));
+ const metricLabel = { packOut:'Pack Out', putaway:'Putaway', received:'Received' }[pl_shiftMetric];
+
+ // Build per-shift daily arrays
+ const shiftKeys = ['A1','A2','B1'];
+ const shiftColors = { A1:'#FF7C1F', A2:'#4da6ff', B1:'#4ade80' };
+ const shiftDash = { A1:[], A2:[], B1:[5,3] };
+ const shiftPoint = { A1:'circle', A2:'circle', B1:'rect' };
+
+ const datasets = shiftKeys.map(sh => {
+  const data = labels.map((_,i) => {
+   const ds = `${year}-${pad(month)}-${pad(i+1)}`;
+   const docId = `${ds}_${sh}`;
+   const rec = pl_monthData[docId];
+   if (!rec) return null;
+   return rec[pl_shiftMetric] || null;
+  });
+  return {
+   label: sh,
+   data,
+   borderColor: shiftColors[sh],
+   backgroundColor: 'transparent',
+   borderWidth: 2,
+   borderDash: shiftDash[sh],
+   pointRadius: 4,
+   pointHoverRadius: 6,
+   pointStyle: shiftPoint[sh],
+   pointBackgroundColor: shiftColors[sh],
+   tension: 0.3,
+   spanGaps: false
+  };
+ });
+
+ // Update label
+ const lbl = document.getElementById('pl-shift-compare-label');
+ if (lbl) lbl.textContent = `${metricLabel} — shift comparison`;
+
+ if (pl_shiftCompareChartInst) {
+  pl_shiftCompareChartInst.data.labels = labels;
+  pl_shiftCompareChartInst.data.datasets.forEach((ds,i) => { ds.data = datasets[i].data; });
+  pl_shiftCompareChartInst.update();
+ } else {
+  pl_shiftCompareChartInst = new Chart(canvas, {
+   type: 'line',
+   data: { labels, datasets },
+   options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode:'index', intersect:false },
+    plugins: {
+     legend: { display:false },
+     tooltip: {
+      callbacks: {
+       label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y != null ? ctx.parsed.y.toLocaleString() : '—'}`
+      }
+     }
+    },
+    scales: {
+     x: {
+      grid: { display:false },
+      ticks: { font:{size:10}, color:'#898781', maxTicksLimit:16, autoSkip:true }
+     },
+     y: {
+      beginAtZero: false,
+      grid: { color:'#e5e7eb', lineWidth:1 },
+      ticks: {
+       font:{size:10}, color:'#898781',
+       callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v
+      },
+      border: { display:false }
+     }
+    }
+   }
+  });
+ }
+ pl_styleShiftMetricBtns();
 }
 
 // ── Load everything when the tab opens ──────────────────────────────
@@ -15249,6 +15446,26 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px">
  <canvas id="pl-monthly-chart" height="90"></canvas>
+ </div>
+ </div>
+ <!-- Shift comparison chart -->
+ <div style="margin-top:24px">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+   <span style="font-size:13px;font-weight:600;color:#1f2937" id="pl-shift-compare-label">Shift comparison</span>
+   <div style="display:flex;gap:6px;margin-left:8px" id="pl-shift-metric-btns">
+    <button onclick="pl_setShiftMetric('packOut')" id="pl-sm-packOut" style="font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;font-weight:600;color:#c95e00">Pack Out</button>
+    <button onclick="pl_setShiftMetric('putaway')" id="pl-sm-putaway" style="font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;font-weight:600;color:#0588a3">Putaway</button>
+    <button onclick="pl_setShiftMetric('received')" id="pl-sm-received" style="font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;font-weight:600;color:#7c3aed">Received</button>
+   </div>
+   <div style="display:flex;gap:14px;margin-left:auto;font-size:10px;color:#6b7280">
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#FF7C1F;display:inline-block"></span><span style="width:7px;height:7px;border-radius:50%;background:#FF7C1F;display:inline-block"></span>A1</span>
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#4da6ff;display:inline-block"></span><span style="width:7px;height:7px;border-radius:50%;background:#4da6ff;display:inline-block"></span>A2</span>
+    <span style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:2px;background:#4ade80;display:inline-block;border-top:2px dashed #4ade80"></span><span style="width:7px;height:7px;border-radius:2px;background:#4ade80;display:inline-block"></span>B1</span>
+   </div>
+  </div>
+  <div style="background:#f8f9fa;border:1px solid #e5e7eb;border-radius:10px;padding:16px">
+   <div style="position:relative;height:180px"><canvas id="pl-shift-compare-chart"></canvas></div>
+  </div>
  </div>
  </div>
  </div>
