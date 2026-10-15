@@ -296,7 +296,7 @@ async function autoAwardAnniversaryPoints() {
     const pts = years * 50;
     const yearTag = `anniversary-${thisYear}`; // one award per calendar year
 
-    // Check pointslog — skip if already awarded this year
+    // Check pointslog - skip if already awarded this year
     try {
       const plSnap = await getDocs(collection(db, 'pointslog', a.id, 'entries'));
       const alreadyAwarded = plSnap.docs.some(d => d.data().reason?.includes(yearTag));
@@ -1264,10 +1264,10 @@ async function checkPendingNotifications() {
  const crossedAt = a.attThresholdCrossings?.[tier.key] || null;
  const alreadyIssued = wSnap.docs.some(d => {
  if (d.data().type !== tier.key) return false;
- // Pre-existing flag: marked as already issued with no date — always suppresses alert
+ // Pre-existing flag: marked as already issued with no date - always suppresses alert
  if (d.data().preExisting) return true;
  // If we have a crossing timestamp, the warning must have been issued AFTER that crossing
- // to count as "already handled" — an older warning means points re-crossed the threshold
+ // to count as "already handled" - an older warning means points re-crossed the threshold
  if (crossedAt) return new Date(d.data().issuedAt) >= new Date(crossedAt);
  // No crossing timestamp yet (legacy): any existing warning suppresses the alert
  return true;
@@ -1583,7 +1583,7 @@ async function initTicker() {
     _tickerAdjustMain(true);
     _tickerPaused = false;
     _updatePauseBtn();
-    // RAF-based scroll — text starts off-screen right, scrolls to left
+    // RAF-based scroll - text starts off-screen right, scrolls to left
     if (_tickerAnim) cancelAnimationFrame(_tickerAnim);
     // Wait one frame so bar.offsetWidth is measured after display:flex kicks in
     requestAnimationFrame(() => {
@@ -2679,7 +2679,7 @@ function renderNotes(notes) {
  </div>
  <div class="note-text">${escapeHtml(n.text)}</div>
  ${n.screenshotData ? `<div class="mt-2"><img src="${n.screenshotData}" alt="Performance screenshot" style="max-width:100%;max-height:320px;border-radius:6px;border:1px solid #e2e8f0;cursor:zoom-in;" onclick="openScreenshotLightbox(this.src)"></div>` : ''}
- ${n.actionItem ? `<div class="mt-2 p-2 rounded" style="background:#fff7ed;border:1px solid #fed7aa;font-size:0.78rem"><div class="d-flex justify-content-between align-items-start"><div><span style="color:#c2410c;font-weight:600"><i class="fas fa-tasks me-1"></i>Action Item:</span> <span>${escapeHtml(n.actionItem.text)}</span>${n.actionItem.dueDate ? `<span class="ms-2 text-muted">· Due ${new Date(n.actionItem.dueDate+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>` : ''}${n.actionItem.owner ? `<span class="ms-2 text-muted">· Assigned to: ${escapeHtml(n.actionItem.owner)}</span>` : ''}</div>${n.actionItem.status === 'open' && roleAtLeast('lead') ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:#22c55e;color:#fff;border:none" onclick="resolveActionItem('${n.id}')">Mark Resolved</button>` : '<span style="color:#16a34a;font-size:0.72rem;font-weight:600"><i class="fas fa-check-circle me-1"></i>Resolved</span>'}</div><div class="mt-1" style="color:#9a6b00;font-size:0.7rem"><i class="fas fa-user me-1"></i>Added by ${escapeHtml(n.author || '—')} · ${formatDateTime(n.createdAt)}</div>${n.actionItem.status === 'resolved' ? `<div class="mt-1" style="color:#374151;font-size:0.72rem;border-top:1px solid #fed7aa;padding-top:4px;margin-top:4px">${n.actionItem.followUpNote ? `<i class="fas fa-comment-alt me-1" style="color:#6b7280"></i><span style="color:#6b7280">Follow-up:</span> ${escapeHtml(n.actionItem.followUpNote)}<br>` : ''}<i class="fas fa-user-check me-1" style="color:#6b7280"></i><span style="color:#6b7280">Resolved by</span> ${escapeHtml(n.actionItem.resolvedBy || '—')} · ${formatDateTime(n.actionItem.resolvedAt)}</div>` : ''}</div>` : ''}
+ ${n.actionItem ? `<div class="mt-2 p-2 rounded" style="background:#fff7ed;border:1px solid #fed7aa;font-size:0.78rem"><div class="d-flex justify-content-between align-items-start"><div><span style="color:#c2410c;font-weight:600"><i class="fas fa-tasks me-1"></i>Action Item:</span> <span>${escapeHtml(n.actionItem.text)}</span>${n.actionItem.dueDate ? `<span class="ms-2 text-muted">· Due ${new Date(n.actionItem.dueDate+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>` : ''}${n.actionItem.owner ? `<span class="ms-2 text-muted">· Assigned to: ${escapeHtml(n.actionItem.owner)}</span>` : ''}</div>${n.actionItem.status === 'open' && roleAtLeast('lead') ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:#22c55e;color:#fff;border:none" onclick="resolveActionItem('${n.id}')">Mark Resolved</button>` : '<span style="color:#16a34a;font-size:0.72rem;font-weight:600"><i class="fas fa-check-circle me-1"></i>Resolved</span>'}</div><div class="mt-1" style="color:#9a6b00;font-size:0.7rem"><i class="fas fa-user me-1"></i>Added by ${escapeHtml(n.author || '-')} · ${formatDateTime(n.createdAt)}</div>${n.actionItem.status === 'resolved' ? `<div class="mt-1" style="color:#374151;font-size:0.72rem;border-top:1px solid #fed7aa;padding-top:4px;margin-top:4px">${n.actionItem.followUpNote ? `<i class="fas fa-comment-alt me-1" style="color:#6b7280"></i><span style="color:#6b7280">Follow-up:</span> ${escapeHtml(n.actionItem.followUpNote)}<br>` : ''}<i class="fas fa-user-check me-1" style="color:#6b7280"></i><span style="color:#6b7280">Resolved by</span> ${escapeHtml(n.actionItem.resolvedBy || '-')} · ${formatDateTime(n.actionItem.resolvedAt)}</div>` : ''}</div>` : ''}
  </div>`).join('');
 }
 
@@ -3177,8 +3177,8 @@ function renderWatchNotes(notes) {
  </div>
  ${ai.status === 'open' && roleAtLeast('lead') ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:#22c55e;color:#fff;border:none" onclick="resolveWatchActionItem('${n.id}')">Mark Resolved</button>` : '<span style="color:#16a34a;font-size:0.72rem;font-weight:600"><i class="fas fa-check-circle me-1"></i>Resolved</span>'}
  </div>
- <div class="mt-1" style="color:#9a6b00;font-size:0.7rem"><i class="fas fa-user me-1"></i>Added by ${escapeHtml(n.author || '—')} · ${formatDateTime(n.createdAt)}</div>
- ${ai.status === 'resolved' ? `<div class="mt-1" style="color:#374151;font-size:0.72rem;border-top:1px solid #fed7aa;padding-top:4px;margin-top:4px">${ai.followUpNote ? `<i class="fas fa-comment-alt me-1" style="color:#6b7280"></i><span style="color:#6b7280">Follow-up:</span> ${escapeHtml(ai.followUpNote)}<br>` : ''}<i class="fas fa-user-check me-1" style="color:#6b7280"></i><span style="color:#6b7280">Resolved by</span> ${escapeHtml(ai.resolvedBy || '—')} · ${formatDateTime(ai.resolvedAt)}</div>` : ''}
+ <div class="mt-1" style="color:#9a6b00;font-size:0.7rem"><i class="fas fa-user me-1"></i>Added by ${escapeHtml(n.author || '-')} · ${formatDateTime(n.createdAt)}</div>
+ ${ai.status === 'resolved' ? `<div class="mt-1" style="color:#374151;font-size:0.72rem;border-top:1px solid #fed7aa;padding-top:4px;margin-top:4px">${ai.followUpNote ? `<i class="fas fa-comment-alt me-1" style="color:#6b7280"></i><span style="color:#6b7280">Follow-up:</span> ${escapeHtml(ai.followUpNote)}<br>` : ''}<i class="fas fa-user-check me-1" style="color:#6b7280"></i><span style="color:#6b7280">Resolved by</span> ${escapeHtml(ai.resolvedBy || '-')} · ${formatDateTime(ai.resolvedAt)}</div>` : ''}
  </div>` : '';
  return `
  <div class="watch-note-card">
@@ -3604,7 +3604,7 @@ window.loadLeaderNotifications = async function () {
  assocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
  }
 
- // Identify leaders — associates who have at least one person reporting to them
+ // Identify leaders - associates who have at least one person reporting to them
  const leaderIds = [...new Set(assocs.map(a => a.reportsTo).filter(Boolean))];
  if (!leaderIds.length) {
  grid.innerHTML = '<div class="text-center py-5" style="color:var(--muted);grid-column:1/-1">No leaders found.</div>';
@@ -3684,7 +3684,7 @@ window.loadLeaderNotifications = async function () {
  });
 
  if (!cards.length) {
- grid.innerHTML = '<div class="text-center py-5" style="color:var(--muted);grid-column:1/-1">All clear — no pending items.</div>';
+ grid.innerHTML = '<div class="text-center py-5" style="color:var(--muted);grid-column:1/-1">All clear - no pending items.</div>';
  return;
  }
 
@@ -5247,7 +5247,7 @@ function renderWarnings(warnings) {
  <div class="d-flex gap-1">
  ${isActive && canEdit ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.75rem;background:#1a2744;color:#fff;border:none" onclick="generateCorrectiveAction('${tier.key}')"><i class="fas fa-file-signature me-1"></i>${hasHistory ? 'Re-issue' : 'Issue'}</button>` : ''}
  ${isActive && !hasHistory && roleAtLeast('admin') ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.75rem;background:#6b7280;color:#fff;border:none" onclick="markWarningPreExisting('${tier.key}')" title="Mark as already issued (no timestamp)"><i class="fas fa-check me-1"></i>Already Issued</button>` : ''}
- ${isActive && hasHistory && roleAtLeast('admin') ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:transparent;border:1px solid #d1d5db;color:#6b7280" onclick="resetThresholdCrossing('${tier.key}')" title="Associate dropped below this threshold and crossed it again — reset so notification fires"><i class="fas fa-redo me-1"></i>Reset Alert</button>` : ''}
+ ${isActive && hasHistory && roleAtLeast('admin') ? `<button class="btn btn-sm py-0 px-2" style="font-size:0.7rem;background:transparent;border:1px solid #d1d5db;color:#6b7280" onclick="resetThresholdCrossing('${tier.key}')" title="Associate dropped below this threshold and crossed it again - reset so notification fires"><i class="fas fa-redo me-1"></i>Reset Alert</button>` : ''}
  </div>
  </div>
  ${issued.length ? `<div class="mt-2">` + issued.map(w => `
@@ -6750,7 +6750,7 @@ async function loadTodayTimeOff() {
 window.resetThresholdCrossing = async (tierKey) => {
  const tier = WARNING_TIERS.find(t => t.key === tierKey);
  if (!tier) return;
- if (!confirm(`Reset the alert for ${tier.label}?\n\nUse this when the associate dropped below ${tier.threshold} pts and crossed back over — it will trigger a new notification for their manager so a new corrective can be issued.`)) return;
+ if (!confirm(`Reset the alert for ${tier.label}?\n\nUse this when the associate dropped below ${tier.threshold} pts and crossed back over - it will trigger a new notification for their manager so a new corrective can be issued.`)) return;
  const now = new Date().toISOString();
  const crossings = { ...(allAssociates.find(a => a.id === currentAssociateId)?.attThresholdCrossings || {}) };
  crossings[tierKey] = now;
@@ -11013,7 +11013,16 @@ function pl_renderWeekKpis() {
   const todayStr = pl_dateStr(new Date());
   const thisWeekDays = pl_weekDays(pl_weekStart);
   const isCurrentWeek = thisWeekDays.includes(todayStr);
-  const daysElapsed = isCurrentWeek ? thisWeekDays.indexOf(todayStr)+1 : 7;
+  // Base elapsed days on dates that have actual data logged this week,
+  // not calendar days — night shifts can make today's date ahead of the last completed shift.
+  const daysWithDataThisWk = new Set(
+   Object.values(pl_weekData)
+    .filter(d => thisWeekDays.includes(d.shiftDate))
+    .map(d => d.shiftDate)
+  ).size;
+  const daysElapsed = isCurrentWeek
+   ? (daysWithDataThisWk > 0 ? daysWithDataThisWk : thisWeekDays.indexOf(todayStr)+1)
+   : 7;
   const lastMon = new Date(pl_weekStart); lastMon.setDate(lastMon.getDate()-7);
   const cutoffDays = new Set(pl_weekDays(lastMon).slice(0, daysElapsed));
   let lwPack=0, lwPut=0, lwVend=0, lwRcv=0;
@@ -11027,8 +11036,8 @@ function pl_renderWeekKpis() {
    const pct = Math.round((cur-prev)/prev*100);
    return `<div style="font-size:10px;color:${pct>=0?'#16803c':'#b91c1c'}">${pct>=0?'▲':'▼'} ${Math.abs(pct)}% vs ${dayLabel}</div>`;
   };
-  const pvRatio = totVend>0?(totPack/totVend*100).toFixed(0)+'%':'—';
-  const pvLast  = lwVend>0?(lwPack/lwVend*100).toFixed(0)+'%':'—';
+  const pvRatio = totVend>0?(totPack/totVend*100).toFixed(0)+'%':'-';
+  const pvLast  = lwVend>0?(lwPack/lwVend*100).toFixed(0)+'%':'-';
 
   const kpiRow = document.getElementById('pl-kpi-row');
   if (kpiRow) {
@@ -11036,17 +11045,17 @@ function pl_renderWeekKpis() {
    kpiRow.innerHTML = `
    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Pack Out</div>
-    <div style="font-size:22px;font-weight:700;color:#FF7C1F">${totPack>0?totPack.toLocaleString():'—'}</div>
+    <div style="font-size:22px;font-weight:700;color:#FF7C1F">${totPack>0?totPack.toLocaleString():'-'}</div>
     ${delta(totPack,lwPack)}
    </div>
    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Putaway</div>
-    <div style="font-size:22px;font-weight:700;color:#4da6ff">${totPut>0?totPut.toLocaleString():'—'}</div>
+    <div style="font-size:22px;font-weight:700;color:#4da6ff">${totPut>0?totPut.toLocaleString():'-'}</div>
     ${delta(totPut,lwPut)}
    </div>
    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Vend</div>
-    <div style="font-size:22px;font-weight:700;color:#4ade80">${totVend>0?totVend.toLocaleString():'—'}</div>
+    <div style="font-size:22px;font-weight:700;color:#4ade80">${totVend>0?totVend.toLocaleString():'-'}</div>
     ${delta(totVend,lwVend)}
    </div>
    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center">
@@ -11056,7 +11065,7 @@ function pl_renderWeekKpis() {
    </div>
    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Received</div>
-    <div style="font-size:22px;font-weight:700;color:#7c3aed">${totRcv>0?totRcv.toLocaleString():'—'}</div>
+    <div style="font-size:22px;font-weight:700;color:#7c3aed">${totRcv>0?totRcv.toLocaleString():'-'}</div>
     ${delta(totRcv,lwRcv)}
    </div>`;
   }
@@ -11073,34 +11082,34 @@ function pl_renderWeekKpis() {
   const avgVend = daysLogged>0?Math.round(mtdVend/daysLogged):0;
   const {year,month} = pl_chartMonth;
   const mtdLbl = document.getElementById('pl-kpi-mtd-label');
-  if (mtdLbl) mtdLbl.textContent = `Month to date — ${PL_MONTH_NAMES[month-1]} ${year}`;
+  if (mtdLbl) mtdLbl.textContent = `Month to date - ${PL_MONTH_NAMES[month-1]} ${year}`;
   const mtdRow = document.getElementById('pl-kpi-mtd-row');
   if (mtdRow) {
    mtdRow.style.gridTemplateColumns = 'repeat(5,1fr)';
    mtdRow.innerHTML = `
    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center;border-top:2px solid #FF7C1F">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Pack Out MTD</div>
-    <div style="font-size:22px;font-weight:700;color:#FF7C1F">${mtdPack>0?mtdPack.toLocaleString():'—'}</div>
+    <div style="font-size:22px;font-weight:700;color:#FF7C1F">${mtdPack>0?mtdPack.toLocaleString():'-'}</div>
     <div style="font-size:10px;color:#6b7280">${daysLogged} days logged</div>
    </div>
    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center;border-top:2px solid #4da6ff">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Putaway MTD</div>
-    <div style="font-size:22px;font-weight:700;color:#4da6ff">${mtdPut>0?mtdPut.toLocaleString():'—'}</div>
+    <div style="font-size:22px;font-weight:700;color:#4da6ff">${mtdPut>0?mtdPut.toLocaleString():'-'}</div>
     <div style="font-size:10px;color:#6b7280">${daysLogged} days logged</div>
    </div>
    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center;border-top:2px solid #4ade80">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Vend MTD</div>
-    <div style="font-size:22px;font-weight:700;color:#4ade80">${mtdVend>0?mtdVend.toLocaleString():'—'}</div>
+    <div style="font-size:22px;font-weight:700;color:#4ade80">${mtdVend>0?mtdVend.toLocaleString():'-'}</div>
     <div style="font-size:10px;color:#6b7280">${daysLogged} days logged</div>
    </div>
    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center;border-top:2px solid #e5e7eb">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Avg Daily Vend</div>
-    <div style="font-size:22px;font-weight:700;color:#1f2937">${avgVend>0?avgVend.toLocaleString():'—'}</div>
+    <div style="font-size:22px;font-weight:700;color:#1f2937">${avgVend>0?avgVend.toLocaleString():'-'}</div>
     <div style="font-size:10px;color:#6b7280">per logged day</div>
    </div>
    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center;border-top:2px solid #7c3aed">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;margin-bottom:3px">Received MTD</div>
-    <div style="font-size:22px;font-weight:700;color:#7c3aed">${mtdRcv>0?mtdRcv.toLocaleString():'—'}</div>
+    <div style="font-size:22px;font-weight:700;color:#7c3aed">${mtdRcv>0?mtdRcv.toLocaleString():'-'}</div>
     <div style="font-size:10px;color:#6b7280">${daysLogged} days logged</div>
    </div>`;
   }
@@ -11131,7 +11140,7 @@ function pl_renderWeek() {
   const pillClr = s => s==='A1'?'#c95e00':s==='A2'?'#0588a3':'#16803c';
   const pillBg  = s => s==='A1'?'rgba(255,124,31,.12)':s==='A2'?'rgba(108,211,252,.12)':'rgba(74,222,128,.12)';
   const pillBrd = s => s==='A1'?'rgba(255,124,31,.3)':s==='A2'?'rgba(108,211,252,.3)':'rgba(74,222,128,.3)';
-  const fmt2 = n => n>0?n.toLocaleString():'—';
+  const fmt2 = n => n>0?n.toLocaleString():'-';
 
   let totPack=0, totPut=0, totVend=0, totRcv=0;
   Object.values(pl_weekData).forEach(d => { totPack+=d.packOut||0; totPut+=d.putaway||0; totRcv+=d.received||0; });
@@ -11179,16 +11188,16 @@ function pl_renderWeek() {
       html += `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
        <span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;background:${bg};color:${clr};border:1px solid ${brd};min-width:28px;text-align:center">${sh}</span>
        <label style="font-size:11px;color:#6b7280">Pack Out</label>
-       <input type="number" min="0" step="1" value="${rec.packOut||''}" placeholder="—" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="packOut"
+       <input type="number" min="0" step="1" value="${rec.packOut||''}" placeholder="-" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="packOut"
         style="width:80px;padding:4px 6px;border:1px solid #e5e7eb;border-radius:4px;font-size:12px;text-align:right">
        <label style="font-size:11px;color:#7c3aed">Received</label>
-       <input type="number" min="0" step="1" value="${rec.received||''}" placeholder="—" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="received"
+       <input type="number" min="0" step="1" value="${rec.received||''}" placeholder="-" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="received"
         style="width:80px;padding:4px 6px;border:1px solid #e5e7eb;border-radius:4px;font-size:12px;text-align:right">
        <label style="font-size:11px;color:#6b7280">Putaway</label>
-       <input type="number" min="0" step="1" value="${rec.putaway||''}" placeholder="—" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="putaway"
+       <input type="number" min="0" step="1" value="${rec.putaway||''}" placeholder="-" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="putaway"
         style="width:80px;padding:4px 6px;border:1px solid #e5e7eb;border-radius:4px;font-size:12px;text-align:right">
        ${!isMultiShift ? `<label style="font-size:11px;color:#6b7280">Vend</label>
-       <input type="number" min="0" step="1" value="${rec.vend||''}" placeholder="—" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="vend"
+       <input type="number" min="0" step="1" value="${rec.vend||''}" placeholder="-" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="vend"
         style="width:80px;padding:4px 6px;border:1px solid #e5e7eb;border-radius:4px;font-size:12px;text-align:right">` : ''}
        <button onclick="event.stopPropagation();pl_saveRow('${docId}','${dateStr}','${sh}')"
         style="padding:4px 14px;font-size:11px;font-weight:600;border:none;border-radius:4px;background:#1e3a5f;color:#fff;cursor:pointer">Save</button>
@@ -11211,7 +11220,7 @@ function pl_renderWeek() {
       html += `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px dashed #e5e7eb;padding-top:8px;margin-top:2px">
        <span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;background:rgba(74,222,128,.12);color:#16803c;border:1px solid rgba(74,222,128,.3);min-width:28px;text-align:center">Day</span>
        <label style="font-size:11px;color:#6b7280">Vend</label>
-       <input type="number" min="0" step="1" value="${dayRec.vend||''}" placeholder="—" data-doc="${dayDocId}" data-date="${dateStr}" data-shift="day" data-field="vend"
+       <input type="number" min="0" step="1" value="${dayRec.vend||''}" placeholder="-" data-doc="${dayDocId}" data-date="${dateStr}" data-shift="day" data-field="vend"
         style="width:80px;padding:4px 6px;border:1px solid #e5e7eb;border-radius:4px;font-size:12px;text-align:right">
        <span style="font-size:10px;color:#6b7280;font-style:italic">total for the day</span>
        <button onclick="event.stopPropagation();pl_saveDayVend('${dateStr}')"
@@ -11249,7 +11258,7 @@ window.pl_saveRow = async function(docId, shiftDate, shift) {
  const vals = {};
  inputs.forEach(inp => { vals[inp.dataset.field] = parseInt(inp.value,10)||0; });
  const existing = pl_weekData[docId] || {};
- // For multi-shift days (A1/A2), don't overwrite vend — vend lives in _day doc
+ // For multi-shift days (A1/A2), don't overwrite vend - vend lives in _day doc
  const isMultiShift = pl_shiftsFor(shiftDate).length > 1;
  const updated = { ...existing, shiftDate, shift,
   packOut: vals.packOut||0,
@@ -11294,15 +11303,15 @@ function pl_renderMonth() {
  const {year, month} = pl_chartMonth;
  const daysInMonth = new Date(year, month, 0).getDate();
  document.getElementById('pl-month-label').textContent =
-  `${PL_MONTH_NAMES[month-1]} ${year} — Daily Volume`;
+  `${PL_MONTH_NAMES[month-1]} ${year} - Daily Volume`;
  // Refresh KPI cards with latest month data
  if (document.getElementById('pl-kpi-mtd-row')) pl_renderWeekKpis();
 
  const daily = {};
- for (let d=1; d<=daysInMonth; d++) daily[d] = {pack:0,put:0,vend:0};
+ for (let d=1; d<=daysInMonth; d++) daily[d] = {pack:0,put:0,vend:0,rcv:0};
  Object.values(pl_monthData).forEach(rec => {
   const day = parseInt(rec.shiftDate.slice(8,10),10);
-  if (daily[day]) { daily[day].pack+=rec.packOut||0; daily[day].put+=rec.putaway||0; }
+  if (daily[day]) { daily[day].pack+=rec.packOut||0; daily[day].put+=rec.putaway||0; daily[day].rcv+=rec.received||0; }
  });
  // Vend per day: use pl_vendForDay helper to avoid double-counting
  for (let d=1; d<=daysInMonth; d++) {
@@ -11313,20 +11322,22 @@ function pl_renderMonth() {
 
  const labels = Array.from({length:daysInMonth},(_,i)=>String(i+1));
  const packData = labels.map((_,i) => daily[i+1].pack || null);
- const putData = labels.map((_,i) => daily[i+1].put || null);
+ const putData  = labels.map((_,i) => daily[i+1].put  || null);
  const vendData = labels.map((_,i) => daily[i+1].vend || null);
+ const rcvData  = labels.map((_,i) => daily[i+1].rcv  || null);
 
  const datasets = [
   {label:'Pack Out', data:packData, borderColor:'#FF7C1F', backgroundColor:'transparent', tension:0.3, pointRadius:4, pointHoverRadius:6, spanGaps:false},
-  {label:'Putaway', data:putData, borderColor:'#4da6ff', backgroundColor:'transparent', tension:0.3, pointRadius:4, pointHoverRadius:6, spanGaps:false},
-  {label:'Vend', data:vendData, borderColor:'#4ade80', backgroundColor:'transparent', tension:0.3, pointRadius:4, pointHoverRadius:6, spanGaps:false},
+  {label:'Received', data:rcvData,  borderColor:'#7c3aed', backgroundColor:'transparent', tension:0.3, pointRadius:4, pointHoverRadius:6, borderDash:[5,3], spanGaps:false},
+  {label:'Putaway',  data:putData,  borderColor:'#4da6ff', backgroundColor:'transparent', tension:0.3, pointRadius:4, pointHoverRadius:6, spanGaps:false},
+  {label:'Vend',     data:vendData, borderColor:'#4ade80', backgroundColor:'transparent', tension:0.3, pointRadius:4, pointHoverRadius:6, spanGaps:false},
  ];
 
  const canvas = document.getElementById('pl-monthly-chart');
  if (!canvas || typeof Chart === 'undefined') return;
  if (pl_monthChartInst) {
   pl_monthChartInst.data.labels = labels;
-  pl_monthChartInst.data.datasets.forEach((ds,i) => { ds.data = datasets[i].data; });
+  pl_monthChartInst.data.datasets = datasets;
   pl_monthChartInst.update();
  } else {
   pl_monthChartInst = new Chart(canvas, {
@@ -11335,7 +11346,7 @@ function pl_renderMonth() {
     responsive:true, interaction:{mode:'index',intersect:false},
     plugins:{legend:{position:'bottom'}},
     scales:{
-     y:{beginAtZero:true, ticks:{callback:v=>v!=null?v.toLocaleString():''}},
+     y:{min:2000, max:6000, ticks:{callback:v=>v!=null?v.toLocaleString():''}},
      x:{ticks:{maxTicksLimit:16}}
     }
    }
@@ -11408,7 +11419,7 @@ function pl_renderShiftCompareChart() {
 
  // Update label
  const lbl = document.getElementById('pl-shift-compare-label');
- if (lbl) lbl.textContent = `${metricLabel} — shift comparison`;
+ if (lbl) lbl.textContent = `${metricLabel} - shift comparison`;
 
  if (pl_shiftCompareChartInst) {
   pl_shiftCompareChartInst.data.labels = labels;
@@ -11426,7 +11437,7 @@ function pl_renderShiftCompareChart() {
      legend: { display:false },
      tooltip: {
       callbacks: {
-       label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y != null ? ctx.parsed.y.toLocaleString() : '—'}`
+       label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y != null ? ctx.parsed.y.toLocaleString() : '-'}`
       }
      }
     },
@@ -11496,11 +11507,11 @@ function renderChallenger(d) {
  if (!hasData) return;
 
  // month / function bar
- document.getElementById('sc-ch-month').textContent = d.month || '—';
- document.getElementById('sc-ch-func').textContent = d.function || '—';
+ document.getElementById('sc-ch-month').textContent = d.month || '-';
+ document.getElementById('sc-ch-func').textContent = d.function || '-';
 
  // left fighter
- document.getElementById('sc-left-name').textContent = d.leftName || '—';
+ document.getElementById('sc-left-name').textContent = d.leftName || '-';
  const lQuoteEl = document.getElementById('sc-left-quote');
  if (lQuoteEl) { const lQSpan = lQuoteEl.querySelector('span'); if (lQSpan) lQSpan.textContent = d.leftQuote ? `"${d.leftQuote}"` : ''; lQuoteEl.style.display = d.leftQuote ? 'block' : 'none'; }
  document.getElementById('sc-left-initials').textContent = initials(d.leftName);
@@ -11512,7 +11523,7 @@ function renderChallenger(d) {
  }
 
  // right fighter
- document.getElementById('sc-right-name').textContent = d.rightName || '—';
+ document.getElementById('sc-right-name').textContent = d.rightName || '-';
  const rQuoteEl = document.getElementById('sc-right-quote');
  if (rQuoteEl) { const rQSpan = rQuoteEl.querySelector('span'); if (rQSpan) rQSpan.textContent = d.rightQuote ? `"${d.rightQuote}"` : ''; rQuoteEl.style.display = d.rightQuote ? 'block' : 'none'; }
  document.getElementById('sc-right-initials').textContent = initials(d.rightName);
@@ -11542,10 +11553,10 @@ function renderChallenger(d) {
  document.getElementById('sc-right-units-bar').style.width = Math.round(rUnits / maxUnits * 100) + '%';
 
  // values
- document.getElementById('sc-left-uph-val').textContent = lUph || '—';
- document.getElementById('sc-right-uph-val').textContent = rUph || '—';
- document.getElementById('sc-left-units-val').textContent = lUnits ? lUnits.toLocaleString() : '—';
- document.getElementById('sc-right-units-val').textContent = rUnits ? rUnits.toLocaleString() : '—';
+ document.getElementById('sc-left-uph-val').textContent = lUph || '-';
+ document.getElementById('sc-right-uph-val').textContent = rUph || '-';
+ document.getElementById('sc-left-units-val').textContent = lUnits ? lUnits.toLocaleString() : '-';
+ document.getElementById('sc-right-units-val').textContent = rUnits ? rUnits.toLocaleString() : '-';
 
  // scoring: 2pts to winner, 1pt to loser per category. Ties go to challenger.
  const lUphPts = lUph >= rUph ? 2 : 1;
@@ -11578,11 +11589,11 @@ function renderChallenger(d) {
  banner.style.background = '#FF7C1F18';
  banner.style.border = '1px solid #FF7C1F44';
  const isUpset = true; // always an upset when associate beats redvest
- banner.innerHTML = `<div style="font-size:12px;color:#FF7C1F;letter-spacing:.06em;text-transform:uppercase">🔥 ${isUpset ? 'Upset! ' : ''}Associate wins — ${escapeHtml(d.leftName || '')}</div><div style="font-size:10px;color:#9DA0B2;margin-top:3px">${escapeHtml(d.leftName || 'Challenger')} earns a $20 gift card · Ties go to the challenger</div>`;
+ banner.innerHTML = `<div style="font-size:12px;color:#FF7C1F;letter-spacing:.06em;text-transform:uppercase">🔥 ${isUpset ? 'Upset! ' : ''}Associate wins - ${escapeHtml(d.leftName || '')}</div><div style="font-size:10px;color:#9DA0B2;margin-top:3px">${escapeHtml(d.leftName || 'Challenger')} earns a $20 gift card · Ties go to the challenger</div>`;
  } else {
  banner.style.background = '#004C8018';
  banner.style.border = '1px solid #004C8044';
- banner.innerHTML = `<div style="font-size:12px;color:#6CD3FC;letter-spacing:.06em;text-transform:uppercase">🛡️ Redvest defends — ${escapeHtml(d.rightName || '')}</div><div style="font-size:10px;color:#9DA0B2;margin-top:3px">Better luck next month, ${escapeHtml(d.leftName || 'challenger')}!</div>`;
+ banner.innerHTML = `<div style="font-size:12px;color:#6CD3FC;letter-spacing:.06em;text-transform:uppercase">🛡️ Redvest defends - ${escapeHtml(d.rightName || '')}</div><div style="font-size:10px;color:#9DA0B2;margin-top:3px">Better luck next month, ${escapeHtml(d.leftName || 'challenger')}!</div>`;
  }
  }
 }
@@ -11842,7 +11853,7 @@ function renderPhotoWall() {
  // pinned photos float to top
  const sorted = [...filtered].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 
- // deterministic rotations — varied but never uniform
+ // deterministic rotations - varied but never uniform
  const ROTATIONS = [-3, 2, -1.5, 3.5, 1, -4, 2.5, -2, -3.8, 1.8, 4, -2.2, -1, 3, -4.5, 0.8];
 
  let html = sorted.map((p, i) => {
@@ -12929,7 +12940,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  </nav>
 
- <!-- MESSAGE TICKER (leadership only) — fixed so it stays visible on all tabs and while scrolling -->
+ <!-- MESSAGE TICKER (leadership only) - fixed so it stays visible on all tabs and while scrolling -->
  <div id="tickerBar" style="display:none;position:fixed;top:0;left:220px;right:0;z-index:97;background:#1a2744;overflow:hidden;align-items:stretch;box-shadow:0 2px 8px rgba(0,0,0,0.3);">
    <div style="background:#f97316;padding:10px 20px;display:flex;align-items:center;gap:7px;flex-shrink:0;">
      <i class="fas fa-bullhorn" style="color:#fff;font-size:16px;"></i>
@@ -14062,7 +14073,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- TURNOVER VIEW -->
  <!-- ════════════════════════════════════════════════════
-  LEADER ALERTS VIEW — admin-only overview of every
+  LEADER ALERTS VIEW - admin-only overview of every
   leader's pending notifications
  ════════════════════════════════════════════════════ -->
  <div id="leaderNotifView" class="view d-none">
@@ -14537,7 +14548,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div style="text-align:center;margin-bottom:14px">
  <div style="display:inline-block;background:#1a2d42;border:1px solid #FF7C1F;border-radius:4px;padding:4px 14px;font-size:11px;letter-spacing:.12em;color:#FF7C1F;text-transform:uppercase;margin-bottom:6px">🎲 Challenger Initiative</div>
  <div id="sc-ch-meta" style="display:flex;justify-content:center;gap:16px;flex-wrap:wrap;margin-top:4px">
- <span style="font-size:10px;color:#9DA0B2"><i class="fas fa-calendar-alt me-1"></i><span id="sc-ch-month">—</span></span>
+ <span style="font-size:10px;color:#9DA0B2"><i class="fas fa-calendar-alt me-1"></i><span id="sc-ch-month">-</span></span>
  <span style="font-size:10px;color:#9DA0B2"><i class="fas fa-clock me-1"></i>2-hour challenge window</span>
  <span style="font-size:10px;color:#9DA0B2"><i class="fas fa-ticket-alt me-1"></i>Drawn at stand-up</span>
  </div>
@@ -14545,7 +14556,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- function bar -->
  <div id="sc-ch-funcbar" style="background:#1B2D42;border-radius:6px;padding:14px 20px;margin-bottom:14px;text-align:center">
- <span style="font-size:13px;color:#FF7C1F;text-transform:uppercase;letter-spacing:.1em;font-weight:600">Challenger Function: </span><span id="sc-ch-func" style="font-size:26px;color:#FF7C1F;font-weight:800;display:block;margin-top:2px">—</span>
+ <span style="font-size:13px;color:#FF7C1F;text-transform:uppercase;letter-spacing:.1em;font-weight:600">Challenger Function: </span><span id="sc-ch-func" style="font-size:26px;color:#FF7C1F;font-weight:800;display:block;margin-top:2px">-</span>
  </div>
 
  <!-- fighters -->
@@ -14567,19 +14578,19 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <label id="sc-left-upload-btn" style="position:absolute;bottom:6px;right:6px;font-size:9px;padding:2px 7px;border-radius:3px;background:#111F3099;color:#9DA0B2;border:1px solid #3F444F;cursor:pointer;display:none"><i class="fas fa-camera me-1"></i>Photo<input type="file" accept="image/*" style="display:none" onchange="uploadChallengerPhoto('left',this)"></label>
  </div>
  <div style="background:#1B2D42;padding:10px 12px">
- <div id="sc-left-name" style="font-size:26px;font-weight:700;color:#FF7C1F;margin-bottom:3px">—</div>
+ <div id="sc-left-name" style="font-size:26px;font-weight:700;color:#FF7C1F;margin-bottom:3px">-</div>
  <div style="margin-bottom:10px"><span id="sc-left-role-pill" style="font-size:10px;padding:2px 8px;border-radius:20px;background:#FF7C1F22;color:#FF7C1F;border:1px solid #FF7C1F44">Associate</span></div>
  <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
  <span style="font-size:11px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:48px">UPH</span>
  <div style="flex:1;height:6px;background:#111F30;border-radius:3px;overflow:hidden"><div id="sc-left-uph-bar" style="height:100%;background:#FF7C1F;border-radius:3px;width:0%"></div></div>
- <span id="sc-left-uph-val" style="font-size:13px;color:#C2ECFF;min-width:40px;text-align:right;font-weight:500">—</span>
+ <span id="sc-left-uph-val" style="font-size:13px;color:#C2ECFF;min-width:40px;text-align:right;font-weight:500">-</span>
  <span id="sc-left-uph-pts" style="font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;min-width:30px;text-align:center"></span>
  </div>
  <div style="font-size:9px;color:#3F444F;margin-top:-1px;margin-bottom:8px">units per hour</div>
  <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
  <span style="font-size:11px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:48px">Units</span>
  <div style="flex:1;height:6px;background:#111F30;border-radius:3px;overflow:hidden"><div id="sc-left-units-bar" style="height:100%;background:#FF7C1F;border-radius:3px;width:0%"></div></div>
- <span id="sc-left-units-val" style="font-size:13px;color:#C2ECFF;min-width:40px;text-align:right;font-weight:500">—</span>
+ <span id="sc-left-units-val" style="font-size:13px;color:#C2ECFF;min-width:40px;text-align:right;font-weight:500">-</span>
  <span id="sc-left-units-pts" style="font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;min-width:30px;text-align:center"></span>
  </div>
  <div style="font-size:9px;color:#3F444F;margin-top:-1px">units in 2 hrs</div>
@@ -14601,19 +14612,19 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <label id="sc-right-upload-btn" style="position:absolute;bottom:6px;left:6px;font-size:9px;padding:2px 7px;border-radius:3px;background:#111F3099;color:#9DA0B2;border:1px solid #3F444F;cursor:pointer;display:none"><i class="fas fa-camera me-1"></i>Photo<input type="file" accept="image/*" style="display:none" onchange="uploadChallengerPhoto('right',this)"></label>
  </div>
  <div style="background:#1B2D42;padding:10px 12px">
- <div id="sc-right-name" style="font-size:26px;font-weight:700;color:#6CD3FC;margin-bottom:3px;text-align:right">—</div>
+ <div id="sc-right-name" style="font-size:26px;font-weight:700;color:#6CD3FC;margin-bottom:3px;text-align:right">-</div>
  <div style="margin-bottom:10px;text-align:right"><span id="sc-right-role-pill" style="font-size:10px;padding:2px 8px;border-radius:20px;background:#004C8033;color:#6CD3FC;border:1px solid #004C8066">Lead</span></div>
  <div style="display:flex;flex-direction:row-reverse;align-items:center;gap:6px;margin-bottom:3px">
  <span style="font-size:11px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:48px;text-align:right">UPH</span>
  <div style="flex:1;height:6px;background:#111F30;border-radius:3px;overflow:hidden"><div id="sc-right-uph-bar" style="height:100%;background:#004C80;border-radius:3px;width:0%;margin-left:auto"></div></div>
- <span id="sc-right-uph-val" style="font-size:13px;color:#C2ECFF;min-width:40px;text-align:left;font-weight:500">—</span>
+ <span id="sc-right-uph-val" style="font-size:13px;color:#C2ECFF;min-width:40px;text-align:left;font-weight:500">-</span>
  <span id="sc-right-uph-pts" style="font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;min-width:30px;text-align:center"></span>
  </div>
  <div style="font-size:9px;color:#3F444F;margin-top:-1px;margin-bottom:8px;text-align:right">units per hour</div>
  <div style="display:flex;flex-direction:row-reverse;align-items:center;gap:6px;margin-bottom:3px">
  <span style="font-size:11px;color:#9DA0B2;text-transform:uppercase;letter-spacing:.06em;min-width:48px;text-align:right">Units</span>
  <div style="flex:1;height:6px;background:#111F30;border-radius:3px;overflow:hidden"><div id="sc-right-units-bar" style="height:100%;background:#004C80;border-radius:3px;width:0%;margin-left:auto"></div></div>
- <span id="sc-right-units-val" style="font-size:13px;color:#C2ECFF;min-width:40px;text-align:left;font-weight:500">—</span>
+ <span id="sc-right-units-val" style="font-size:13px;color:#C2ECFF;min-width:40px;text-align:left;font-weight:500">-</span>
  <span id="sc-right-units-pts" style="font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;min-width:30px;text-align:center"></span>
  </div>
  <div style="font-size:9px;color:#3F444F;margin-top:-1px;text-align:right">units in 2 hrs</div>
@@ -14625,7 +14636,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div id="sc-score-row" style="background:#1B2D42;border-radius:8px;margin-bottom:10px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:16px 20px">
  <div id="sc-score-left" style="text-align:center">
  <div style="font-size:9px;color:#3F444F;text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px">Score</div>
- <div id="sc-score-left-pts" style="font-size:56px;font-weight:900;color:#FF7C1F;line-height:1;margin-bottom:6px">—</div>
+ <div id="sc-score-left-pts" style="font-size:56px;font-weight:900;color:#FF7C1F;line-height:1;margin-bottom:6px">-</div>
  <div id="sc-score-left-name" style="font-size:14px;color:#FF7C1F;font-weight:700">Challenger</div>
  </div>
  <div style="display:flex;align-items:center;justify-content:center;padding:0 16px">
@@ -14633,7 +14644,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  <div id="sc-score-right" style="text-align:center">
  <div style="font-size:9px;color:#3F444F;text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px">Score</div>
- <div id="sc-score-right-pts" style="font-size:56px;font-weight:900;color:#6CD3FC;line-height:1;margin-bottom:6px">—</div>
+ <div id="sc-score-right-pts" style="font-size:56px;font-weight:900;color:#6CD3FC;line-height:1;margin-bottom:6px">-</div>
  <div id="sc-score-right-name" style="font-size:14px;color:#6CD3FC;font-weight:700">Redvest</div>
  </div>
  </div>
@@ -14727,7 +14738,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  <div class="col-12">
  <label class="form-label fw-bold">Function &amp; Date</label>
- <input type="text" id="ch-function" class="form-control" placeholder="e.g. Inbound Pick — Oct 9, Hrs 1–3">
+ <input type="text" id="ch-function" class="form-control" placeholder="e.g. Inbound Pick - Oct 9, Hrs 1–3">
  </div>
  <div class="col-md-6">
  <label class="form-label">Month (display)</label>
@@ -14856,7 +14867,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <!-- ── Pivot metrics wrapper: full-width flex item so cols + EOS row stack vertically ── -->
  <div style="width:100%;display:flex;flex-direction:column;gap:0">
  <!-- ── New two-column Pack / Pick layout ── -->
- <div class="pivot-section-title">Live — From Last Import</div>
+ <div class="pivot-section-title">Live - From Last Import</div>
  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
 
  <!-- PACK column -->
@@ -14882,7 +14893,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div class="pivot-card">
  <div class="pivot-card-label">Ideal Target (Now)</div>
  <div class="pivot-card-value accent" id="pv-ideal">-</div>
- <div class="pivot-card-sub" id="pv-ideal-sub">— prod min elapsed</div>
+ <div class="pivot-card-sub" id="pv-ideal-sub">- prod min elapsed</div>
  </div>
  <div class="pivot-card">
  <div class="pivot-card-label">Variance</div>
@@ -14931,7 +14942,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div class="pivot-card">
  <div class="pivot-card-label">Ideal Target (Now)</div>
  <div class="pivot-card-value accent" id="pv-pick-ideal">-</div>
- <div class="pivot-card-sub" id="pv-pick-ideal-sub">— prod min elapsed</div>
+ <div class="pivot-card-sub" id="pv-pick-ideal-sub">- prod min elapsed</div>
  </div>
  <div class="pivot-card">
  <div class="pivot-card-label">Variance</div>
@@ -15386,7 +15397,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
   <div class="field"><label>This week (actual)</label><input type="number" id="lb-ctr-weekly-actual" min="0" max="999" value="0" style="width:80px;"></div>
   <button class="btn" id="lb-ctr-save-btn">Save container goals</button>
  </div>
- <!-- Container number inputs — one per planned container -->
+ <!-- Container number inputs - one per planned container -->
  <div id="lb-ctr-num-inputs" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;"></div>
  </div>
 
@@ -17945,7 +17956,7 @@ function lb_computeTrendSeries(tranType) {
 
  // Mirror the hero card exactly: only sum goals for function keys that have a station
  // on the floor right now (lb_stations), NOT all goals in lb_shiftGoalsToday for this
- // tran type. If a function has a saved goal but no station placed, it doesn't count —
+ // tran type. If a function has a saved goal but no station placed, it doesn't count -
  // same rule the hero card uses. Falls back to the full-goals sum only when lb_stations
  // has no entries for this tran type (e.g. inbound functions).
  const floorFnKeys = [...new Set(lb_stations.filter(s => s.tranType === tranType).map(s => s.functionKey))];
@@ -17980,7 +17991,7 @@ function lb_computeTrendSeries(tranType) {
  const actualSoFar = actualCum[soFarIdx] || 0;
 
  // Compute idealSoFar at exact clock time (mirrors hero card formula) rather than at the end
- // of the current 30-min bucket — bucket-end overstates by up to ~30 min of ideal progress.
+ // of the current 30-min bucket - bucket-end overstates by up to ~30 min of ideal progress.
  let shiftStart = new Date(lb_currentShiftDate + "T00:00:00");
  shiftStart.setHours(Math.floor(lb_appSettings.shiftStartHour), (lb_appSettings.shiftStartHour % 1) * 60, 0, 0);
  let elapsedMs = now - shiftStart;
@@ -19158,7 +19169,7 @@ function lb_renderContainerSection() {
    </div>
    <div id="lb-ctr-pill-${i}" style="margin-top:6px;display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;${lb_pillStyle(pct)}">${lb_pillLabel(pct)}</div>`;
   cardsEl.appendChild(card);
-  // Bind slider via addEventListener — reliable regardless of script scope
+  // Bind slider via addEventListener - reliable regardless of script scope
   const rangeEl = card.querySelector('input[type=range]');
   if (rangeEl) rangeEl.addEventListener('input', (function(idx){ return function(){ lb_ctrUpdate(idx, +this.value); }; })(i));
  }
@@ -19185,7 +19196,7 @@ function lb_ctrUpdate(idx, pct) {
  lb_ctrSaveTimer = setTimeout(() => lb_ctrSaveProgress(), 100);
 }
 
-// Render container number inputs in Shift Goals tab — one per planned container
+// Render container number inputs in Shift Goals tab - one per planned container
 function lb_renderCtrNumInputs() {
  const wrap = document.getElementById('lb-ctr-num-inputs');
  if (!wrap) return;
@@ -19223,7 +19234,7 @@ function lb_renderCtrNumInputs() {
    const pct = slider ? parseInt(slider.value) : (lb_containerProgress[idx]?.pct || 0);
    const svgEl = document.getElementById('lb-ctr-svg-'+idx);
    if (svgEl) svgEl.innerHTML = lb_ctrSVG(idx, pct, num);
-   // Short debounce (300ms) — fast enough to survive refresh, slow enough not to thrash
+   // Short debounce (300ms) - fast enough to survive refresh, slow enough not to thrash
    clearTimeout(lb_ctrSaveTimer);
    lb_ctrSaveTimer = setTimeout(() => lb_ctrSaveProgress(), 300);
   }; })(i));
@@ -19258,7 +19269,7 @@ async function lb_ctrSaveProgress() {
    num: numInp ? numInp.value.toUpperCase() : (lb_containerProgress[i]?.num || '')
   });
  }
- // Write to localStorage first (synchronous — survives fast refresh)
+ // Write to localStorage first (synchronous - survives fast refresh)
  lb_ctrSaveLocal(containers);
  console.log('[CTR] saving to Firestore:', lb_currentShiftDate, JSON.stringify(containers));
  lb_containerProgress = containers;
@@ -19302,7 +19313,7 @@ function lb_watchContainerProgress(shiftDate) {
   .onSnapshot(snap => {
    const fsContainers = snap.exists ? (snap.data().containers || []) : [];
    const local = lb_ctrLoadLocal();
-   console.log('[CTR] onSnapshot — Firestore:', JSON.stringify(fsContainers), 'localStorage:', JSON.stringify(local));
+   console.log('[CTR] onSnapshot - Firestore:', JSON.stringify(fsContainers), 'localStorage:', JSON.stringify(local));
    // Prefer localStorage if it was saved more recently than the Firestore doc
    const fsUpdatedAt = snap.exists ? new Date(snap.data().updatedAt || 0).getTime() : 0;
    if (local && local.savedAt > fsUpdatedAt) {
