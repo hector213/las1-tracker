@@ -18390,24 +18390,32 @@ function lb_unitsTodayForTranType(associateId, tranType) {
 // or null if no data exists. Uses the first non-empty 30-min bucket to derive the window start time.
 function lb_firstScanForTranType(tranType) {
  const buckets = lb_shiftBucketList();
- let best = null; // { name, bucketIdx }
+ let best = null; // { name, firstScanTime (ISO or null), bucketIdx }
  lb_associates.filter(a => !a.automated).forEach(a => {
   const doc = lb_assocTrendDocsToday[`${a.id}_${tranType}`];
   if (!doc || !Array.isArray(doc.buckets)) return;
   const firstIdx = doc.buckets.findIndex(b => (b.units || 0) > 0);
   if (firstIdx < 0) return;
-  if (!best || firstIdx < best.bucketIdx) {
-   best = { name: a.name || a.employeeId, bucketIdx: firstIdx };
+  // Use exact firstScanTime if stored, otherwise fall back to bucket index for comparison
+  const scanMs = doc.firstScanTime ? new Date(doc.firstScanTime).getTime() : null;
+  const compareVal = scanMs !== null ? scanMs : firstIdx * 1e9; // bucket fallback is large but ordered
+  if (!best || compareVal < best.compareVal) {
+   best = { name: a.name || a.employeeId, firstScanTime: doc.firstScanTime || null, bucketIdx: firstIdx, compareVal };
   }
  });
  if (!best) return null;
- // Compute start of the first active bucket (bucket i starts at shiftStart + i*0.5 hours)
- const startHH = (lb_appSettings.shiftStartHour + best.bucketIdx * 0.5) % 24;
- const h24 = Math.floor(startHH);
- const min = Math.round((startHH % 1) * 60);
- const ampm = h24 < 12 ? 'AM' : 'PM';
- const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
- const timeLabel = `${h12}:${String(min).padStart(2,'0')} ${ampm}`;
+ let timeLabel;
+ if (best.firstScanTime) {
+  // Exact time available — format as "5:23 PM"
+  const d = new Date(best.firstScanTime);
+  const h = d.getHours(), m = d.getMinutes();
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  timeLabel = `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+ } else {
+  // Older data without exact time — show bucket window end
+  timeLabel = buckets[best.bucketIdx] ? `by ${buckets[best.bucketIdx].label}` : '';
+ }
  return { name: best.name, timeLabel };
 }
 
@@ -19429,7 +19437,8 @@ document.getElementById("save-settings-btn").addEventListener("click", async () 
  ====================================================================== */
 let pendingImportRows = null;
 let pendingTrendBuckets = null; // { "shiftDate|tranType": [units, units, ...] } for the Shift Trend chart
-let pendingAssocTrendBuckets = null; // { "shiftDate|associateId|tranType": [units, units, ...] } for Associate UPH Trend
+let pendingAssocTrendBuckets = null;    // { "shiftDate|associateId|tranType": [units, units, ...] } for Associate UPH Trend
+let pendingAssocFirstScanTimes = null; // { "shiftDate|associateId|tranType": epochMs } earliest transaction time per combo
 
 function lb_associateIdByEmployeeIdMap() {
  const m = {};
@@ -19468,6 +19477,7 @@ function lb_buildTrendBuckets(cleaned) {
 function lb_buildAssocTrendBuckets(cleaned, associateByEmployeeId) {
  const buckets = lb_shiftBucketList();
  const out = {};
+ const firstScanTimes = {}; // key -> earliest dateTime ms
  cleaned.forEach(r => {
  const associateId = associateByEmployeeId[r.empId];
  if (!associateId) return;
@@ -19477,8 +19487,13 @@ function lb_buildAssocTrendBuckets(cleaned, associateByEmployeeId) {
  const key = `${r.shiftDate}|${associateId}|${r.tranType}`;
  if (!out[key]) out[key] = buckets.map(() => 0);
  out[key][idx] += r.qty;
+ // Track the earliest transaction time per associate/tranType
+ const ms = r.dateTime.getTime();
+ if (firstScanTimes[key] === undefined || ms < firstScanTimes[key]) {
+  firstScanTimes[key] = ms;
+ }
  });
- return out;
+ return { buckets: out, firstScanTimes };
 }
 
 document.getElementById("import-btn").addEventListener("click", async () => {
@@ -19492,7 +19507,9 @@ document.getElementById("import-btn").addEventListener("click", async () => {
  const grouped = lb_aggregateToUPH(cleaned, log);
  pendingImportRows = grouped;
  pendingTrendBuckets = lb_buildTrendBuckets(cleaned);
- pendingAssocTrendBuckets = lb_buildAssocTrendBuckets(cleaned, lb_associateIdByEmployeeIdMap());
+ const assocTrendResult = lb_buildAssocTrendBuckets(cleaned, lb_associateIdByEmployeeIdMap());
+ pendingAssocTrendBuckets = assocTrendResult.buckets;
+ pendingAssocFirstScanTimes = assocTrendResult.firstScanTimes;
  document.getElementById("commit-btn").classList.remove("hidden");
  log.textContent += `\nReady to write ${grouped.length} UPH record(s). Click "Write to History" to commit.`;
  } catch (err) {
@@ -19528,10 +19545,12 @@ document.getElementById("commit-btn").addEventListener("click", async () => {
  });
  Object.entries(pendingAssocTrendBuckets || {}).forEach(([key, unitsArr]) => {
  const [shiftDate, associateId, tranType] = key.split("|");
- writes.push([lb_db.collection("lb_assocTrend").doc(`${shiftDate}_${associateId}_${tranType}`), {
- shiftDate, associateId, tranType,
- buckets: unitsArr.map((units, i) => ({ label: bucketLabels[i], units }))
- }]);
+ const firstScanMs = (pendingAssocFirstScanTimes || {})[key];
+ const firstScanTime = firstScanMs ? new Date(firstScanMs).toISOString() : null;
+ const doc = { shiftDate, associateId, tranType,
+  buckets: unitsArr.map((units, i) => ({ label: bucketLabels[i], units })) };
+ if (firstScanTime) doc.firstScanTime = firstScanTime;
+ writes.push([lb_db.collection("lb_assocTrend").doc(`${shiftDate}_${associateId}_${tranType}`), doc]);
  });
  try {
  for (let i = 0; i < writes.length; i += 450) {
@@ -19550,6 +19569,7 @@ document.getElementById("commit-btn").addEventListener("click", async () => {
  pendingImportRows = null;
  pendingTrendBuckets = null;
  pendingAssocTrendBuckets = null;
+ pendingAssocFirstScanTimes = null;
  lb_stampLastUpdated(true); // stamp the import time now that data is committed
  document.getElementById("commit-btn").classList.add("hidden");
 });
