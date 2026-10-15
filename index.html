@@ -11346,7 +11346,7 @@ function pl_renderMonth() {
     responsive:true, interaction:{mode:'index',intersect:false},
     plugins:{legend:{position:'bottom'}},
     scales:{
-     y:{min:2000, max:6000, ticks:{callback:v=>v!=null?v.toLocaleString():''}},
+     y:{ticks:{callback:v=>v!=null?v.toLocaleString():''}},
      x:{ticks:{maxTicksLimit:16}}
     }
    }
@@ -12147,9 +12147,14 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  .assoc-numbers-title-row h2{font-size:20px;text-transform:none;letter-spacing:0;color:var(--text);margin:0;}
  #assoc-numbers-sub{color:var(--muted);font-size:13px;}
  .fn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
- .fn-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+ .fn-card{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+ .fn-card-body{padding:14px 16px;}
  .fn-card h3{margin:0 0 2px;font-size:15px;}
  .fn-card .fn-meta{color:var(--muted);font-size:12px;margin-bottom:12px;}
+ .fn-first-scan{display:flex;align-items:center;gap:6px;background:#fffbeb;border-bottom:1px solid #fde68a;padding:5px 12px;}
+ .fn-first-scan .ffs-trophy{font-size:12px;}
+ .fn-first-scan .ffs-name{font-size:11px;font-weight:600;color:#92400e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+ .fn-first-scan .ffs-time{font-size:11px;color:#b45309;flex-shrink:0;}
  .fn-card .fn-meta b{color:var(--text);}
  .fn-card .fn-empty{color:var(--muted);font-size:12px;padding:8px 0;}
  .assoc-row{display:flex;align-items:center;gap:10px;padding:6px 0;position:relative;}
@@ -14821,12 +14826,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 <div class="lb-header">
  <h1>LAS1 Labor Allocation</h1>
  <div class="lb-subnav">
- <button id="lb-nav-board" class="active">Board</button>
+ <button id="lb-nav-board" class="active">Workforce Planner</button>
  <button id="lb-nav-trend">Pick &amp; Pack Trend</button>
  <button id="lb-nav-assoc-trend">Associate UPH</button>
  <button id="lb-nav-assoc-numbers">Outbound Rates</button>
  <button id="lb-nav-inbound">Inbound Rates</button>
- <button id="lb-nav-weekly">Weekly Log</button>
+ <button id="lb-nav-weekly">Weekly Metrics</button>
  <button id="lb-nav-import">Import Data</button>
  <button id="lb-nav-admin">Admin</button>
  </div><!-- /.lb-subnav -->
@@ -18381,6 +18386,31 @@ function lb_unitsTodayForTranType(associateId, tranType) {
  return doc.buckets.reduce((s, b) => s + (b.units || 0), 0);
 }
 
+// Returns { name, timeLabel } for the first associate to log any unit in a given tran type today,
+// or null if no data exists. Uses the first non-empty 30-min bucket to derive the window start time.
+function lb_firstScanForTranType(tranType) {
+ const buckets = lb_shiftBucketList();
+ let best = null; // { name, bucketIdx }
+ lb_associates.filter(a => !a.automated).forEach(a => {
+  const doc = lb_assocTrendDocsToday[`${a.id}_${tranType}`];
+  if (!doc || !Array.isArray(doc.buckets)) return;
+  const firstIdx = doc.buckets.findIndex(b => (b.units || 0) > 0);
+  if (firstIdx < 0) return;
+  if (!best || firstIdx < best.bucketIdx) {
+   best = { name: a.name || a.employeeId, bucketIdx: firstIdx };
+  }
+ });
+ if (!best) return null;
+ // Compute start of the first active bucket (bucket i starts at shiftStart + i*0.5 hours)
+ const startHH = (lb_appSettings.shiftStartHour + best.bucketIdx * 0.5) % 24;
+ const h24 = Math.floor(startHH);
+ const min = Math.round((startHH % 1) * 60);
+ const ampm = h24 < 12 ? 'AM' : 'PM';
+ const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+ const timeLabel = `${h12}:${String(min).padStart(2,'0')} ${ampm}`;
+ return { name: best.name, timeLabel };
+}
+
 // Shared leaderboard-grid builder - renders one .fn-card per group into the given grid element.
 // Used for both the Associate Numbers tab (5 groups) and the Inbound tab's leaderboard (Receiving/
 // Inbound Putaway, 2 groups) so they stay visually and behaviorally identical.
@@ -18399,13 +18429,18 @@ function lb_renderAssocNumberGroups(groups, gridId) {
  const card = document.createElement("div");
  card.className = "fn-card";
  const total = rows.reduce((s, r) => s + r.units, 0);
- card.innerHTML = `<h3>${group.label}</h3><div class="fn-meta"><b>${total.toLocaleString()}</b> units &middot; ${rows.length} associate${rows.length === 1 ? "" : "s"}</div>`;
+ const firstScan = lb_firstScanForTranType(group.tranType);
+ const firstScanHtml = firstScan
+  ? `<div class="fn-first-scan"><span class="ffs-trophy">🥇</span><span class="ffs-name">${firstScan.name}</span><span class="ffs-time">· ${firstScan.timeLabel}</span></div>`
+  : '';
+ card.innerHTML = `${firstScanHtml}<div class="fn-card-body"><h3>${group.label}</h3><div class="fn-meta"><b>${total.toLocaleString()}</b> units &middot; ${rows.length} associate${rows.length === 1 ? "" : "s"}</div></div>`;
+ const cardBody = card.querySelector('.fn-card-body');
 
  if (!rows.length) {
  const empty = document.createElement("div");
  empty.className = "fn-empty";
  empty.textContent = "No scanned units yet today.";
- card.appendChild(empty);
+ cardBody.appendChild(empty);
  } else {
  const max = rows[0].units;
  rows.forEach((r, i) => {
@@ -18423,7 +18458,7 @@ function lb_renderAssocNumberGroups(groups, gridId) {
  <div class="assoc-bar-track"><div class="assoc-bar-fill" style="width:${pct}%;${barColor ? `background:${barColor};` : ""}"></div></div>
  </div>
  <div class="assoc-units">${r.units.toLocaleString()}</div>`;
- card.appendChild(row);
+ cardBody.appendChild(row);
  });
  }
  grid.appendChild(card);
