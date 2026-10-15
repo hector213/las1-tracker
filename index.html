@@ -185,7 +185,10 @@ const ATTENDANCE_TYPES = [
  { key: 'left-early-sick', label: 'Early Out - Sick Time Used (no point)', points: 0, icon: 'fa-sign-out-alt', color: '#059669' },
  { key: 'fmla-pending', label: 'Pending FMLA', points: 0, icon: 'fa-file-medical', color: '#7c3aed' },
  { key: 'fmla-approved', label: 'Approved FMLA', points: 0, icon: 'fa-file-medical', color: '#2563eb' },
- { key: 'bereavement', label: 'Bereavement', points: 0, icon: 'fa-heart', color: '#64748b' },
+ { key: 'bereavement-pending', label: 'Bereavement - Pending Documentation', points: 0, icon: 'fa-hourglass-half', color: '#64748b' },
+ { key: 'bereavement-docs', label: 'Bereavement - Documentation Provided (no point)', points: 0, icon: 'fa-heart', color: '#059669' },
+ { key: 'bereavement-no-docs', label: 'Bereavement - No Documentation (+1 pt)', points: 1.0, icon: 'fa-heart', color: '#dc2626' },
+ { key: 'bereavement-ncns', label: 'Bereavement NCNS - No Documentation (+2 pts)', points: 2.0, icon: 'fa-ban', color: '#7c0000' },
  { key: 'doctors-note', label: "Called Out - Doctor's Note", points: 0, icon: 'fa-file-medical', color: '#0891b2' },
  { key: 'vuto', label: 'VUTO (Voluntary Unpaid Time Off)', points: 0, icon: 'fa-hand-paper', color: '#6366f1' },
 ];
@@ -5139,14 +5142,15 @@ function renderAttendanceLog() {
  const isExp = e.expired === true;
  const isPending = e.pending === true;
  const isNcnsPending = e.type === 'ncns-pending';
- const pendingBorderColor = isNcnsPending ? '#7c0000' : '#f59e0b';
- const iconBg = (isExp ? '#9ca3af' : isNcnsPending ? '#7c0000' : isPending ? '#f59e0b' : info.color) + '20';
- const iconColor = isExp ? '#9ca3af' : isNcnsPending ? '#7c0000' : isPending ? '#d97706' : info.color;
+ const isBereavementPending = e.type === 'bereavement-pending';
+ const pendingBorderColor = isNcnsPending ? '#7c0000' : isBereavementPending ? '#64748b' : '#f59e0b';
+ const iconBg = (isExp ? '#9ca3af' : isNcnsPending ? '#7c0000' : isBereavementPending ? '#64748b' : isPending ? '#f59e0b' : info.color) + '20';
+ const iconColor = isExp ? '#9ca3af' : isNcnsPending ? '#7c0000' : isBereavementPending ? '#64748b' : isPending ? '#d97706' : info.color;
  const storedPts = e.points ?? info.points;
  let ptsDisplay;
  if (isPending) {
- const pendingBadgeColor = isNcnsPending ? { bg:'#fee2e2',color:'#991b1b',border:'#fca5a5' } : { bg:'#fef3c7',color:'#b45309',border:'#fcd34d' };
- ptsDisplay = `<span style="background:${pendingBadgeColor.bg};color:${pendingBadgeColor.color};font-size:0.72rem;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid ${pendingBadgeColor.border};white-space:nowrap">${isNcnsPending ? 'NCNS Pending' : 'Pending'}</span>`;
+ const pendingBadgeColor = isNcnsPending ? { bg:'#fee2e2',color:'#991b1b',border:'#fca5a5' } : isBereavementPending ? { bg:'#f1f5f9',color:'#475569',border:'#cbd5e1' } : { bg:'#fef3c7',color:'#b45309',border:'#fcd34d' };
+ ptsDisplay = `<span style="background:${pendingBadgeColor.bg};color:${pendingBadgeColor.color};font-size:0.72rem;font-weight:600;padding:2px 8px;border-radius:12px;border:1px solid ${pendingBadgeColor.border};white-space:nowrap">${isNcnsPending ? 'NCNS Pending' : isBereavementPending ? 'Bereavement Pending' : 'Pending'}</span>`;
  } else if (isExp) {
  ptsDisplay = `<span style="color:#9ca3af;text-decoration:line-through">+${storedPts % 1 === 0 ? storedPts : Number(storedPts).toFixed(1)}</span><span style="color:#9ca3af;font-size:0.75rem;margin-left:4px">(expired)</span>`;
  } else {
@@ -5159,6 +5163,13 @@ function renderAttendanceLog() {
  <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
  <button onclick="applyNcnsPoints('${e.id}')" style="font-size:0.75rem;padding:3px 10px;background:#7c0000;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600"><i class="fas fa-ban me-1"></i>Confirm NCNS (+2 pts)</button>
  <button onclick="excuseAttendance('${e.id}')" style="font-size:0.75rem;padding:3px 10px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600"><i class="fas fa-check-circle me-1"></i>Excuse</button>
+ </div>`;
+ } else if (isBereavementPending) {
+ pendingActions = `
+ <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+ <button onclick="resolveBereavementDocs('${e.id}')" style="font-size:0.75rem;padding:3px 10px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600"><i class="fas fa-file-medical me-1"></i>Docs Provided (no pt)</button>
+ <button onclick="resolveBereavementNoDocs('${e.id}')" style="font-size:0.75rem;padding:3px 10px;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600"><i class="fas fa-plus-circle me-1"></i>No Documentation (+1 pt)</button>
+ <button onclick="resolveBereavementNcns('${e.id}')" style="font-size:0.75rem;padding:3px 10px;background:#7c0000;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600"><i class="fas fa-ban me-1"></i>NCNS - No Docs (+2 pts)</button>
  </div>`;
  } else {
  pendingActions = `
@@ -6941,6 +6952,46 @@ window.excuseAttendance = async (entryId) => {
  clearCache('attendance');
  clearCache('milestones_firestore');
  clearCache('todayAttStats');
+ listenAttendance(currentAssociateId);
+};
+
+window.resolveBereavementDocs = async (entryId) => {
+ if (!roleAtLeast('lead')) return;
+ if (!confirm('Mark bereavement as documentation provided - no point will be applied.')) return;
+ const resolvedBy = await _getActorName();
+ await updateDoc(doc(db, 'attendance', currentAssociateId, 'entries', entryId), {
+ type: 'bereavement-docs', points: 0, pending: false,
+ resolvedBy, resolvedAt: new Date().toISOString()
+ });
+ clearCache('attendance'); clearCache('milestones_firestore'); clearCache('todayAttStats');
+ listenAttendance(currentAssociateId);
+};
+
+window.resolveBereavementNoDocs = async (entryId) => {
+ if (!roleAtLeast('lead')) return;
+ if (!confirm('Apply 1 attendance point for bereavement with no documentation? This cannot be undone.')) return;
+ const resolvedBy = await _getActorName();
+ await updateDoc(doc(db, 'attendance', currentAssociateId, 'entries', entryId), {
+ type: 'bereavement-no-docs', points: 1, pending: false,
+ resolvedBy, resolvedAt: new Date().toISOString()
+ });
+ await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(1) });
+ clearCache('attendance'); clearCache('milestones_firestore'); clearCache('todayAttStats');
+ recalcAttExpiry(currentAssociateId);
+ listenAttendance(currentAssociateId);
+};
+
+window.resolveBereavementNcns = async (entryId) => {
+ if (!roleAtLeast('lead')) return;
+ if (!confirm('Apply 2 attendance points for bereavement NCNS with no documentation? This cannot be undone.')) return;
+ const resolvedBy = await _getActorName();
+ await updateDoc(doc(db, 'attendance', currentAssociateId, 'entries', entryId), {
+ type: 'bereavement-ncns', points: 2, pending: false,
+ resolvedBy, resolvedAt: new Date().toISOString()
+ });
+ await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(2) });
+ clearCache('attendance'); clearCache('milestones_firestore'); clearCache('todayAttStats');
+ recalcAttExpiry(currentAssociateId);
  listenAttendance(currentAssociateId);
 };
 
