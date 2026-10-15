@@ -16469,6 +16469,7 @@ const lb_firebaseConfig = {
 };
 const _lbApp = firebase.initializeApp(lb_firebaseConfig, 'laborApp');
 let lb_db = _lbApp.firestore();
+window.lb_db = lb_db;
 // Enable offline persistence so pending writes survive a page refresh
 lb_db.enablePersistence({ synchronizeTabs: true }).catch(err => {
  if (err.code !== 'failed-precondition' && err.code !== 'unimplemented') {
