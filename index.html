@@ -10917,6 +10917,7 @@ let pl_lastWeekData = {};
 let pl_monthData = {};
 let pl_monthChartInst = null;
 let pl_initialized = false;
+let pl_openDay = null;
 
 const PL_SHIFTS_BY_DOW = { 0:['B1'], 1:['A1','A2'], 2:['A1','A2'], 3:['A1','A2'], 4:['A1','A2'], 5:['B1'], 6:['B1'] };
 const PL_DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -10992,178 +10993,207 @@ async function pl_loadAndRenderMonth() {
  pl_renderMonth();
 }
 
-function pl_renderWeekKpis(totPack, totPut, totVend) {
- // Compare same days elapsed: if viewing the current week, cap last week to the same weekday.
- // If viewing a past week (fully elapsed), compare full week vs full prior week.
- const todayStr = pl_dateStr(new Date());
- const currentWeekDays = pl_weekDays(pl_weekStart);
- const isCurrentWeek = currentWeekDays.includes(todayStr);
- // Days elapsed in current week (Mon=0 … today)
- const daysElapsed = isCurrentWeek
-  ? currentWeekDays.indexOf(todayStr) + 1
-  : 7;
- const lastWeekDays = pl_weekDays(new Date(pl_weekStart.getTime() - 7*86400000));
- const cutoffDays = new Set(lastWeekDays.slice(0, daysElapsed));
+function pl_renderWeekKpis() {
+ try {
+  // --- This-week totals ---
+  let totPack=0, totPut=0, totVend=0;
+  Object.values(pl_weekData).forEach(d => { totPack+=d.packOut||0; totPut+=d.putaway||0; totVend+=d.vend||0; });
 
- let lwPack=0, lwPut=0, lwVend=0;
- Object.values(pl_lastWeekData).forEach(d => {
-  if (cutoffDays.has(d.shiftDate)) {
-   lwPack+=d.packOut||0; lwPut+=d.putaway||0; lwVend+=d.vend||0;
-  }
- });
+  // --- Last-week comparison: same days elapsed only ---
+  const todayStr = pl_dateStr(new Date());
+  const thisWeekDays = pl_weekDays(pl_weekStart);
+  const isCurrentWeek = thisWeekDays.includes(todayStr);
+  const daysElapsed = isCurrentWeek ? thisWeekDays.indexOf(todayStr)+1 : 7;
+  const lastMon = new Date(pl_weekStart); lastMon.setDate(lastMon.getDate()-7);
+  const cutoffDays = new Set(pl_weekDays(lastMon).slice(0, daysElapsed));
+  let lwPack=0, lwPut=0, lwVend=0;
+  Object.values(pl_lastWeekData).forEach(d => {
+   if (cutoffDays.has(d.shiftDate)) { lwPack+=d.packOut||0; lwPut+=d.putaway||0; lwVend+=d.vend||0; }
+  });
+  const dayLabel = isCurrentWeek ? `same ${daysElapsed} day${daysElapsed>1?'s':''} last wk` : 'last week';
+  const delta = (cur, prev) => {
+   if (!prev) return `<div style="font-size:10px;color:var(--muted)">no prior data</div>`;
+   const pct = Math.round((cur-prev)/prev*100);
+   return `<div style="font-size:10px;color:${pct>=0?'#16803c':'#b91c1c'}">${pct>=0?'▲':'▼'} ${Math.abs(pct)}% vs ${dayLabel}</div>`;
+  };
+  const pvRatio = totVend>0?(totPack/totVend*100).toFixed(0)+'%':'—';
+  const pvLast  = lwVend>0?(lwPack/lwVend*100).toFixed(0)+'%':'—';
 
- const dayLabel = isCurrentWeek
-  ? `same ${daysElapsed} day${daysElapsed>1?'s':''} last week`
-  : 'last week';
- const delta = (cur, prev) => {
-  if (!prev) return `<div style="font-size:10px;color:var(--muted)">no prior data</div>`;
-  const pct = Math.round((cur-prev)/prev*100);
-  const up = pct >= 0;
-  return `<div style="font-size:10px;color:${up?'#16803c':'#b91c1c'}">${up?'▲':'▼'} ${Math.abs(pct)}% vs ${dayLabel}</div>`;
- };
- const pvRatio = totVend>0?(totPack/totVend*100).toFixed(0)+'%':'—';
- const pvLast  = lwVend>0?(lwPack/lwVend*100).toFixed(0)+'%':'—';
- const pvDelta = lwVend && totVend
-  ? `<div style="font-size:10px;color:var(--muted)">${dayLabel}: ${pvLast}</div>`
-  : `<div style="font-size:10px;color:var(--muted)">no prior data</div>`;
+  const kpiRow = document.getElementById('pl-kpi-row');
+  if (kpiRow) kpiRow.innerHTML = `
+   <div class="admin-pane" style="text-align:center">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Pack Out</div>
+    <div style="font-size:22px;font-weight:700;color:var(--orange)">${totPack>0?totPack.toLocaleString():'—'}</div>
+    ${delta(totPack,lwPack)}
+   </div>
+   <div class="admin-pane" style="text-align:center">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Putaway</div>
+    <div style="font-size:22px;font-weight:700;color:#4da6ff">${totPut>0?totPut.toLocaleString():'—'}</div>
+    ${delta(totPut,lwPut)}
+   </div>
+   <div class="admin-pane" style="text-align:center">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Vend</div>
+    <div style="font-size:22px;font-weight:700;color:#4ade80">${totVend>0?totVend.toLocaleString():'—'}</div>
+    ${delta(totVend,lwVend)}
+   </div>
+   <div class="admin-pane" style="text-align:center">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Pack / Vend</div>
+    <div style="font-size:22px;font-weight:700;color:var(--text)">${pvRatio}</div>
+    <div style="font-size:10px;color:var(--muted)">${lwVend?dayLabel+': '+pvLast:'no prior data'}</div>
+   </div>`;
 
- document.getElementById('pl-kpi-row').innerHTML = `
-  <div class="admin-pane" style="text-align:center">
-   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Pack Out</div>
-   <div style="font-size:22px;font-weight:700;color:var(--orange)">${totPack>0?totPack.toLocaleString():'—'}</div>
-   ${delta(totPack,lwPack,'#16803c')}
-  </div>
-  <div class="admin-pane" style="text-align:center">
-   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Putaway</div>
-   <div style="font-size:22px;font-weight:700;color:#4da6ff">${totPut>0?totPut.toLocaleString():'—'}</div>
-   ${delta(totPut,lwPut,'#16803c')}
-  </div>
-  <div class="admin-pane" style="text-align:center">
-   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Vend</div>
-   <div style="font-size:22px;font-weight:700;color:#4ade80">${totVend>0?totVend.toLocaleString():'—'}</div>
-   ${delta(totVend,lwVend,'#16803c')}
-  </div>
-  <div class="admin-pane" style="text-align:center">
-   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Pack / Vend</div>
-   <div style="font-size:22px;font-weight:700;color:var(--text)">${pvRatio}</div>
-   ${pvDelta}
-  </div>`;
-
- // MTD from pl_monthData
- let mtdPack=0, mtdPut=0, mtdVend=0, mtdDays=new Set();
- Object.values(pl_monthData).forEach(d => { mtdPack+=d.packOut||0; mtdPut+=d.putaway||0; mtdVend+=d.vend||0; if(d.packOut||d.putaway||d.vend) mtdDays.add(d.shiftDate); });
- const daysLogged = mtdDays.size;
- const avgVend = daysLogged>0?Math.round(mtdVend/daysLogged):0;
- const {year,month} = pl_chartMonth;
- document.getElementById('pl-kpi-mtd-label').textContent =
-  `Month to date — ${PL_MONTH_NAMES[month-1]} ${year}`;
- document.getElementById('pl-kpi-mtd-row').innerHTML = `
-  <div class="admin-pane" style="text-align:center;border-top:2px solid var(--orange)">
-   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Pack Out MTD</div>
-   <div style="font-size:22px;font-weight:700;color:var(--orange)">${mtdPack>0?mtdPack.toLocaleString():'—'}</div>
-   <div style="font-size:10px;color:var(--muted)">${daysLogged} days logged</div>
-  </div>
-  <div class="admin-pane" style="text-align:center;border-top:2px solid #4da6ff">
-   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Putaway MTD</div>
-   <div style="font-size:22px;font-weight:700;color:#4da6ff">${mtdPut>0?mtdPut.toLocaleString():'—'}</div>
-   <div style="font-size:10px;color:var(--muted)">${daysLogged} days logged</div>
-  </div>
-  <div class="admin-pane" style="text-align:center;border-top:2px solid #4ade80">
-   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Vend MTD</div>
-   <div style="font-size:22px;font-weight:700;color:#4ade80">${mtdVend>0?mtdVend.toLocaleString():'—'}</div>
-   <div style="font-size:10px;color:var(--muted)">${daysLogged} days logged</div>
-  </div>
-  <div class="admin-pane" style="text-align:center;border-top:2px solid var(--border)">
-   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Avg Daily Vend</div>
-   <div style="font-size:22px;font-weight:700;color:var(--text)">${avgVend>0?avgVend.toLocaleString():'—'}</div>
-   <div style="font-size:10px;color:var(--muted)">per logged day</div>
-  </div>`;
+  // --- MTD from pl_monthData ---
+  let mtdPack=0, mtdPut=0, mtdVend=0; const mtdDays=new Set();
+  Object.values(pl_monthData).forEach(d => {
+   mtdPack+=d.packOut||0; mtdPut+=d.putaway||0; mtdVend+=d.vend||0;
+   if (d.packOut||d.putaway||d.vend) mtdDays.add(d.shiftDate);
+  });
+  const daysLogged = mtdDays.size;
+  const avgVend = daysLogged>0?Math.round(mtdVend/daysLogged):0;
+  const {year,month} = pl_chartMonth;
+  const mtdLbl = document.getElementById('pl-kpi-mtd-label');
+  if (mtdLbl) mtdLbl.textContent = `Month to date — ${PL_MONTH_NAMES[month-1]} ${year}`;
+  const mtdRow = document.getElementById('pl-kpi-mtd-row');
+  if (mtdRow) mtdRow.innerHTML = `
+   <div class="admin-pane" style="text-align:center;border-top:2px solid var(--orange)">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Pack Out MTD</div>
+    <div style="font-size:22px;font-weight:700;color:var(--orange)">${mtdPack>0?mtdPack.toLocaleString():'—'}</div>
+    <div style="font-size:10px;color:var(--muted)">${daysLogged} days logged</div>
+   </div>
+   <div class="admin-pane" style="text-align:center;border-top:2px solid #4da6ff">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Putaway MTD</div>
+    <div style="font-size:22px;font-weight:700;color:#4da6ff">${mtdPut>0?mtdPut.toLocaleString():'—'}</div>
+    <div style="font-size:10px;color:var(--muted)">${daysLogged} days logged</div>
+   </div>
+   <div class="admin-pane" style="text-align:center;border-top:2px solid #4ade80">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Vend MTD</div>
+    <div style="font-size:22px;font-weight:700;color:#4ade80">${mtdVend>0?mtdVend.toLocaleString():'—'}</div>
+    <div style="font-size:10px;color:var(--muted)">${daysLogged} days logged</div>
+   </div>
+   <div class="admin-pane" style="text-align:center;border-top:2px solid var(--border)">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Avg Daily Vend</div>
+    <div style="font-size:22px;font-weight:700;color:var(--text)">${avgVend>0?avgVend.toLocaleString():'—'}</div>
+    <div style="font-size:10px;color:var(--muted)">per logged day</div>
+   </div>`;
+ } catch(e) { console.error('pl_renderWeekKpis error:', e); }
 }
+
+window.pl_toggleDay = function(dateStr) {
+ pl_openDay = pl_openDay === dateStr ? null : dateStr;
+ pl_renderWeek();
+};
 
 function pl_renderWeek() {
- const days = pl_weekDays(pl_weekStart);
- const endDate = new Date(pl_weekStart); endDate.setDate(endDate.getDate()+6);
- const fmt = d => d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
- document.getElementById('pl-week-label').textContent =
-  `Week of ${fmt(pl_weekStart)} – ${fmt(endDate)}, ${pl_weekStart.getFullYear()}`;
+ try {
+  const days = pl_weekDays(pl_weekStart);
+  const endDate = new Date(pl_weekStart); endDate.setDate(endDate.getDate()+6);
+  const fmt = d => d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  const wLabel = document.getElementById('pl-week-label');
+  if (wLabel) wLabel.textContent = `Week of ${fmt(pl_weekStart)} – ${fmt(endDate)}, ${pl_weekStart.getFullYear()}`;
 
- let totPack=0, totPut=0, totVend=0;
- Object.values(pl_weekData).forEach(d => { totPack+=d.packOut||0; totPut+=d.putaway||0; totVend+=d.vend||0; });
+  pl_renderWeekKpis();
 
- pl_renderWeekKpis(totPack, totPut, totVend);
+  const canEdit = roleAtLeast('lead');
+  const pillClr = s => s==='A1'?'#c95e00':s==='A2'?'#0588a3':'#16803c';
+  const pillBg  = s => s==='A1'?'rgba(255,124,31,.12)':s==='A2'?'rgba(108,211,252,.12)':'rgba(74,222,128,.12)';
+  const pillBrd = s => s==='A1'?'rgba(255,124,31,.3)':s==='A2'?'rgba(108,211,252,.3)':'rgba(74,222,128,.3)';
+  const fmt2 = n => n>0?n.toLocaleString():'—';
 
- const canEdit = roleAtLeast('lead');
- const mkInput = (docId, dateStr, shift, field, val) => canEdit
-  ? `<input type="number" min="0" step="1" value="${val||''}" placeholder="—"
-      style="width:80px;padding:3px 5px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right;background:#fff"
-      onchange="pl_saveField('${docId}','${dateStr}','${shift}','${field}',this.value)">`
-  : `<span style="font-weight:600">${val?Number(val).toLocaleString():'—'}</span>`;
+  let totPack=0, totPut=0, totVend=0;
+  Object.values(pl_weekData).forEach(d => { totPack+=d.packOut||0; totPut+=d.putaway||0; totVend+=d.vend||0; });
 
- let html = `<table class="admin-table" style="font-size:12px">
-  <thead><tr>
-   <th>Date</th><th>Shift</th>
-   <th style="color:var(--orange);text-align:right">Pack Out</th>
-   <th style="color:#4da6ff;text-align:right">Putaway</th>
-   <th style="color:#4ade80;text-align:right">Vend</th>
-  </tr></thead><tbody>`;
+  let html = `<table class="admin-table" style="font-size:12px;width:100%">
+   <thead><tr>
+    <th style="width:40%">Date</th>
+    <th style="text-align:right;color:#c95e00">Pack Out</th>
+    <th style="text-align:right;color:#0588a3">Putaway</th>
+    <th style="text-align:right;color:#16803c">Vend</th>
+   </tr></thead><tbody>`;
 
- days.forEach(dateStr => {
-  const shifts = pl_shiftsFor(dateStr);
-  const d = new Date(dateStr+'T12:00:00');
-  const dayLbl = `${PL_DAY_NAMES[d.getDay()]} ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
-  let dayPack=0, dayPut=0, dayVend=0;
+  days.forEach(dateStr => {
+   const shifts = pl_shiftsFor(dateStr);
+   const d = new Date(dateStr+'T12:00:00');
+   const dayLbl = `${PL_DAY_NAMES[d.getDay()]} ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+   let dayPack=0, dayPut=0, dayVend=0;
+   shifts.forEach(sh => { const r=pl_weekData[`${dateStr}_${sh}`]||{}; dayPack+=r.packOut||0; dayPut+=r.putaway||0; dayVend+=r.vend||0; });
+   const isOpen = pl_openDay === dateStr;
+   const pillsHtml = shifts.map(s=>`<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:${pillBg(s)};color:${pillClr(s)};border:1px solid ${pillBrd(s)};margin-left:4px">${s}</span>`).join('');
 
-  shifts.forEach((shift, si) => {
-   const docId = `${dateStr}_${shift}`;
-   const rec = pl_weekData[docId] || {};
-   dayPack += rec.packOut||0; dayPut += rec.putaway||0; dayVend += rec.vend||0;
-   const clr = pl_shiftColor(shift);
-   const dateCell = si===0 ? `<td rowspan="${shifts.length}" style="font-weight:600;vertical-align:middle;white-space:nowrap;padding:6px 8px">${dayLbl}</td>` : '';
-   html += `<tr>
-    ${dateCell}
-    <td><span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:${clr}22;color:${clr};border:1px solid ${clr}55">${shift}</span></td>
-    <td style="text-align:right">${mkInput(docId,dateStr,shift,'packOut',rec.packOut)}</td>
-    <td style="text-align:right">${mkInput(docId,dateStr,shift,'putaway',rec.putaway)}</td>
-    <td style="text-align:right">${mkInput(docId,dateStr,shift,'vend',rec.vend)}</td>
+   html += `<tr style="cursor:pointer;${isOpen?'background:rgba(59,130,246,.07)':''}" onclick="pl_toggleDay('${dateStr}')">
+    <td style="padding:8px;font-weight:600;white-space:nowrap">
+     <span style="display:inline-block;font-size:11px;transition:transform .15s;transform:rotate(${isOpen?90:0}deg);margin-right:4px;color:var(--muted)">▶</span>
+     ${dayLbl}${pillsHtml}
+    </td>
+    <td style="text-align:right;padding:8px;font-weight:600;color:#c95e00">${fmt2(dayPack)}</td>
+    <td style="text-align:right;padding:8px;font-weight:600;color:#0588a3">${fmt2(dayPut)}</td>
+    <td style="text-align:right;padding:8px;font-weight:600;color:#16803c">${fmt2(dayVend)}</td>
    </tr>`;
+
+   if (isOpen) {
+    html += `<tr><td colspan="4" style="padding:0;border-bottom:1px solid var(--border)">
+     <div style="background:var(--panel);padding:12px 16px;display:flex;flex-direction:column;gap:10px">`;
+    shifts.forEach(sh => {
+     const docId = `${dateStr}_${sh}`;
+     const rec = pl_weekData[docId] || {};
+     const clr = pillClr(sh); const bg = pillBg(sh); const brd = pillBrd(sh);
+     if (canEdit) {
+      html += `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+       <span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;background:${bg};color:${clr};border:1px solid ${brd};min-width:28px;text-align:center">${sh}</span>
+       <label style="font-size:11px;color:var(--muted)">Pack Out</label>
+       <input type="number" min="0" step="1" value="${rec.packOut||''}" placeholder="—" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="packOut"
+        style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right">
+       <label style="font-size:11px;color:var(--muted)">Putaway</label>
+       <input type="number" min="0" step="1" value="${rec.putaway||''}" placeholder="—" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="putaway"
+        style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right">
+       <label style="font-size:11px;color:var(--muted)">Vend</label>
+       <input type="number" min="0" step="1" value="${rec.vend||''}" placeholder="—" data-doc="${docId}" data-date="${dateStr}" data-shift="${sh}" data-field="vend"
+        style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right">
+       <button onclick="event.stopPropagation();pl_saveRow('${docId}','${dateStr}','${sh}')"
+        style="padding:4px 14px;font-size:11px;font-weight:600;border:none;border-radius:4px;background:var(--accent);color:#fff;cursor:pointer">Save</button>
+      </div>`;
+     } else {
+      html += `<div style="display:flex;align-items:center;gap:16px">
+       <span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;background:${bg};color:${clr};border:1px solid ${brd}">${sh}</span>
+       <span style="font-size:11px;color:var(--muted)">Pack Out</span><strong>${fmt2(rec.packOut)}</strong>
+       <span style="font-size:11px;color:var(--muted)">Putaway</span><strong>${fmt2(rec.putaway)}</strong>
+       <span style="font-size:11px;color:var(--muted)">Vend</span><strong>${fmt2(rec.vend)}</strong>
+      </div>`;
+     }
+    });
+    html += `</div></td></tr>`;
+   }
   });
 
-  if (shifts.length > 1) {
-   html += `<tr style="background:#f7f9fb;font-size:11px">
-    <td colspan="2" style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em">Day Total</td>
-    <td style="text-align:right;font-weight:700;color:var(--orange)">${dayPack>0?dayPack.toLocaleString():'—'}</td>
-    <td style="text-align:right;font-weight:700;color:#4da6ff">${dayPut>0?dayPut.toLocaleString():'—'}</td>
-    <td style="text-align:right;font-weight:700;color:#4ade80">${dayVend>0?dayVend.toLocaleString():'—'}</td>
-   </tr>`;
-  }
- });
+  html += `<tr style="background:var(--accent);color:#fff;font-weight:700">
+   <td style="padding:7px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.06em">Week Total</td>
+   <td style="text-align:right;padding:7px 8px;color:#ffb57a">${fmt2(totPack)}</td>
+   <td style="text-align:right;padding:7px 8px;color:#a8d8ff">${fmt2(totPut)}</td>
+   <td style="text-align:right;padding:7px 8px;color:#a7f3d0">${fmt2(totVend)}</td>
+  </tr></tbody></table>`;
 
- html += `<tr style="background:var(--accent);color:#fff;font-weight:700">
-  <td colspan="2" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em">Week Total</td>
-  <td style="text-align:right;color:#ffb57a">${totPack>0?totPack.toLocaleString():'—'}</td>
-  <td style="text-align:right;color:#a8d8ff">${totPut>0?totPut.toLocaleString():'—'}</td>
-  <td style="text-align:right;color:#a7f3d0">${totVend>0?totVend.toLocaleString():'—'}</td>
- </tr></tbody></table>`;
-
- document.getElementById('pl-week-table-wrap').innerHTML = html;
+  const wrap = document.getElementById('pl-week-table-wrap');
+  if (wrap) wrap.innerHTML = html;
+ } catch(e) { console.error('pl_renderWeek error:', e); }
 }
 
-window.pl_saveField = async function(docId, shiftDate, shift, field, rawVal) {
- const val = parseInt(rawVal, 10);
- if (isNaN(val) || val < 0) return;
+window.pl_saveRow = async function(docId, shiftDate, shift) {
+ const inputs = document.querySelectorAll(`input[data-doc="${docId}"]`);
+ const vals = {};
+ inputs.forEach(inp => { vals[inp.dataset.field] = parseInt(inp.value,10)||0; });
  const existing = pl_weekData[docId] || {};
- const updated = { ...existing, shiftDate, shift, [field]: val, updatedAt: new Date().toISOString(), updatedBy: currentUser?.email||'' };
+ const updated = { ...existing, shiftDate, shift, packOut:vals.packOut||0, putaway:vals.putaway||0, vend:vals.vend||0,
+  updatedAt: new Date().toISOString(), updatedBy: currentUser?.email||'' };
  try {
+  const btn = document.querySelector(`button[onclick*="pl_saveRow('${docId}'"]`);
+  if (btn) { btn.textContent='Saving…'; btn.disabled=true; }
   await lb_db.collection('production_log').doc(docId).set(updated, {merge:true});
   pl_weekData[docId] = updated;
-  // Refresh KPI cards
-  let totPack=0,totPut=0,totVend=0;
-  Object.values(pl_weekData).forEach(d=>{totPack+=d.packOut||0;totPut+=d.putaway||0;totVend+=d.vend||0;});
-  pl_renderWeekKpis(totPack, totPut, totVend);
-  // Refresh month chart if same month
+  // Also update month data if same month
   const docMonth = shiftDate.slice(0,7);
   const chartMonthStr = `${pl_chartMonth.year}-${String(pl_chartMonth.month).padStart(2,'0')}`;
-  if (docMonth === chartMonthStr) { pl_monthData[docId] = updated; pl_renderMonth(); }
+  if (docMonth === chartMonthStr) pl_monthData[docId] = updated;
+  pl_renderWeek();
+  pl_renderMonth();
  } catch(e) { alert('Save failed: '+e.message); }
 };
 
@@ -11172,12 +11202,8 @@ function pl_renderMonth() {
  const daysInMonth = new Date(year, month, 0).getDate();
  document.getElementById('pl-month-label').textContent =
   `${PL_MONTH_NAMES[month-1]} ${year} — Daily Volume`;
- // Refresh MTD KPI cards with latest month data
- if (document.getElementById('pl-kpi-mtd-row')) {
-  let totPack=0,totPut=0,totVend=0;
-  Object.values(pl_weekData).forEach(d=>{totPack+=d.packOut||0;totPut+=d.putaway||0;totVend+=d.vend||0;});
-  pl_renderWeekKpis(totPack, totPut, totVend);
- }
+ // Refresh KPI cards with latest month data
+ if (document.getElementById('pl-kpi-mtd-row')) pl_renderWeekKpis();
 
  const daily = {};
  for (let d=1; d<=daysInMonth; d++) daily[d] = {pack:0,put:0,vend:0};
@@ -14582,9 +14608,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <button id="lb-nav-assoc-trend">Associate UPH</button>
  <button id="lb-nav-assoc-numbers">Outbound Rates</button>
  <button id="lb-nav-inbound">Inbound Rates</button>
+ <button id="lb-nav-weekly">Weekly Log</button>
  <button id="lb-nav-import">Import Data</button>
  <button id="lb-nav-admin">Admin</button>
- <button id="lb-nav-weekly">Weekly Log</button>
  </div><!-- /.lb-subnav -->
  <div id="lb-live-clock" style="text-align:right;color:#cfe0ff;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:0.03em;"></div>
  </div><!-- /.lb-header -->
