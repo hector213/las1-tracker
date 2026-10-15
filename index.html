@@ -10939,28 +10939,28 @@ function pl_shiftColor(shift) {
 }
 
 function pl_init() {
- if (pl_initialized) { pl_renderWeek(); pl_loadAndRenderWeek(); pl_loadAndRenderMonth(); return; }
- pl_initialized = true;
- const today = new Date();
- pl_weekStart = pl_mondayOf(today);
- pl_chartMonth = { year: today.getFullYear(), month: today.getMonth()+1 };
- document.getElementById('pl-prev-week').addEventListener('click', () => {
-  pl_weekStart = new Date(pl_weekStart); pl_weekStart.setDate(pl_weekStart.getDate()-7); pl_loadAndRenderWeek();
- });
- document.getElementById('pl-next-week').addEventListener('click', () => {
-  pl_weekStart = new Date(pl_weekStart); pl_weekStart.setDate(pl_weekStart.getDate()+7); pl_loadAndRenderWeek();
- });
- document.getElementById('pl-prev-month').addEventListener('click', () => {
-  pl_chartMonth = {...pl_chartMonth}; pl_chartMonth.month--;
-  if (pl_chartMonth.month<1){pl_chartMonth.month=12;pl_chartMonth.year--;} pl_loadAndRenderMonth();
- });
- document.getElementById('pl-next-month').addEventListener('click', () => {
-  pl_chartMonth = {...pl_chartMonth}; pl_chartMonth.month++;
-  if (pl_chartMonth.month>12){pl_chartMonth.month=1;pl_chartMonth.year++;} pl_loadAndRenderMonth();
- });
- pl_renderWeek();   // render immediately with empty data so the table is always visible
- pl_loadAndRenderWeek();  // then fill in from Firestore
- pl_loadAndRenderMonth();
+ try {
+  if (pl_initialized) { pl_renderWeek(); pl_loadAndRenderWeek(); pl_loadAndRenderMonth(); return; }
+  pl_initialized = true;
+  const today = new Date();
+  pl_weekStart = pl_mondayOf(today);
+  pl_chartMonth = { year: today.getFullYear(), month: today.getMonth()+1 };
+  const prevW = document.getElementById('pl-prev-week');
+  const nextW = document.getElementById('pl-next-week');
+  const prevM = document.getElementById('pl-prev-month');
+  const nextM = document.getElementById('pl-next-month');
+  if (prevW) prevW.addEventListener('click', () => { pl_weekStart = new Date(pl_weekStart); pl_weekStart.setDate(pl_weekStart.getDate()-7); pl_loadAndRenderWeek(); });
+  if (nextW) nextW.addEventListener('click', () => { pl_weekStart = new Date(pl_weekStart); pl_weekStart.setDate(pl_weekStart.getDate()+7); pl_loadAndRenderWeek(); });
+  if (prevM) prevM.addEventListener('click', () => { pl_chartMonth = {...pl_chartMonth}; pl_chartMonth.month--; if (pl_chartMonth.month<1){pl_chartMonth.month=12;pl_chartMonth.year--;} pl_loadAndRenderMonth(); });
+  if (nextM) nextM.addEventListener('click', () => { pl_chartMonth = {...pl_chartMonth}; pl_chartMonth.month++; if (pl_chartMonth.month>12){pl_chartMonth.month=1;pl_chartMonth.year++;} pl_loadAndRenderMonth(); });
+  pl_renderWeek();
+  pl_loadAndRenderWeek();
+  pl_loadAndRenderMonth();
+ } catch(e) {
+  console.error('pl_init error:', e);
+  const w = document.getElementById('pl-week-table-wrap');
+  if (w) w.innerHTML = '<div style="color:red;padding:16px;font-weight:bold">Init error: ' + e.message + '</div>';
+ }
 }
 
 async function pl_loadAndRenderWeek() {
@@ -11077,7 +11077,11 @@ function pl_renderWeekKpis() {
     <div style="font-size:22px;font-weight:700;color:var(--text)">${avgVend>0?avgVend.toLocaleString():'—'}</div>
     <div style="font-size:10px;color:var(--muted)">per logged day</div>
    </div>`;
- } catch(e) { console.error('pl_renderWeekKpis error:', e); }
+ } catch(e) {
+  console.error('pl_renderWeekKpis error:', e);
+  const r = document.getElementById('pl-kpi-row');
+  if (r) r.innerHTML = '<div style="color:red;padding:8px;font-weight:bold">KPI error: ' + e.message + '</div>';
+ }
 }
 
 window.pl_toggleDay = function(dateStr) {
@@ -11086,6 +11090,7 @@ window.pl_toggleDay = function(dateStr) {
 };
 
 function pl_renderWeek() {
+ const _wrap = document.getElementById('pl-week-table-wrap');
  try {
   const days = pl_weekDays(pl_weekStart);
   const endDate = new Date(pl_weekStart); endDate.setDate(endDate.getDate()+6);
@@ -11175,7 +11180,10 @@ function pl_renderWeek() {
 
   const wrap = document.getElementById('pl-week-table-wrap');
   if (wrap) wrap.innerHTML = html;
- } catch(e) { console.error('pl_renderWeek error:', e); }
+ } catch(e) {
+  console.error('pl_renderWeek error:', e);
+  if (_wrap) _wrap.innerHTML = '<div style="color:red;padding:16px;font-weight:bold">Weekly Log error: ' + e.message + '<br><small>' + (e.stack||'').split('\n').slice(0,3).join('<br>') + '</small></div>';
+ }
 }
 
 window.pl_saveRow = async function(docId, shiftDate, shift) {
