@@ -10938,7 +10938,7 @@ function pl_shiftColor(shift) {
  return shift==='A1'?'#FF7C1F':shift==='A2'?'#6CD3FC':'#4ade80';
 }
 
-function pl_init() {
+window.pl_init = function pl_init() {
  try {
   if (pl_initialized) { pl_renderWeek(); pl_loadAndRenderWeek(); pl_loadAndRenderMonth(); return; }
   pl_initialized = true;
