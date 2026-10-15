@@ -12153,6 +12153,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  .fn-card .fn-meta{color:var(--muted);font-size:12px;margin-bottom:12px;}
  .fn-first-scan{display:flex;align-items:center;gap:6px;background:#fffbeb;border-bottom:1px solid #fde68a;padding:5px 12px;}
  .fn-first-scan .ffs-trophy{font-size:12px;}
+ .fn-first-scan .ffs-label{font-size:11px;color:#b45309;flex-shrink:0;}
  .fn-first-scan .ffs-name{font-size:11px;font-weight:600;color:#92400e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
  .fn-first-scan .ffs-time{font-size:11px;color:#b45309;flex-shrink:0;}
  .fn-card .fn-meta b{color:var(--text);}
@@ -18439,7 +18440,7 @@ function lb_renderAssocNumberGroups(groups, gridId) {
  const total = rows.reduce((s, r) => s + r.units, 0);
  const firstScan = lb_firstScanForTranType(group.tranType);
  const firstScanHtml = firstScan
-  ? `<div class="fn-first-scan"><span class="ffs-trophy">🥇</span><span class="ffs-name">${firstScan.name}</span><span class="ffs-time">· ${firstScan.timeLabel}</span></div>`
+  ? `<div class="fn-first-scan"><span class="ffs-trophy">🥇</span><span class="ffs-label">First to scan:</span><span class="ffs-name">${firstScan.name}</span><span class="ffs-time">· ${firstScan.timeLabel}</span></div>`
   : '';
  card.innerHTML = `${firstScanHtml}<div class="fn-card-body"><h3>${group.label}</h3><div class="fn-meta"><b>${total.toLocaleString()}</b> units &middot; ${rows.length} associate${rows.length === 1 ? "" : "s"}</div></div>`;
  const cardBody = card.querySelector('.fn-card-body');
