@@ -6592,7 +6592,7 @@ async function loadTodayAttendanceStats() {
  if (earlyOutTypes.has(e.type)) earlyOutIds.add(assocId);
  if (e.type?.startsWith('late')) lateIds.add(assocId);
  if (e.type === 'vuto') vutoIds.add(assocId);
- if (e.type === 'ncns-pending' || e.type === 'call-out-pending') pendingIds.add(assocId);
+ if (e.type === 'ncns-pending' || e.type === 'call-out-pending' || e.type === 'bereavement-pending') pendingIds.add(assocId);
  });
  }));
  } catch(err) { console.warn('Attendance stats load error:', err); }
@@ -6822,7 +6822,7 @@ window.saveAttendance = async () => {
  if (!type || !date) { alert('Please select a type and date.'); return; }
  const info = attTypeInfo(type);
  const addedBy = await _getActorName();
- const isPending = type === 'call-out-pending' || type === 'ncns-pending';
+ const isPending = type === 'call-out-pending' || type === 'ncns-pending' || type === 'bereavement-pending';
  const entry = { type, date, note, points: info.points, addedBy, createdAt: new Date().toISOString() };
  if (isPending) entry.pending = true;
  await addDoc(collection(db, 'attendance', currentAssociateId, 'entries'), entry);
@@ -15844,7 +15844,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <option value="left-early-sick">Early Out - Sick Time Used (no point)</option>
  <option value="fmla-pending">Pending FMLA (no point)</option>
  <option value="fmla-approved">Approved FMLA (no point)</option>
- <option value="bereavement">Bereavement (no point)</option>
+ <option value="bereavement-pending">Bereavement - Pending Documentation</option>
+ <option value="bereavement-docs">Bereavement - Documentation Provided (no point)</option>
+ <option value="bereavement-no-docs">Bereavement - No Documentation (+1 pt)</option>
+ <option value="bereavement-ncns">Bereavement NCNS - No Documentation (+2 pts)</option>
  <option value="doctors-note">Called Out - Doctor's Note (no point)</option>
  <option value="vuto">VUTO - Voluntary Unpaid Time Off (no point)</option>
  </select>
