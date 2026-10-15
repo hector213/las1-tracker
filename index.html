@@ -10939,7 +10939,7 @@ function pl_shiftColor(shift) {
 }
 
 function pl_init() {
- if (pl_initialized) { pl_loadAndRenderWeek(); pl_loadAndRenderMonth(); return; }
+ if (pl_initialized) { pl_renderWeek(); pl_loadAndRenderWeek(); pl_loadAndRenderMonth(); return; }
  pl_initialized = true;
  const today = new Date();
  pl_weekStart = pl_mondayOf(today);
@@ -10958,7 +10958,8 @@ function pl_init() {
   pl_chartMonth = {...pl_chartMonth}; pl_chartMonth.month++;
   if (pl_chartMonth.month>12){pl_chartMonth.month=1;pl_chartMonth.year++;} pl_loadAndRenderMonth();
  });
- pl_loadAndRenderWeek();
+ pl_renderWeek();   // render immediately with empty data so the table is always visible
+ pl_loadAndRenderWeek();  // then fill in from Firestore
  pl_loadAndRenderMonth();
 }
 
@@ -10995,6 +10996,7 @@ async function pl_loadAndRenderMonth() {
 
 function pl_renderWeekKpis() {
  try {
+  if (!pl_weekStart || !pl_chartMonth) return; // not yet initialized
   // --- This-week totals ---
   let totPack=0, totPut=0, totVend=0;
   Object.values(pl_weekData).forEach(d => { totPack+=d.packOut||0; totPut+=d.putaway||0; totVend+=d.vend||0; });
@@ -15216,7 +15218,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
 
  <!-- ---------- WEEKLY LOG VIEW ---------- -->
  <section id="lb-weekly-view" class="hidden">
- <div class="panel" style="max-width:1100px;margin:0 auto">
+ <div class="panel" style="width:100%;box-sizing:border-box">
  <div id="pl-kpi-week-section" style="margin-bottom:14px">
   <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px">This week</div>
   <div id="pl-kpi-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px"></div>
