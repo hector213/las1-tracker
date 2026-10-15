@@ -10969,8 +10969,8 @@ async function pl_loadAndRenderWeek() {
  const lastDays = pl_weekDays(lastMon);
  try {
   const [snap, snapLast] = await Promise.all([
-   lb_db.collection('production_log').where('shiftDate','in',days).get(),
-   lb_db.collection('production_log').where('shiftDate','in',lastDays).get()
+   window.lb_db.collection('production_log').where('shiftDate','in',days).get(),
+   window.lb_db.collection('production_log').where('shiftDate','in',lastDays).get()
   ]);
   pl_weekData = {};
   snap.docs.forEach(d => { pl_weekData[d.id] = d.data(); });
@@ -10986,7 +10986,7 @@ async function pl_loadAndRenderMonth() {
  const firstDay = `${year}-${pad(month)}-01`;
  const lastDay = `${year}-${pad(month)}-${new Date(year,month,0).getDate().toString().padStart(2,'0')}`;
  try {
-  const snap = await lb_db.collection('production_log')
+  const snap = await window.lb_db.collection('production_log')
    .where('shiftDate','>=',firstDay).where('shiftDate','<=',lastDay).get();
   pl_monthData = {};
   snap.docs.forEach(d => { pl_monthData[d.id] = d.data(); });
@@ -11196,7 +11196,7 @@ window.pl_saveRow = async function(docId, shiftDate, shift) {
  try {
   const btn = document.querySelector(`button[onclick*="pl_saveRow('${docId}'"]`);
   if (btn) { btn.textContent='Saving…'; btn.disabled=true; }
-  await lb_db.collection('production_log').doc(docId).set(updated, {merge:true});
+  await window.lb_db.collection('production_log').doc(docId).set(updated, {merge:true});
   pl_weekData[docId] = updated;
   // Also update month data if same month
   const docMonth = shiftDate.slice(0,7);
