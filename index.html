@@ -10903,6 +10903,321 @@ function applyPhotoWallTheme(monthStr) {
 }
 let _scChallengerData = null;
 
+/* ======================================================================
+   WEEKLY PRODUCTION LOG
+   Manual per-shift entry: Pack Out, Putaway, Vend
+   Schedule: A1 + A2 Mon–Thu  |  B1 Fri–Sun
+   Stored in Firestore collection "production_log",
+   doc id = "{shiftDate}_{shift}" e.g. "2026-10-06_A1"
+   ====================================================================== */
+let pl_weekStart = null;
+let pl_chartMonth = null;
+let pl_weekData = {};
+let pl_lastWeekData = {};
+let pl_monthData = {};
+let pl_monthChartInst = null;
+let pl_initialized = false;
+
+const PL_SHIFTS_BY_DOW = { 0:['B1'], 1:['A1','A2'], 2:['A1','A2'], 3:['A1','A2'], 4:['A1','A2'], 5:['B1'], 6:['B1'] };
+const PL_DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const PL_MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function pl_dateStr(d) { return d.toISOString().slice(0,10); }
+function pl_mondayOf(d) {
+ const dt = new Date(d); dt.setHours(12,0,0,0);
+ const dow = dt.getDay(); dt.setDate(dt.getDate() + (dow===0 ? -6 : 1-dow)); return dt;
+}
+function pl_weekDays(monday) {
+ return Array.from({length:7}, (_,i) => { const d=new Date(monday); d.setDate(d.getDate()+i); return pl_dateStr(d); });
+}
+function pl_shiftsFor(dateStr) {
+ return PL_SHIFTS_BY_DOW[new Date(dateStr+'T12:00:00').getDay()] || [];
+}
+function pl_shiftColor(shift) {
+ return shift==='A1'?'#FF7C1F':shift==='A2'?'#6CD3FC':'#4ade80';
+}
+
+function pl_init() {
+ if (pl_initialized) { pl_loadAndRenderWeek(); pl_loadAndRenderMonth(); return; }
+ pl_initialized = true;
+ const today = new Date();
+ pl_weekStart = pl_mondayOf(today);
+ pl_chartMonth = { year: today.getFullYear(), month: today.getMonth()+1 };
+ document.getElementById('pl-prev-week').addEventListener('click', () => {
+  pl_weekStart = new Date(pl_weekStart); pl_weekStart.setDate(pl_weekStart.getDate()-7); pl_loadAndRenderWeek();
+ });
+ document.getElementById('pl-next-week').addEventListener('click', () => {
+  pl_weekStart = new Date(pl_weekStart); pl_weekStart.setDate(pl_weekStart.getDate()+7); pl_loadAndRenderWeek();
+ });
+ document.getElementById('pl-prev-month').addEventListener('click', () => {
+  pl_chartMonth = {...pl_chartMonth}; pl_chartMonth.month--;
+  if (pl_chartMonth.month<1){pl_chartMonth.month=12;pl_chartMonth.year--;} pl_loadAndRenderMonth();
+ });
+ document.getElementById('pl-next-month').addEventListener('click', () => {
+  pl_chartMonth = {...pl_chartMonth}; pl_chartMonth.month++;
+  if (pl_chartMonth.month>12){pl_chartMonth.month=1;pl_chartMonth.year++;} pl_loadAndRenderMonth();
+ });
+ pl_loadAndRenderWeek();
+ pl_loadAndRenderMonth();
+}
+
+async function pl_loadAndRenderWeek() {
+ const days = pl_weekDays(pl_weekStart);
+ const lastMon = new Date(pl_weekStart); lastMon.setDate(lastMon.getDate()-7);
+ const lastDays = pl_weekDays(lastMon);
+ try {
+  const [snap, snapLast] = await Promise.all([
+   lb_db.collection('production_log').where('shiftDate','in',days).get(),
+   lb_db.collection('production_log').where('shiftDate','in',lastDays).get()
+  ]);
+  pl_weekData = {};
+  snap.docs.forEach(d => { pl_weekData[d.id] = d.data(); });
+  pl_lastWeekData = {};
+  snapLast.docs.forEach(d => { pl_lastWeekData[d.id] = d.data(); });
+ } catch(e) { console.error('pl_loadWeek:', e); }
+ pl_renderWeek();
+}
+
+async function pl_loadAndRenderMonth() {
+ const {year,month} = pl_chartMonth;
+ const pad = n => String(n).padStart(2,'0');
+ const firstDay = `${year}-${pad(month)}-01`;
+ const lastDay = `${year}-${pad(month)}-${new Date(year,month,0).getDate().toString().padStart(2,'0')}`;
+ try {
+  const snap = await lb_db.collection('production_log')
+   .where('shiftDate','>=',firstDay).where('shiftDate','<=',lastDay).get();
+  pl_monthData = {};
+  snap.docs.forEach(d => { pl_monthData[d.id] = d.data(); });
+ } catch(e) { console.error('pl_loadMonth:', e); }
+ pl_renderMonth();
+}
+
+function pl_renderWeekKpis(totPack, totPut, totVend) {
+ // Compare same days elapsed: if viewing the current week, cap last week to the same weekday.
+ // If viewing a past week (fully elapsed), compare full week vs full prior week.
+ const todayStr = pl_dateStr(new Date());
+ const currentWeekDays = pl_weekDays(pl_weekStart);
+ const isCurrentWeek = currentWeekDays.includes(todayStr);
+ // Days elapsed in current week (Mon=0 … today)
+ const daysElapsed = isCurrentWeek
+  ? currentWeekDays.indexOf(todayStr) + 1
+  : 7;
+ const lastWeekDays = pl_weekDays(new Date(pl_weekStart.getTime() - 7*86400000));
+ const cutoffDays = new Set(lastWeekDays.slice(0, daysElapsed));
+
+ let lwPack=0, lwPut=0, lwVend=0;
+ Object.values(pl_lastWeekData).forEach(d => {
+  if (cutoffDays.has(d.shiftDate)) {
+   lwPack+=d.packOut||0; lwPut+=d.putaway||0; lwVend+=d.vend||0;
+  }
+ });
+
+ const dayLabel = isCurrentWeek
+  ? `same ${daysElapsed} day${daysElapsed>1?'s':''} last week`
+  : 'last week';
+ const delta = (cur, prev) => {
+  if (!prev) return `<div style="font-size:10px;color:var(--muted)">no prior data</div>`;
+  const pct = Math.round((cur-prev)/prev*100);
+  const up = pct >= 0;
+  return `<div style="font-size:10px;color:${up?'#16803c':'#b91c1c'}">${up?'▲':'▼'} ${Math.abs(pct)}% vs ${dayLabel}</div>`;
+ };
+ const pvRatio = totVend>0?(totPack/totVend*100).toFixed(0)+'%':'—';
+ const pvLast  = lwVend>0?(lwPack/lwVend*100).toFixed(0)+'%':'—';
+ const pvDelta = lwVend && totVend
+  ? `<div style="font-size:10px;color:var(--muted)">${dayLabel}: ${pvLast}</div>`
+  : `<div style="font-size:10px;color:var(--muted)">no prior data</div>`;
+
+ document.getElementById('pl-kpi-row').innerHTML = `
+  <div class="admin-pane" style="text-align:center">
+   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Pack Out</div>
+   <div style="font-size:22px;font-weight:700;color:var(--orange)">${totPack>0?totPack.toLocaleString():'—'}</div>
+   ${delta(totPack,lwPack,'#16803c')}
+  </div>
+  <div class="admin-pane" style="text-align:center">
+   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Putaway</div>
+   <div style="font-size:22px;font-weight:700;color:#4da6ff">${totPut>0?totPut.toLocaleString():'—'}</div>
+   ${delta(totPut,lwPut,'#16803c')}
+  </div>
+  <div class="admin-pane" style="text-align:center">
+   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Vend</div>
+   <div style="font-size:22px;font-weight:700;color:#4ade80">${totVend>0?totVend.toLocaleString():'—'}</div>
+   ${delta(totVend,lwVend,'#16803c')}
+  </div>
+  <div class="admin-pane" style="text-align:center">
+   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Pack / Vend</div>
+   <div style="font-size:22px;font-weight:700;color:var(--text)">${pvRatio}</div>
+   ${pvDelta}
+  </div>`;
+
+ // MTD from pl_monthData
+ let mtdPack=0, mtdPut=0, mtdVend=0, mtdDays=new Set();
+ Object.values(pl_monthData).forEach(d => { mtdPack+=d.packOut||0; mtdPut+=d.putaway||0; mtdVend+=d.vend||0; if(d.packOut||d.putaway||d.vend) mtdDays.add(d.shiftDate); });
+ const daysLogged = mtdDays.size;
+ const avgVend = daysLogged>0?Math.round(mtdVend/daysLogged):0;
+ const {year,month} = pl_chartMonth;
+ document.getElementById('pl-kpi-mtd-label').textContent =
+  `Month to date — ${PL_MONTH_NAMES[month-1]} ${year}`;
+ document.getElementById('pl-kpi-mtd-row').innerHTML = `
+  <div class="admin-pane" style="text-align:center;border-top:2px solid var(--orange)">
+   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Pack Out MTD</div>
+   <div style="font-size:22px;font-weight:700;color:var(--orange)">${mtdPack>0?mtdPack.toLocaleString():'—'}</div>
+   <div style="font-size:10px;color:var(--muted)">${daysLogged} days logged</div>
+  </div>
+  <div class="admin-pane" style="text-align:center;border-top:2px solid #4da6ff">
+   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Putaway MTD</div>
+   <div style="font-size:22px;font-weight:700;color:#4da6ff">${mtdPut>0?mtdPut.toLocaleString():'—'}</div>
+   <div style="font-size:10px;color:var(--muted)">${daysLogged} days logged</div>
+  </div>
+  <div class="admin-pane" style="text-align:center;border-top:2px solid #4ade80">
+   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Vend MTD</div>
+   <div style="font-size:22px;font-weight:700;color:#4ade80">${mtdVend>0?mtdVend.toLocaleString():'—'}</div>
+   <div style="font-size:10px;color:var(--muted)">${daysLogged} days logged</div>
+  </div>
+  <div class="admin-pane" style="text-align:center;border-top:2px solid var(--border)">
+   <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Avg Daily Vend</div>
+   <div style="font-size:22px;font-weight:700;color:var(--text)">${avgVend>0?avgVend.toLocaleString():'—'}</div>
+   <div style="font-size:10px;color:var(--muted)">per logged day</div>
+  </div>`;
+}
+
+function pl_renderWeek() {
+ const days = pl_weekDays(pl_weekStart);
+ const endDate = new Date(pl_weekStart); endDate.setDate(endDate.getDate()+6);
+ const fmt = d => d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+ document.getElementById('pl-week-label').textContent =
+  `Week of ${fmt(pl_weekStart)} – ${fmt(endDate)}, ${pl_weekStart.getFullYear()}`;
+
+ let totPack=0, totPut=0, totVend=0;
+ Object.values(pl_weekData).forEach(d => { totPack+=d.packOut||0; totPut+=d.putaway||0; totVend+=d.vend||0; });
+
+ pl_renderWeekKpis(totPack, totPut, totVend);
+
+ const canEdit = roleAtLeast('lead');
+ const mkInput = (docId, dateStr, shift, field, val) => canEdit
+  ? `<input type="number" min="0" step="1" value="${val||''}" placeholder="—"
+      style="width:80px;padding:3px 5px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right;background:#fff"
+      onchange="pl_saveField('${docId}','${dateStr}','${shift}','${field}',this.value)">`
+  : `<span style="font-weight:600">${val?Number(val).toLocaleString():'—'}</span>`;
+
+ let html = `<table class="admin-table" style="font-size:12px">
+  <thead><tr>
+   <th>Date</th><th>Shift</th>
+   <th style="color:var(--orange);text-align:right">Pack Out</th>
+   <th style="color:#4da6ff;text-align:right">Putaway</th>
+   <th style="color:#4ade80;text-align:right">Vend</th>
+  </tr></thead><tbody>`;
+
+ days.forEach(dateStr => {
+  const shifts = pl_shiftsFor(dateStr);
+  const d = new Date(dateStr+'T12:00:00');
+  const dayLbl = `${PL_DAY_NAMES[d.getDay()]} ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+  let dayPack=0, dayPut=0, dayVend=0;
+
+  shifts.forEach((shift, si) => {
+   const docId = `${dateStr}_${shift}`;
+   const rec = pl_weekData[docId] || {};
+   dayPack += rec.packOut||0; dayPut += rec.putaway||0; dayVend += rec.vend||0;
+   const clr = pl_shiftColor(shift);
+   const dateCell = si===0 ? `<td rowspan="${shifts.length}" style="font-weight:600;vertical-align:middle;white-space:nowrap;padding:6px 8px">${dayLbl}</td>` : '';
+   html += `<tr>
+    ${dateCell}
+    <td><span style="display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:${clr}22;color:${clr};border:1px solid ${clr}55">${shift}</span></td>
+    <td style="text-align:right">${mkInput(docId,dateStr,shift,'packOut',rec.packOut)}</td>
+    <td style="text-align:right">${mkInput(docId,dateStr,shift,'putaway',rec.putaway)}</td>
+    <td style="text-align:right">${mkInput(docId,dateStr,shift,'vend',rec.vend)}</td>
+   </tr>`;
+  });
+
+  if (shifts.length > 1) {
+   html += `<tr style="background:#f7f9fb;font-size:11px">
+    <td colspan="2" style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em">Day Total</td>
+    <td style="text-align:right;font-weight:700;color:var(--orange)">${dayPack>0?dayPack.toLocaleString():'—'}</td>
+    <td style="text-align:right;font-weight:700;color:#4da6ff">${dayPut>0?dayPut.toLocaleString():'—'}</td>
+    <td style="text-align:right;font-weight:700;color:#4ade80">${dayVend>0?dayVend.toLocaleString():'—'}</td>
+   </tr>`;
+  }
+ });
+
+ html += `<tr style="background:var(--accent);color:#fff;font-weight:700">
+  <td colspan="2" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em">Week Total</td>
+  <td style="text-align:right;color:#ffb57a">${totPack>0?totPack.toLocaleString():'—'}</td>
+  <td style="text-align:right;color:#a8d8ff">${totPut>0?totPut.toLocaleString():'—'}</td>
+  <td style="text-align:right;color:#a7f3d0">${totVend>0?totVend.toLocaleString():'—'}</td>
+ </tr></tbody></table>`;
+
+ document.getElementById('pl-week-table-wrap').innerHTML = html;
+}
+
+window.pl_saveField = async function(docId, shiftDate, shift, field, rawVal) {
+ const val = parseInt(rawVal, 10);
+ if (isNaN(val) || val < 0) return;
+ const existing = pl_weekData[docId] || {};
+ const updated = { ...existing, shiftDate, shift, [field]: val, updatedAt: new Date().toISOString(), updatedBy: currentUser?.email||'' };
+ try {
+  await lb_db.collection('production_log').doc(docId).set(updated, {merge:true});
+  pl_weekData[docId] = updated;
+  // Refresh KPI cards
+  let totPack=0,totPut=0,totVend=0;
+  Object.values(pl_weekData).forEach(d=>{totPack+=d.packOut||0;totPut+=d.putaway||0;totVend+=d.vend||0;});
+  pl_renderWeekKpis(totPack, totPut, totVend);
+  // Refresh month chart if same month
+  const docMonth = shiftDate.slice(0,7);
+  const chartMonthStr = `${pl_chartMonth.year}-${String(pl_chartMonth.month).padStart(2,'0')}`;
+  if (docMonth === chartMonthStr) { pl_monthData[docId] = updated; pl_renderMonth(); }
+ } catch(e) { alert('Save failed: '+e.message); }
+};
+
+function pl_renderMonth() {
+ const {year, month} = pl_chartMonth;
+ const daysInMonth = new Date(year, month, 0).getDate();
+ document.getElementById('pl-month-label').textContent =
+  `${PL_MONTH_NAMES[month-1]} ${year} — Daily Volume`;
+ // Refresh MTD KPI cards with latest month data
+ if (document.getElementById('pl-kpi-mtd-row')) {
+  let totPack=0,totPut=0,totVend=0;
+  Object.values(pl_weekData).forEach(d=>{totPack+=d.packOut||0;totPut+=d.putaway||0;totVend+=d.vend||0;});
+  pl_renderWeekKpis(totPack, totPut, totVend);
+ }
+
+ const daily = {};
+ for (let d=1; d<=daysInMonth; d++) daily[d] = {pack:0,put:0,vend:0};
+ Object.values(pl_monthData).forEach(rec => {
+  const day = parseInt(rec.shiftDate.slice(8,10),10);
+  if (daily[day]) { daily[day].pack+=rec.packOut||0; daily[day].put+=rec.putaway||0; daily[day].vend+=rec.vend||0; }
+ });
+
+ const labels = Array.from({length:daysInMonth},(_,i)=>String(i+1));
+ const packData = labels.map((_,i) => daily[i+1].pack || null);
+ const putData = labels.map((_,i) => daily[i+1].put || null);
+ const vendData = labels.map((_,i) => daily[i+1].vend || null);
+
+ const datasets = [
+  {label:'Pack Out', data:packData, borderColor:'#FF7C1F', backgroundColor:'transparent', tension:0.3, pointRadius:4, pointHoverRadius:6, spanGaps:false},
+  {label:'Putaway', data:putData, borderColor:'#4da6ff', backgroundColor:'transparent', tension:0.3, pointRadius:4, pointHoverRadius:6, spanGaps:false},
+  {label:'Vend', data:vendData, borderColor:'#4ade80', backgroundColor:'transparent', tension:0.3, pointRadius:4, pointHoverRadius:6, spanGaps:false},
+ ];
+
+ const canvas = document.getElementById('pl-monthly-chart');
+ if (!canvas || typeof Chart === 'undefined') return;
+ if (pl_monthChartInst) {
+  pl_monthChartInst.data.labels = labels;
+  pl_monthChartInst.data.datasets.forEach((ds,i) => { ds.data = datasets[i].data; });
+  pl_monthChartInst.update();
+ } else {
+  pl_monthChartInst = new Chart(canvas, {
+   type:'line', data:{labels, datasets},
+   options:{
+    responsive:true, interaction:{mode:'index',intersect:false},
+    plugins:{legend:{position:'bottom'}},
+    scales:{
+     y:{beginAtZero:true, ticks:{callback:v=>v!=null?v.toLocaleString():''}},
+     x:{ticks:{maxTicksLimit:16}}
+    }
+   }
+  });
+ }
+}
+
 // ── Load everything when the tab opens ──────────────────────────────
 window.loadShiftCulture = async function() {
  _scPhotoMonth = new Date().toISOString().slice(0, 7); // reset to current month on tab open
@@ -14269,6 +14584,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <button id="lb-nav-inbound">Inbound Rates</button>
  <button id="lb-nav-import">Import Data</button>
  <button id="lb-nav-admin">Admin</button>
+ <button id="lb-nav-weekly">Weekly Log</button>
  </div><!-- /.lb-subnav -->
  <div id="lb-live-clock" style="text-align:right;color:#cfe0ff;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:0.03em;"></div>
  </div><!-- /.lb-header -->
@@ -14871,6 +15187,37 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  </div>
  </section>
+
+ <!-- ---------- WEEKLY LOG VIEW ---------- -->
+ <section id="lb-weekly-view" class="hidden">
+ <div class="panel" style="max-width:1100px;margin:0 auto">
+ <div id="pl-kpi-week-section" style="margin-bottom:14px">
+  <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px">This week</div>
+  <div id="pl-kpi-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px"></div>
+ </div>
+ <div id="pl-kpi-mtd-section" style="margin-bottom:18px">
+  <div id="pl-kpi-mtd-label" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px">Month to date</div>
+  <div id="pl-kpi-mtd-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px"></div>
+ </div>
+ <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+ <button class="btn secondary" id="pl-prev-week">&#8249;</button>
+ <span id="pl-week-label" style="font-weight:600;font-size:14px"></span>
+ <button class="btn secondary" id="pl-next-week">&#8250;</button>
+ </div>
+ <div id="pl-week-table-wrap"></div>
+ <div style="margin-top:28px">
+ <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+ <button class="btn secondary" id="pl-prev-month">&#8249;</button>
+ <span id="pl-month-label" style="font-weight:600;font-size:14px"></span>
+ <button class="btn secondary" id="pl-next-month">&#8250;</button>
+ </div>
+ <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px">
+ <canvas id="pl-monthly-chart" height="90"></canvas>
+ </div>
+ </div>
+ </div>
+ </section>
+
  </main>
 <!-- Certs picker modal: reused by both "Add associate" and each row's Certs button in the
  Associates admin table. See openCertsModal() in the script. -->
@@ -16191,6 +16538,7 @@ document.getElementById("lb-nav-assoc-trend").addEventListener("click", () => lb
 document.getElementById("lb-nav-assoc-numbers").addEventListener("click", () => lb_showView("assoc-numbers"));
 document.getElementById("lb-nav-import").addEventListener("click", () => lb_showView("import"));
 document.getElementById("lb-nav-admin").addEventListener("click", () => lb_showView("admin"));
+document.getElementById("lb-nav-weekly").addEventListener("click", () => lb_showView("weekly"));
 function lb_showView(v) {
  document.getElementById("lb-board-view").classList.toggle("hidden", v !== "board");
  document.getElementById("lb-trend-view").classList.toggle("hidden", v !== "trend");
@@ -16199,6 +16547,7 @@ function lb_showView(v) {
  document.getElementById("lb-assoc-numbers-view").classList.toggle("hidden", v !== "assoc-numbers");
  document.getElementById("lb-import-view").classList.toggle("hidden", v !== "import");
  document.getElementById("lb-admin-view").classList.toggle("hidden", v !== "admin");
+ document.getElementById("lb-weekly-view").classList.toggle("hidden", v !== "weekly");
  document.getElementById("lb-nav-board").classList.toggle("active", v === "board");
  document.getElementById("lb-nav-trend").classList.toggle("active", v === "trend");
  document.getElementById("lb-nav-inbound").classList.toggle("active", v === "inbound");
@@ -16206,6 +16555,8 @@ function lb_showView(v) {
  document.getElementById("lb-nav-assoc-numbers").classList.toggle("active", v === "assoc-numbers");
  document.getElementById("lb-nav-import").classList.toggle("active", v === "import");
  document.getElementById("lb-nav-admin").classList.toggle("active", v === "admin");
+ document.getElementById("lb-nav-weekly").classList.toggle("active", v === "weekly");
+ if (v === "weekly") pl_init();
  if (v === "trend") {
  // The chart canvas was inside a display:none section until now, so Chart.js may have
  // sized it to 0x0 (or not drawn at all) if lb_renderTrendChart() ran while it was hidden.
