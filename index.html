@@ -235,23 +235,27 @@ window.logPoints = logPoints;
 
 // ── Auto-assign Perfect Attendance badges ─────────────────────────────
 // weekKey = Monday date string "YYYY-MM-DD" for the last completed Mon-Sun week
+// Returns a local-date string "YYYY-MM-DD" so timezone doesn't shift the weekKey
+function _localDateStr(d) {
+ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function _lastCompletedWeekMonday() {
  const today = new Date();
  const dow = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
 
- // Find this week's Monday
+ // Find this week's Monday using local date arithmetic
  const daysFromMon = dow === 0 ? 6 : dow - 1;
  const thisMon = new Date(today);
  thisMon.setDate(today.getDate() - daysFromMon);
 
  if (dow >= 5 || dow === 0) {
- // Fri, Sat, or Sun - work week (Mon–Thu) is done; target current week
- return thisMon.toISOString().slice(0, 10);
+ // Fri, Sat, or Sun - work week (Mon-Thu) is done; target current week
+ return _localDateStr(thisMon);
  } else {
- // Mon–Thu - target the previous completed week
+ // Mon-Thu - target the previous completed week
  const lastMon = new Date(thisMon);
  lastMon.setDate(thisMon.getDate() - 7);
- return lastMon.toISOString().slice(0, 10);
+ return _localDateStr(lastMon);
  }
 }
 
@@ -319,7 +323,13 @@ async function autoAwardAnniversaryPoints() {
   }));
 }
 
+let _attCheckRunning = false;
 window.autoCheckPerfectAttendance = async function(showAlert = true) {
+ if (_attCheckRunning) {
+  if (showAlert) alert('Attendance check is already running. Please wait.');
+  return { weeklyAwarded: 0, monthlyAwarded: 0 };
+ }
+ _attCheckRunning = true;
  const btn = document.getElementById('runAttCheckBtn');
  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Running…'; }
  try {
@@ -353,6 +363,11 @@ window.autoCheckPerfectAttendance = async function(showAlert = true) {
 
  const eligibleAssociates = allAssociates.filter(a => a.status === 'active' && !a.position);
  let weeklyAwarded = 0, monthlyAwarded = 0;
+
+ // Stamp attCheckLastRun BEFORE the badge loop so any concurrent run sees it and aborts
+ await setDoc(doc(db, 'system', 'attCheckLastRun'), {
+  weekKey: weekMon, ranAt: new Date().toISOString(), ranBy: currentUser?.email || 'System'
+ });
 
  // weekSun = last day of the checked week (Sunday)
  const weekSun = (() => {
@@ -434,10 +449,6 @@ window.autoCheckPerfectAttendance = async function(showAlert = true) {
  }
  }
 
- // Always stamp attCheckLastRun so the auto-run won't fire again for this week
- await setDoc(doc(db, 'system', 'attCheckLastRun'), {
- weekKey: weekMon, ranAt: new Date().toISOString(), ranBy: currentUser?.email || 'System'
- });
  if (showAlert) {
  alert(`✅ Attendance check complete for week of ${weekMon}.\n\nWeekly badges awarded: ${weeklyAwarded}\nPerfect Month badges awarded: ${monthlyAwarded}`);
  }
@@ -446,6 +457,7 @@ window.autoCheckPerfectAttendance = async function(showAlert = true) {
  console.error('autoCheckPerfectAttendance error:', err);
  if (showAlert) alert('Error running attendance check: ' + err.message);
  } finally {
+ _attCheckRunning = false;
  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-calendar-check me-1"></i>Run Attendance Badge Check'; }
  }
 };
@@ -470,10 +482,20 @@ window.removeDuplicateAttBadges = async function() {
      const entries = badgeSnap.docs.map(d => ({ docId: d.id, ...d.data() }));
 
      for (const badgeName of DUPE_BADGES) {
-       // Group by weekKey
+       // Normalize weekKey to the Monday of its ISO week so off-by-one-day timezone
+       // variants (e.g. "2026-10-19" vs "2026-10-20" for the same week) are grouped together
+       const normWeekKey = (wk) => {
+         if (!wk) return 'nokey';
+         const d = new Date(wk + 'T12:00:00'); // noon local avoids UTC-shift
+         const dow = d.getDay();
+         const daysFromMon = dow === 0 ? 6 : dow - 1;
+         d.setDate(d.getDate() - daysFromMon);
+         return _localDateStr(d);
+       };
+       // Group by normalized Monday
        const byWeek = {};
        entries.filter(b => b.badge === badgeName).forEach(b => {
-         const key = b.weekKey || 'nokey';
+         const key = normWeekKey(b.weekKey);
          (byWeek[key] = byWeek[key] || []).push(b);
        });
 
@@ -1470,12 +1492,9 @@ async function autoRunAttendanceCheckIfNeeded() {
  try {
  const snap = await getDocFromServer(doc(db, 'system', 'attCheckLastRun'));
  if (snap.exists() && snap.data().weekKey === weekMon) return; // already ran this week
- // Run silently
+ // Run silently (attCheckLastRun is stamped inside autoCheckPerfectAttendance before the badge loop)
  const result = await window.autoCheckPerfectAttendance(false);
  if (!result) return;
- await setDoc(doc(db, 'system', 'attCheckLastRun'), {
- weekKey: weekMon, ranAt: new Date().toISOString(), ranBy: currentUser?.email || 'System'
- });
  // Show toast
  if (result.weeklyAwarded > 0 || result.monthlyAwarded > 0) {
  const toast = document.createElement('div');
