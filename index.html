@@ -16719,6 +16719,7 @@ const LB_FUNCTIONS = {
  // Admin > Stations once enough import history builds up a real average for Tran Types 151/212.
  INBOUND_RECEIVER: { name: "Inbound Receiver", tranType: "151", defaultUPH: 50, type: "bucket", defaultCapacity: 6 },
  INBOUND_PUTAWAY: { name: "Inbound Putaway", tranType: "212", defaultUPH: 50, type: "bucket", defaultCapacity: 6 },
+ DOCK_TO_MOD_PUT: { name: "Dock to MOD Putaway", tranType: "212-dtm", defaultUPH: 50, type: "bucket", defaultCapacity: 6 },
  // WOS Pick shares Tran Type 301 with OP/MOD/Walkie Pick (same limitation the README already
  // notes for those three - scan data alone can't tell them apart) and WOS Pack shares 315 with
  // Small/Large Pack, so its units also flow into the "Pack-out so far" stat automatically.
@@ -18427,7 +18428,8 @@ const LB_ASSOC_NUMBERS_GROUPS = [
  { tranType: "301", label: "Picking" },
  { tranType: "306", label: "Replenishment Putaway" },
  { tranType: "315", label: "Packing" },
- { tranType: "311", label: "Consolidation" }
+ { tranType: "311", label: "Consolidation" },
+ { tranType: "212-dtm", label: "Dock to MOD Putaway" }
 ];
 
 const LB_INBOUND_ASSOC_GROUPS = [
@@ -19508,7 +19510,7 @@ function lb_associateIdByEmployeeIdMap() {
 // their "Actual so far" stayed 0 no matter what the chart code did. Now every Tran Type that a
 // chart reads from shiftTrend is included; everything else is still skipped since it's already
 // covered by the per-associate lb_uphHistory aggregation and doesn't need a bucket series.
-const LB_TREND_BUCKET_TRAN_TYPES = ["315", "301", "151", "212"];
+const LB_TREND_BUCKET_TRAN_TYPES = ["315", "301", "151", "212", "212-dtm"];
 function lb_buildTrendBuckets(cleaned) {
  const buckets = lb_shiftBucketList();
  const out = {};
@@ -19726,9 +19728,15 @@ function lb_cleanRows(raw, log) {
  const shiftDate = lb_todayShiftDateStr(dt);
  const hh = dt.getHours() + dt.getMinutes() / 60;
  const qty = cleanQty(o["Tran Qty"]);
- const tranType = String(o["Tran Type"] || "").trim();
+ let tranType = String(o["Tran Type"] || "").trim();
  if (qty == null) { droppedBadQty++; return null; }
  if (!tranType) { droppedNoTranType++; return null; }
+ // Dock to MOD Putaway shares Tran Type 212 with Inbound Putaway but is identified by
+ // Location Id starting with "RP". Reclassify to synthetic type "212-dtm" here so all
+ // downstream aggregation (UPH history, trend buckets, assoc trend, leaderboard) tracks
+ // it separately without any changes needed further down the pipeline.
+ const locationId = String(o["Location Id"] || "").trim();
+ if (tranType === "212" && locationId.startsWith("RP")) tranType = "212-dtm";
  return {
  empId: String(o["Employee Id"]).trim(),
  tranType,
