@@ -384,7 +384,7 @@ window.autoCheckPerfectAttendance = async function(showAlert = true) {
  where('date', '>=', weekMon),
  where('date', '<=', weekSun)
  )),
- getDocsFromServer(collection(db, 'badges', assoc.id, 'entries')),
+ getDocs(collection(db, 'badges', assoc.id, 'entries')),
  ]);
 
  const attEntries = attSnap.docs.map(d => d.data());
@@ -478,7 +478,7 @@ window.removeDuplicateAttBadges = async function() {
    const lines = [];
 
    for (const assoc of allAssociates.filter(a => a.status === 'active')) {
-     const badgeSnap = await getDocsFromServer(collection(db, 'badges', assoc.id, 'entries'));
+     const badgeSnap = await getDocs(collection(db, 'badges', assoc.id, 'entries'));
      const entries = badgeSnap.docs.map(d => ({ docId: d.id, ...d.data() }));
 
      for (const badgeName of DUPE_BADGES) {
@@ -16969,10 +16969,10 @@ function lb_startListeners() {
  lb_renderInboundAssocNumbers();
  });
 
- // Keep last ~4 months of UPH history in memory; all averaging/trend math done client-side.
+ // Keep last 6 weeks of UPH history in memory; enough for trend averages, keeps reads low.
  const cutoff = new Date();
- cutoff.setMonth(cutoff.getMonth() - 4);
- const cutoffStr = cutoff.toISOString().slice(0, 10);
+ cutoff.setDate(cutoff.getDate() - 42);
+ const cutoffStr = _localDateStr(cutoff);
  lb_db.collection("lb_uphHistory").where("shiftDate", ">=", cutoffStr).onSnapshot(snap => {
  lb_uphHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }));
  lb_renderBoard();
