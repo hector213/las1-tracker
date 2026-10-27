@@ -236,9 +236,11 @@ window.logPoints = logPoints;
 // ── Auto-assign Perfect Attendance badges ─────────────────────────────
 // weekKey = Monday date string "YYYY-MM-DD" for the last completed Mon-Sun week
 // Returns a local-date string "YYYY-MM-DD" so timezone doesn't shift the weekKey
+// Exposed on window so both the ES module and the compat script can use it
 function _localDateStr(d) {
  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+window._localDateStr = _localDateStr;
 function _lastCompletedWeekMonday() {
  const today = new Date();
  const dow = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
@@ -16972,7 +16974,7 @@ function lb_startListeners() {
  // Keep last 6 weeks of UPH history in memory; enough for trend averages, keeps reads low.
  const cutoff = new Date();
  cutoff.setDate(cutoff.getDate() - 42);
- const cutoffStr = _localDateStr(cutoff);
+ const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}-${String(cutoff.getDate()).padStart(2,'0')}`;
  lb_db.collection("lb_uphHistory").where("shiftDate", ">=", cutoffStr).onSnapshot(snap => {
  lb_uphHistory = snap.docs.map(d => ({ id: d.id, ...d.data() }));
  lb_renderBoard();
