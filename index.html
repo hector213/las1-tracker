@@ -15627,6 +15627,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
      <tr>
       <th>Associate</th>
       <th>Role</th>
+      <th>Exempt</th>
       <th>Hourly rate ($)</th>
       <th>Start time</th>
       <th>Left early</th>
@@ -17765,16 +17766,20 @@ window.vcpu_saveAll = function() {
   lb_vcpuSettings.targetVcpu = targetVal;
   lb_db.collection('lb_settings').doc('vcpuSettings').set({ targetVcpu: targetVal }, { merge: true });
  }
- // Save rates
+ // Save rates + exempt status
  const rateInputs = document.querySelectorAll('#vcpu-assoc-tbody input[data-assoc-rate]');
  const saves = [];
  rateInputs.forEach(inp => {
   const aId = inp.dataset.assocRate;
   const rate = parseFloat(inp.value);
-  if (aId && !isNaN(rate)) {
-   saves.push(lb_db.collection('lb_associates').doc(aId).update({ hourlyRate: rate }));
+  const exemptEl = document.querySelector(`#vcpu-assoc-tbody input[data-assoc-exempt="${aId}"]`);
+  const isExempt = exemptEl ? exemptEl.checked : false;
+  if (aId) {
+   const update = { exempt: isExempt };
+   if (!isNaN(rate)) update.hourlyRate = rate;
+   saves.push(lb_db.collection('lb_associates').doc(aId).update(update));
    const a = lb_associates.find(x => x.id === aId);
-   if (a) a.hourlyRate = rate;
+   if (a) { if (!isNaN(rate)) a.hourlyRate = rate; a.exempt = isExempt; }
   }
  });
  // Save adjustments for the date shown
@@ -17849,13 +17854,15 @@ function lb_vcpuRenderTable() {
   const costType = att ? (window.lb_vcpuAttCostMap || {})[att.type] : null;
   const isAbsent = costType === 'none' && att; // called out, NCNS, VUTO — no cost, grey out inputs
   const inputStyle = isAbsent ? 'opacity:0.4;pointer-events:none' : '';
+  const isExempt = !!a.exempt;
   return `<tr data-assoc-id="${a.id}"${isAbsent ? ' style="opacity:0.65"' : ''}>
-   <td>${a.name || a.employeeId}${attBadge}</td>
+   <td>${a.name || a.employeeId}${attBadge}${isExempt ? '<span style="font-size:10px;padding:1px 5px;border-radius:4px;background:rgba(99,102,241,.7);color:#fff;margin-left:4px">Exempt</span>' : ''}</td>
    <td style="color:var(--hero-muted);font-size:12px">${a.role || '-'}</td>
+   <td style="text-align:center"><input type="checkbox" data-assoc-exempt="${a.id}"${isExempt ? ' checked' : ''} title="Exempt = included in FCPU only, not VCPU"></td>
    <td><input type="number" step="0.01" data-assoc-rate="${a.id}" value="${a.hourlyRate != null ? a.hourlyRate : ''}" placeholder="$/hr" style="width:80px"></td>
    <td><input type="time" class="vcpu-adj-start${isAdjusted?' adjusted':''}" value="${startVal}" onchange="lb_vcpuUpdateRow(this,'start')" style="${inputStyle}"></td>
    <td><input type="time" class="vcpu-adj-early${isEarly?' set':''}" value="${earlyVal}" placeholder="Still here" onchange="lb_vcpuUpdateRow(this,'early')" ${att?.departureTime ? 'title="Set via attendance log" style="'+inputStyle+'"' : 'style="'+inputStyle+'"'}></td>
-   <td style="font-size:12px;color:var(--hero-muted);white-space:nowrap">${isAbsent ? '<span style="color:rgba(107,114,128,0.7)">No cost</span>' : hrs.toFixed(1)+'h'+(a.hourlyRate ? ' · $'+cost.toFixed(2) : '')}</td>
+   <td style="font-size:12px;color:var(--hero-muted);white-space:nowrap">${isAbsent ? '<span style="color:rgba(107,114,128,0.7)">No cost</span>' : hrs.toFixed(1)+'h'+(a.hourlyRate ? ' · $'+cost.toFixed(2) : '')+(isExempt ? '<span style="font-size:10px;opacity:.6"> (excl. VCPU)</span>' : '')}</td>
   </tr>`;
  }).join('');
  lb_vcpuUpdateTotalCost();
@@ -17952,7 +17959,8 @@ function lb_vcpuCalc() {
  const shiftH = Math.floor(shiftHour);
  const shiftM = Math.round((shiftHour % 1) * 60);
  const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
- const assocs = lb_associates.filter(a => !a.automated && a.status !== 'inactive' && a.hourlyRate);
+ // VCPU = non-exempt (hourly) associates only; exempt (salaried) are excluded
+ const assocs = lb_associates.filter(a => !a.automated && a.status !== 'inactive' && a.hourlyRate && !a.exempt);
  let totalCost = 0, assocCount = 0, totalHours = 0, callOutCount = 0, ncnsCount = 0;
  assocs.forEach(a => {
   const hrs = lb_vcpuHoursFor(a.id, defaultStart);
