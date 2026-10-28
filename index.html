@@ -18029,10 +18029,8 @@ function lb_vcpuCalc() {
   }
   if (hrs > 0) { totalCost += hrs * rate; assocCount++; totalHours += hrs; }
  });
- // Total units = Pack + Pick from uphHistory for today
- const packUnits = lb_uphHistory.filter(h => h.shiftDate === lb_currentShiftDate && h.tranType === LB_PACKOUT_TRAN_TYPE).reduce((s,h) => s+(h.units||0), 0);
- const pickUnits = lb_uphHistory.filter(h => h.shiftDate === lb_currentShiftDate && h.tranType === LB_PICK_TRAN_TYPE).reduce((s,h) => s+(h.units||0), 0);
- const totalUnits = packUnits + pickUnits;
+ // Total units = Packout (shipped) only — matches "Shipped" on the cost spreadsheet
+ const totalUnits = lb_uphHistory.filter(h => h.shiftDate === lb_currentShiftDate && h.tranType === LB_PACKOUT_TRAN_TYPE).reduce((s,h) => s+(h.units||0), 0);
  const fringeMultiplier = 1 + ((lb_vcpuSettings.fringeRate ?? 22) / 100);
  const totalCostWithFringe = totalCost * fringeMultiplier;
  const vcpu = totalUnits > 0 ? totalCostWithFringe / totalUnits : null;
