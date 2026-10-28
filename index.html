@@ -5237,7 +5237,7 @@ window.openAttendanceModal = () => {
 };
 // Show/hide departure time field based on event type (attached once)
 document.getElementById('attTypeSelect').addEventListener('change', function() {
- const earlyTypes = ['left-early-before','left-early-after','left-early-sick'];
+ const earlyTypes = ['left-early-before','left-early-after','left-early-sick','vuto'];
  document.getElementById('att-departure-wrap').style.display = earlyTypes.includes(this.value) ? '' : 'none';
 });
 
@@ -6851,7 +6851,7 @@ window.saveAttendance = async () => {
  const note = document.getElementById('attNote').value.trim();
  if (!type || !date) { alert('Please select a type and date.'); return; }
  // Departure time — required for early-out types
- const earlyTypes = ['left-early-before','left-early-after','left-early-sick'];
+ const earlyTypes = ['left-early-before','left-early-after','left-early-sick','vuto'];
  const departureTime = earlyTypes.includes(type) ? (document.getElementById('attDepartureTime').value || '') : '';
  if (earlyTypes.includes(type) && !departureTime) { alert('Please enter the time this associate left early.'); return; }
  const info = attTypeInfo(type);
@@ -17682,7 +17682,7 @@ window.lb_vcpuAttCostMap = {
  'doctors-note':       'full-shift',  // doctor's note = paid sick — we pay
  'fmla-approved':      'none',        // FMLA typically unpaid or third-party
  'fmla-pending':       'none',
- 'vuto':               'none',        // voluntary unpaid time off — no cost
+ 'vuto':               'hours-only',  // went home early voluntarily — actual hours to departure only
  'left-early-before':  'hours-only',  // left before half shift, no paid time — actual hours only
  'left-early-after':   'hours-only',  // left after half shift, no paid time — actual hours only
  'left-early-sick':    'full-shift',  // left early but sick time covers rest — we pay full shift
