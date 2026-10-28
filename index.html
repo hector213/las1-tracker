@@ -721,6 +721,8 @@ window._debugNotif = () => {
 };
 let activeListeners = {};
 let allAssociates = [];
+// Expose to compat/VCPU script — always returns current value since it's a getter
+window.lb_getAllAssociates = () => allAssociates;
 let allCertsMap = {}; // { associateId: Set of cert keys }
 let lastNotes = [];
 let currentNoteFilter = 'All';
@@ -17851,11 +17853,11 @@ function lb_vcpuRenderTable() {
  const shiftH = Math.floor(shiftHour);
  const shiftM = Math.round((shiftHour % 1) * 60);
  const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
- // Only show associates currently placed on the board tonight (no endTime = still active)
- const assignedIds = new Set(lb_segments.filter(s => !s.endTime).map(s => s.associateId));
- const assocs = lb_associates.filter(a => !a.automated && assignedIds.has(a.id));
+ // Pull from main dashboard associate cards — active associates only
+ const mainAssocs = window.lb_getAllAssociates ? window.lb_getAllAssociates() : [];
+ const assocs = mainAssocs.filter(a => a.status === 'active');
  if (!assocs.length) {
-  tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;opacity:.5;padding:12px">No associates currently on the board</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;opacity:.5;padding:12px">No active associates found</td></tr>`;
   lb_vcpuUpdateTotalCost();
   return;
  }
@@ -17967,8 +17969,8 @@ function lb_vcpuUpdateTotalCost() {
  const shiftH = Math.floor(shiftHour);
  const shiftM = Math.round((shiftHour % 1) * 60);
  const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
- const assignedIds = new Set(lb_segments.filter(s => !s.endTime).map(s => s.associateId));
- const assocs = lb_associates.filter(a => !a.automated && assignedIds.has(a.id));
+ const mainAssocs = window.lb_getAllAssociates ? window.lb_getAllAssociates() : [];
+ const assocs = mainAssocs.filter(a => a.status === 'active');
  const total = assocs.reduce((sum, a) => {
   const rate = lb_vcpuRates[a.id]?.hourlyRate || 0;
   return sum + lb_vcpuHoursFor(a.id, defaultStart) * rate;
@@ -17982,9 +17984,9 @@ function lb_vcpuCalc() {
  const shiftH = Math.floor(shiftHour);
  const shiftM = Math.round((shiftHour % 1) * 60);
  const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
- // VCPU = on-board non-exempt (hourly) associates only
- const assignedIds = new Set(lb_segments.filter(s => !s.endTime).map(s => s.associateId));
- const assocs = lb_associates.filter(a => !a.automated && assignedIds.has(a.id) && lb_vcpuRates[a.id]?.hourlyRate && !lb_vcpuRates[a.id]?.exempt);
+ // VCPU = active main-dashboard associates, non-exempt (hourly) only
+ const mainAssocs = window.lb_getAllAssociates ? window.lb_getAllAssociates() : [];
+ const assocs = mainAssocs.filter(a => a.status === 'active' && lb_vcpuRates[a.id]?.hourlyRate && !lb_vcpuRates[a.id]?.exempt);
  let totalCost = 0, assocCount = 0, totalHours = 0, callOutCount = 0, ncnsCount = 0;
  assocs.forEach(a => {
   const hrs = lb_vcpuHoursFor(a.id, defaultStart);
