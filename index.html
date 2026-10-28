@@ -17994,8 +17994,12 @@ function lb_vcpuHoursFor(assocId, defaultStart) {
   }
  }
 
- // No attendance event: hours from effective start to now / manual early-out
- const endDt = adj.leftEarlyTime ? toDt(adj.leftEarlyTime, startDt) : new Date();
+ // No attendance event: hours from effective start to now / manual early-out, capped at shift end
+ // Shift end = shift start + shiftLengthHours (e.g. 5pm + 10.5h = 3:30am)
+ const shiftLenHrs = lb_appSettings.shiftLengthHours || 10;
+ const shiftEndDt = new Date(startDt.getTime() + shiftLenHrs * 3600000);
+ const nowOrEnd = new Date(Math.min(Date.now(), shiftEndDt.getTime()));
+ const endDt = adj.leftEarlyTime ? toDt(adj.leftEarlyTime, startDt) : nowOrEnd;
  let ms = endDt - startDt;
  if (ms < 0) ms += 24 * 3600000;
  const raw = Math.max(0, ms / 3600000);
