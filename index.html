@@ -17079,12 +17079,15 @@ document.querySelectorAll(".admin-tab-btn").forEach(btn => {
  document.querySelectorAll(".admin-tab").forEach(p => p.classList.add("hidden"));
  btn.classList.add("active");
  document.querySelector(`.admin-tab[data-tab="${btn.dataset.tab}"]`).classList.remove("hidden");
- // Initialize Labor Rates tab on open (only when locked so we don't reset state)
- if (btn.dataset.tab === 'labor-rates' && !lb_vcpuUnlocked) {
+ if (btn.dataset.tab === 'labor-rates') {
+  // Always re-init (and re-lock) when returning to the tab
   lb_db.collection('lb_settings').doc('vcpuSettings').get().then(snap => {
    if (snap.exists) lb_vcpuSettings = { ...lb_vcpuSettings, ...snap.data() };
    lb_vcpuInitTab();
   });
+ } else {
+  // Leaving Labor Rates tab — lock it immediately
+  if (lb_vcpuUnlocked) vcpu_lock();
  }
  });
 });
@@ -18031,12 +18034,12 @@ function lb_vcpuRender() {
  }
  // Live VCPU card
  if (vcpu !== null) {
-  vcpuEl.textContent = '$' + vcpu.toFixed(3);
+  vcpuEl.textContent = '$' + vcpu.toFixed(2);
   const target = lb_vcpuSettings.targetVcpu;
   if (target) {
    const diff = vcpu - target;
    vcpuEl.className = 'pivot-card-value ' + (diff <= 0 ? 'green' : diff <= target * 0.1 ? 'yellow' : 'red');
-   vcpuSub.textContent = 'Target $' + target.toFixed(2) + ' · ' + (diff >= 0 ? '+' : '') + '$' + diff.toFixed(3);
+   vcpuSub.textContent = 'Target $' + target.toFixed(2) + ' · ' + (diff >= 0 ? '+' : '') + '$' + diff.toFixed(2);
   } else {
    vcpuEl.className = 'pivot-card-value white';
    vcpuSub.textContent = 'No target set';
