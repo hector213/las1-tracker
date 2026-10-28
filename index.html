@@ -16808,6 +16808,8 @@ window.lb_syncCertToRole = async function(employeeId, assocName, certLabel, newS
  const nowPct = totalWindow > 0 ? Math.min(Math.max(elapsedMinNow / totalWindow * 100, 0), 100) : 0;
  nowMarker.style.left = nowPct.toFixed(3) + "%";
  }
+ // Live labor cost — recalculates hours to now every second
+ if (typeof lb_vcpuRender === 'function') lb_vcpuRender();
  }
  lb_tick();
  setInterval(lb_tick, 1000);
