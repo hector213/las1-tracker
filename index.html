@@ -17933,46 +17933,63 @@ window.lb_vcpuUpdateRow = function(el, type) {
 
 // How many hours an associate has billed so far.
 // Checks attendance status first; falls back to manual adjustments.
+// Break deduction: 30-min break at 23:00 (11pm) for all associates
+// Returns how many hours of the break window fall within [startDt, endDt]
+function lb_vcpuBreakDeduction(startDt, endDt) {
+ const breakStart = new Date(startDt);
+ breakStart.setHours(23, 0, 0, 0);
+ if (breakStart < startDt) breakStart.setDate(breakStart.getDate() + 1);
+ const breakEnd = new Date(breakStart.getTime() + 30 * 60000); // +30 min
+ const overlapStart = Math.max(startDt.getTime(), breakStart.getTime());
+ const overlapEnd = Math.min(endDt.getTime(), breakEnd.getTime());
+ return Math.max(0, (overlapEnd - overlapStart) / 3600000);
+}
+
 function lb_vcpuHoursFor(assocId, defaultStart) {
  const shiftDateStr = (document.getElementById('vcpu-adj-date') || {}).value || lb_currentShiftDate;
  const adj = lb_vcpuAdjustments[assocId] || {};
  const att = lb_vcpuTodayAtt[assocId];
 
+ // Helper: parse a HH:MM string into a Date on shiftDate, advancing day if before ref
+ function toDt(timeStr, ref) {
+  const [h, m] = timeStr.split(':').map(Number);
+  const d = new Date(shiftDateStr + 'T00:00:00');
+  d.setHours(h, m, 0, 0);
+  if (ref && d < ref) d.setDate(d.getDate() + 1);
+  return d;
+ }
+
+ const startDt = toDt(adj.startTime || defaultStart);
+
  if (att && att.type) {
   const costType = (window.lb_vcpuAttCostMap || {})[att.type];
   if (costType === 'none') return 0;
   const shiftLen = lb_appSettings.shiftLengthHours || 10;
-  if (costType === 'full-shift') return shiftLen;
-  if (costType === 'half-shift') return shiftLen / 2;
+  if (costType === 'full-shift') {
+   const endDt = new Date(startDt.getTime() + shiftLen * 3600000);
+   return Math.max(0, shiftLen - lb_vcpuBreakDeduction(startDt, endDt));
+  }
+  if (costType === 'half-shift') {
+   const endDt = new Date(startDt.getTime() + (shiftLen / 2) * 3600000);
+   return Math.max(0, shiftLen / 2 - lb_vcpuBreakDeduction(startDt, endDt));
+  }
   if (costType === 'hours-only') {
-   // Use departure time from attendance entry first, then fall back to manual adj
    const depTime = att.departureTime || adj.leftEarlyTime || '';
    if (depTime) {
-    const startStr = adj.startTime || defaultStart;
-    const [sH, sM] = startStr.split(':').map(Number);
-    const startDt = new Date(shiftDateStr + 'T00:00:00');
-    startDt.setHours(sH, sM, 0, 0);
-    const [eH, eM] = depTime.split(':').map(Number);
-    const endDt = new Date(shiftDateStr + 'T00:00:00');
-    endDt.setHours(eH, eM, 0, 0);
-    if (endDt < startDt) endDt.setDate(endDt.getDate() + 1);
-    return Math.max(0, (endDt - startDt) / 3600000);
+    const endDt = toDt(depTime, startDt);
+    const raw = Math.max(0, (endDt - startDt) / 3600000);
+    return Math.max(0, raw - lb_vcpuBreakDeduction(startDt, endDt));
    }
-   // No departure time recorded yet — fall through to time-in-progress calc
+   // No departure time recorded yet — fall through to live calc
   }
  }
 
- // No attendance event (or late/other type): hours from effective start to now / manual early-out
- const startStr = adj.startTime || defaultStart;
- const [sH, sM] = startStr.split(':').map(Number);
- const startDt = new Date(shiftDateStr + 'T00:00:00');
- startDt.setHours(sH, sM, 0, 0);
- const endDt = adj.leftEarlyTime
-  ? (() => { const [eH, eM] = adj.leftEarlyTime.split(':').map(Number); const d = new Date(shiftDateStr + 'T00:00:00'); d.setHours(eH, eM, 0, 0); if (d < startDt) d.setDate(d.getDate()+1); return d; })()
-  : new Date();
+ // No attendance event: hours from effective start to now / manual early-out
+ const endDt = adj.leftEarlyTime ? toDt(adj.leftEarlyTime, startDt) : new Date();
  let ms = endDt - startDt;
  if (ms < 0) ms += 24 * 3600000;
- return Math.max(0, ms / 3600000);
+ const raw = Math.max(0, ms / 3600000);
+ return Math.max(0, raw - lb_vcpuBreakDeduction(startDt, endDt));
 }
 
 function lb_vcpuUpdateTotalCost() {
