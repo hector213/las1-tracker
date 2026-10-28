@@ -16935,6 +16935,7 @@ let lb_uphHistory = []; // {id, associateId, tranType, shiftDate, units, minutes
 let lb_segments = []; // active shift's lb_segments: {id, associateId, stationId, functionKey, startTime, endTime, hoursInFunction}
 let lb_shiftGoalsToday = []; // {id, functionKey, targetUnits, plannedHours}
 let lb_currentShiftDate = lb_todayShiftDateStr();
+window.lb_currentShiftDate = lb_currentShiftDate; // expose to ES module for attendance sync
 let lb_unsubSegments = null;
 let lb_unsubTrend = null;
 let lb_shiftTrendDocs = {}; // tranType ("315"/"301") -> {buckets: [{label, units}]}
@@ -17160,6 +17161,7 @@ function lb_startListeners() {
 
 function lb_watchShift(shiftDate) {
  lb_currentShiftDate = shiftDate;
+ window.lb_currentShiftDate = shiftDate; // keep window in sync whenever shift changes
  lb_vcpuLoadTodayAtt(); // subscribe to attendance summary for VCPU
  if (lb_unsubSegments) lb_unsubSegments();
  lb_unsubSegments = lb_db.collection("lb_assignments").doc(shiftDate).collection("segments")
