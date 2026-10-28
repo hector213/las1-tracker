@@ -5206,7 +5206,7 @@ function renderAttendanceLog() {
  <div class="att-entry-icon" style="background:${iconBg};color:${iconColor}"><i class="fas ${isPending ? 'fa-hourglass-half' : info.icon}"></i></div>
  <div class="att-entry-body" style="flex:1">
  <div class="att-entry-type" style="${isExp ? 'text-decoration:line-through;color:#9ca3af' : isPending ? 'color:#b45309;font-weight:600' : ''}">${info.label}</div>
- <div class="att-entry-meta">${formatDate(e.date)} · Logged by ${escapeHtml(e.addedBy || '?')}</div>
+ <div class="att-entry-meta">${formatDate(e.date)} · Logged by ${escapeHtml(e.addedBy || '?')}${e.createdAt ? ' at ' + new Date(e.createdAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) : ''}${e.departureTime ? ' · Left at ' + (h => `${h%12||12}:${e.departureTime.split(':')[1]} ${h>=12?'PM':'AM'}`)(+e.departureTime.split(':')[0]) : ''}</div>
  ${e.note ? `<div class="att-entry-note">"${escapeHtml(e.note)}"</div>` : ''}
  ${pendingActions}
  </div>
@@ -11025,9 +11025,9 @@ const PL_DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const PL_MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 function pl_dateStr(d) { return d.toISOString().slice(0,10); }
-function pl_mondayOf(d) {
+function pl_sundayOf(d) {
  const dt = new Date(d); dt.setHours(12,0,0,0);
- const dow = dt.getDay(); dt.setDate(dt.getDate() + (dow===0 ? -6 : 1-dow)); return dt;
+ dt.setDate(dt.getDate() - dt.getDay()); return dt; // Sunday = day 0, subtract dow to get back to Sunday
 }
 function pl_weekDays(monday) {
  return Array.from({length:7}, (_,i) => { const d=new Date(monday); d.setDate(d.getDate()+i); return pl_dateStr(d); });
@@ -11050,7 +11050,7 @@ window.pl_init = function pl_init() {
   if (pl_initialized) { pl_renderWeek(); pl_loadAndRenderWeek(); pl_loadAndRenderMonth(); return; }
   pl_initialized = true;
   const today = new Date();
-  pl_weekStart = pl_mondayOf(today);
+  pl_weekStart = pl_sundayOf(today);
   pl_chartMonth = { year: today.getFullYear(), month: today.getMonth()+1 };
   const prevW = document.getElementById('pl-prev-week');
   const nextW = document.getElementById('pl-next-week');
