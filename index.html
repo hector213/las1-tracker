@@ -17101,10 +17101,14 @@ document.querySelectorAll(".admin-tab-btn").forEach(btn => {
  FIRESTORE LISTENERS
  ====================================================================== */
 function lb_startListeners() {
- // Pre-load vcpuRates so board cards show on load without requiring tab open
- lb_db.collection('lb_settings').doc('vcpuRates').get().then(snap => {
-  if (snap.exists) lb_vcpuRates = snap.data() || {};
- });
+ // Pre-load vcpuSettings + vcpuRates so board cards render correctly on load
+ lb_db.collection('lb_settings').doc('vcpuSettings').get().then(snap => {
+  if (snap.exists) lb_vcpuSettings = { ...lb_vcpuSettings, ...snap.data() };
+  return lb_db.collection('lb_settings').doc('vcpuRates').get();
+ }).then(snap => {
+  if (snap && snap.exists) lb_vcpuRates = snap.data() || {};
+  lb_vcpuRender(); // now render with fully loaded rates + fringe
+ }).catch(() => lb_vcpuRender());
  lb_db.collection("lb_settings").doc("appSettings").onSnapshot(snap => {
  if (snap.exists) lb_appSettings = Object.assign(lb_appSettings, snap.data());
  document.getElementById("set-window").value = lb_appSettings.avgUphWindowShifts;
