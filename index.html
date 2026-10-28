@@ -17091,6 +17091,10 @@ document.querySelectorAll(".admin-tab-btn").forEach(btn => {
  FIRESTORE LISTENERS
  ====================================================================== */
 function lb_startListeners() {
+ // Pre-load vcpuRates so board cards show on load without requiring tab open
+ lb_db.collection('lb_settings').doc('vcpuRates').get().then(snap => {
+  if (snap.exists) lb_vcpuRates = snap.data() || {};
+ });
  lb_db.collection("lb_settings").doc("appSettings").onSnapshot(snap => {
  if (snap.exists) lb_appSettings = Object.assign(lb_appSettings, snap.data());
  document.getElementById("set-window").value = lb_appSettings.avgUphWindowShifts;
@@ -17688,6 +17692,7 @@ let lb_vcpuSettings = { pin: '', targetVcpu: null };
 let lb_vcpuPinEntry = '';
 let lb_vcpuUnlocked = false;
 let lb_vcpuAdjustments = {}; // associateId -> { startTime, leftEarlyTime }
+let lb_vcpuRates = {}; // associateId -> { hourlyRate, exempt } — stored in lb_settings/vcpuRates, NOT lb_associates
 
 // Called when the Labor Rates tab is opened (settings already loaded by caller)
 function lb_vcpuInitTab() {
@@ -17705,8 +17710,14 @@ function lb_vcpuInitTab() {
   fresh.addEventListener('change', () => lb_vcpuLoadAdjustments(fresh.value));
   lb_vcpuLoadAdjustments(lb_currentShiftDate);
  }
- // If no PIN set yet, go straight to unlocked view
- if (!lb_vcpuSettings.pin) lb_vcpuShowUnlocked();
+ // Load per-associate rates from lb_settings/vcpuRates (avoids lb_associates permission issues)
+ lb_db.collection('lb_settings').doc('vcpuRates').get().then(snap => {
+  lb_vcpuRates = snap.exists ? (snap.data() || {}) : {};
+  // If no PIN set yet, go straight to unlocked view
+  if (!lb_vcpuSettings.pin) lb_vcpuShowUnlocked();
+ }).catch(() => {
+  if (!lb_vcpuSettings.pin) lb_vcpuShowUnlocked();
+ });
 }
 
 // PIN entry
@@ -17760,29 +17771,30 @@ window.vcpu_savePin = function() {
 };
 
 // Save all rates + target + adjustments
+// Rates/exempt are stored in lb_settings/vcpuRates (single doc) to avoid lb_associates permission issues
 window.vcpu_saveAll = function() {
+ const saves = [];
+ // Save VCPU target
  const targetVal = parseFloat(document.getElementById('vcpu-target-input').value);
  if (!isNaN(targetVal)) {
   lb_vcpuSettings.targetVcpu = targetVal;
   lb_db.collection('lb_settings').doc('vcpuSettings').set({ targetVcpu: targetVal }, { merge: true });
  }
- // Save rates + exempt status
- const rateInputs = document.querySelectorAll('#vcpu-assoc-tbody input[data-assoc-rate]');
- const saves = [];
- rateInputs.forEach(inp => {
-  const aId = inp.dataset.assocRate;
-  const rate = parseFloat(inp.value);
-  const exemptEl = document.querySelector(`#vcpu-assoc-tbody input[data-assoc-exempt="${aId}"]`);
-  const isExempt = exemptEl ? exemptEl.checked : false;
-  if (aId) {
-   const update = { exempt: isExempt };
-   if (!isNaN(rate)) update.hourlyRate = rate;
-   saves.push(lb_db.collection('lb_associates').doc(aId).update(update));
-   const a = lb_associates.find(x => x.id === aId);
-   if (a) { if (!isNaN(rate)) a.hourlyRate = rate; a.exempt = isExempt; }
-  }
+ // Build rates map from table rows — single doc write, no lb_associates updates needed
+ const newRates = { ...lb_vcpuRates }; // preserve any entries not currently visible
+ document.querySelectorAll('#vcpu-assoc-tbody tr[data-assoc-id]').forEach(row => {
+  const aId = row.dataset.assocId;
+  const rateEl = row.querySelector('input[data-assoc-rate]');
+  const exemptEl = row.querySelector('input[data-assoc-exempt]');
+  const rate = parseFloat(rateEl?.value);
+  newRates[aId] = {
+   hourlyRate: isNaN(rate) ? (lb_vcpuRates[aId]?.hourlyRate ?? null) : rate,
+   exempt: exemptEl ? exemptEl.checked : (lb_vcpuRates[aId]?.exempt || false)
+  };
  });
- // Save adjustments for the date shown
+ lb_vcpuRates = newRates;
+ saves.push(lb_db.collection('lb_settings').doc('vcpuRates').set(newRates));
+ // Save time adjustments for the date shown
  const adjDate = document.getElementById('vcpu-adj-date').value;
  lb_vcpuAdjustments = {};
  document.querySelectorAll('#vcpu-assoc-tbody tr[data-assoc-id]').forEach(row => {
@@ -17830,7 +17842,8 @@ function _vcpuAttColor(type) {
  return 'rgba(146,64,14,0.8)'; // amber — full/half cost (paid time used)
 }
 
-// Render the associate table
+// Render the associate table — only shows associates currently on the board (active segments)
+// This naturally eliminates duplicate logins: only the placed name appears
 function lb_vcpuRenderTable() {
  const tbody = document.getElementById('vcpu-assoc-tbody');
  if (!tbody) return;
@@ -17838,8 +17851,18 @@ function lb_vcpuRenderTable() {
  const shiftH = Math.floor(shiftHour);
  const shiftM = Math.round((shiftHour % 1) * 60);
  const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
- const assocs = lb_associates.filter(a => !a.automated && a.status !== 'inactive');
+ // Only show associates currently placed on the board tonight (no endTime = still active)
+ const assignedIds = new Set(lb_segments.filter(s => !s.endTime).map(s => s.associateId));
+ const assocs = lb_associates.filter(a => !a.automated && assignedIds.has(a.id));
+ if (!assocs.length) {
+  tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;opacity:.5;padding:12px">No associates currently on the board</td></tr>`;
+  lb_vcpuUpdateTotalCost();
+  return;
+ }
  tbody.innerHTML = assocs.map(a => {
+  const rates = lb_vcpuRates[a.id] || {};
+  const hourlyRate = rates.hourlyRate ?? null;
+  const isExempt = !!rates.exempt;
   const adj = lb_vcpuAdjustments[a.id] || {};
   const att = lb_vcpuTodayAtt[a.id];
   const startVal = adj.startTime || defaultStart;
@@ -17847,22 +17870,21 @@ function lb_vcpuRenderTable() {
   const isAdjusted = adj.startTime && adj.startTime !== defaultStart;
   const isEarly = !!earlyVal;
   const hrs = lb_vcpuHoursFor(a.id, defaultStart);
-  const cost = hrs * (a.hourlyRate || 0);
+  const cost = hrs * (hourlyRate || 0);
   const attLabel = att ? _vcpuAttLabel(att.type) : '';
   const attColor = att ? _vcpuAttColor(att.type) : '';
   const attBadge = att ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${attColor};color:#fff;margin-left:4px;vertical-align:middle">${attLabel}</span>` : '';
   const costType = att ? (window.lb_vcpuAttCostMap || {})[att.type] : null;
-  const isAbsent = costType === 'none' && att; // called out, NCNS, VUTO — no cost, grey out inputs
+  const isAbsent = costType === 'none' && att;
   const inputStyle = isAbsent ? 'opacity:0.4;pointer-events:none' : '';
-  const isExempt = !!a.exempt;
   return `<tr data-assoc-id="${a.id}"${isAbsent ? ' style="opacity:0.65"' : ''}>
-   <td>${a.name || a.employeeId}${attBadge}${isExempt ? '<span style="font-size:10px;padding:1px 5px;border-radius:4px;background:rgba(99,102,241,.7);color:#fff;margin-left:4px">Exempt</span>' : ''}</td>
+   <td>${a.name || a.employeeId}${attBadge}</td>
    <td style="color:var(--hero-muted);font-size:12px">${a.role || '-'}</td>
-   <td style="text-align:center"><input type="checkbox" data-assoc-exempt="${a.id}"${isExempt ? ' checked' : ''} title="Exempt = included in FCPU only, not VCPU"></td>
-   <td><input type="number" step="0.01" data-assoc-rate="${a.id}" value="${a.hourlyRate != null ? a.hourlyRate : ''}" placeholder="$/hr" style="width:80px"></td>
+   <td style="text-align:center"><input type="checkbox" data-assoc-exempt="${a.id}"${isExempt ? ' checked' : ''} title="Exempt = salaried, excluded from VCPU"></td>
+   <td><input type="number" step="0.01" data-assoc-rate="${a.id}" value="${hourlyRate != null ? hourlyRate : ''}" placeholder="$/hr" style="width:80px"></td>
    <td><input type="time" class="vcpu-adj-start${isAdjusted?' adjusted':''}" value="${startVal}" onchange="lb_vcpuUpdateRow(this,'start')" style="${inputStyle}"></td>
    <td><input type="time" class="vcpu-adj-early${isEarly?' set':''}" value="${earlyVal}" placeholder="Still here" onchange="lb_vcpuUpdateRow(this,'early')" ${att?.departureTime ? 'title="Set via attendance log" style="'+inputStyle+'"' : 'style="'+inputStyle+'"'}></td>
-   <td style="font-size:12px;color:var(--hero-muted);white-space:nowrap">${isAbsent ? '<span style="color:rgba(107,114,128,0.7)">No cost</span>' : hrs.toFixed(1)+'h'+(a.hourlyRate ? ' · $'+cost.toFixed(2) : '')+(isExempt ? '<span style="font-size:10px;opacity:.6"> (excl. VCPU)</span>' : '')}</td>
+   <td style="font-size:12px;color:var(--hero-muted);white-space:nowrap">${isAbsent ? '<span style="color:rgba(107,114,128,0.7)">No cost</span>' : hrs.toFixed(1)+'h'+(hourlyRate ? ' · $'+cost.toFixed(2) : '')+(isExempt ? '<span style="font-size:10px;opacity:.6"> (excl. VCPU)</span>' : '')}</td>
   </tr>`;
  }).join('');
  lb_vcpuUpdateTotalCost();
@@ -17945,10 +17967,11 @@ function lb_vcpuUpdateTotalCost() {
  const shiftH = Math.floor(shiftHour);
  const shiftM = Math.round((shiftHour % 1) * 60);
  const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
- const assocs = lb_associates.filter(a => !a.automated && a.status !== 'inactive');
+ const assignedIds = new Set(lb_segments.filter(s => !s.endTime).map(s => s.associateId));
+ const assocs = lb_associates.filter(a => !a.automated && assignedIds.has(a.id));
  const total = assocs.reduce((sum, a) => {
-  const hrs = lb_vcpuHoursFor(a.id, defaultStart);
-  return sum + hrs * (a.hourlyRate || 0);
+  const rate = lb_vcpuRates[a.id]?.hourlyRate || 0;
+  return sum + lb_vcpuHoursFor(a.id, defaultStart) * rate;
  }, 0);
  el.textContent = '$' + total.toFixed(2);
 }
@@ -17959,18 +17982,20 @@ function lb_vcpuCalc() {
  const shiftH = Math.floor(shiftHour);
  const shiftM = Math.round((shiftHour % 1) * 60);
  const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
- // VCPU = non-exempt (hourly) associates only; exempt (salaried) are excluded
- const assocs = lb_associates.filter(a => !a.automated && a.status !== 'inactive' && a.hourlyRate && !a.exempt);
+ // VCPU = on-board non-exempt (hourly) associates only
+ const assignedIds = new Set(lb_segments.filter(s => !s.endTime).map(s => s.associateId));
+ const assocs = lb_associates.filter(a => !a.automated && assignedIds.has(a.id) && lb_vcpuRates[a.id]?.hourlyRate && !lb_vcpuRates[a.id]?.exempt);
  let totalCost = 0, assocCount = 0, totalHours = 0, callOutCount = 0, ncnsCount = 0;
  assocs.forEach(a => {
   const hrs = lb_vcpuHoursFor(a.id, defaultStart);
+  const rate = lb_vcpuRates[a.id]?.hourlyRate || 0;
   const att = lb_vcpuTodayAtt[a.id];
   const costType = att ? (window.lb_vcpuAttCostMap || {})[att.type] : null;
   if (att) {
    if (att.type === 'ncns' || att.type === 'ncns-pending' || att.type === 'bereavement-ncns') ncnsCount++;
    else if (costType === 'none') callOutCount++;
   }
-  if (hrs > 0) { totalCost += hrs * a.hourlyRate; assocCount++; totalHours += hrs; }
+  if (hrs > 0) { totalCost += hrs * rate; assocCount++; totalHours += hrs; }
  });
  // Total units = Pack + Pick from uphHistory for today
  const packUnits = lb_uphHistory.filter(h => h.shiftDate === lb_currentShiftDate && h.tranType === LB_PACKOUT_TRAN_TYPE).reduce((s,h) => s+(h.units||0), 0);
