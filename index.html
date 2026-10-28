@@ -5229,8 +5229,15 @@ window.openAttendanceModal = () => {
  document.getElementById('attTypeSelect').value = '';
  document.getElementById('attNote').value = '';
  document.getElementById('attDate').value = shiftDate();
+ document.getElementById('attDepartureTime').value = '';
+ document.getElementById('att-departure-wrap').style.display = 'none';
  bootstrap.Modal.getOrCreateInstance(document.getElementById('attModal')).show();
 };
+// Show/hide departure time field based on event type (attached once)
+document.getElementById('attTypeSelect').addEventListener('change', function() {
+ const earlyTypes = ['left-early-before','left-early-after','left-early-sick'];
+ document.getElementById('att-departure-wrap').style.display = earlyTypes.includes(this.value) ? '' : 'none';
+});
 
 // ─── Disciplinary Warning Log ──────────────────────────────────────────
 const WARNING_TIERS = [
@@ -6841,12 +6848,32 @@ window.saveAttendance = async () => {
  const date = document.getElementById('attDate').value;
  const note = document.getElementById('attNote').value.trim();
  if (!type || !date) { alert('Please select a type and date.'); return; }
+ // Departure time — required for early-out types
+ const earlyTypes = ['left-early-before','left-early-after','left-early-sick'];
+ const departureTime = earlyTypes.includes(type) ? (document.getElementById('attDepartureTime').value || '') : '';
+ if (earlyTypes.includes(type) && !departureTime) { alert('Please enter the time this associate left early.'); return; }
  const info = attTypeInfo(type);
  const addedBy = await _getActorName();
  const isPending = type === 'call-out-pending' || type === 'ncns-pending' || type === 'bereavement-pending';
  const entry = { type, date, note, points: info.points, addedBy, createdAt: new Date().toISOString() };
  if (isPending) entry.pending = true;
+ if (departureTime) entry.departureTime = departureTime;
  await addDoc(collection(db, 'attendance', currentAssociateId, 'entries'), entry);
+ // Mirror to lb_shiftAttSummary for VCPU labor cost tracking (only for today's shift)
+ if (window.lb_db && window.lb_currentShiftDate && date === window.lb_currentShiftDate) {
+  const costMap = window.lb_vcpuAttCostMap || {};
+  if (costMap[type] !== undefined) {
+   window.lb_db.collection('lb_shiftAttSummary').doc(date).set(
+    { [currentAssociateId]: { type, departureTime: departureTime || '' } },
+    { merge: true }
+   );
+   // Update in-memory immediately so cards refresh without waiting for snapshot
+   if (window.lb_vcpuTodayAtt) {
+    window.lb_vcpuTodayAtt[currentAssociateId] = { type, departureTime: departureTime || '' };
+    if (typeof window.lb_vcpuRender === 'function') window.lb_vcpuRender();
+   }
+  }
+ }
  if (info.points !== 0) {
  await updateDoc(doc(db, 'associates', currentAssociateId), { attendancePoints: increment(info.points) });
  // Update allAssociates in memory so checkPendingNotifications sees fresh points
@@ -12343,6 +12370,12 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  #productionView table.admin-table{width:100%;border-collapse:collapse;font-size:13px;}
  #productionView table.admin-table th, #productionView table.admin-table td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:left;}
  #productionView table.admin-table input{width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:13px;}
+ .vcpu-pin-btn{width:52px;height:52px;border-radius:10px;background:rgba(255,255,255,.06);border:0.5px solid rgba(255,255,255,.15);font-size:18px;font-weight:500;color:var(--hero-text);cursor:pointer;}
+ .vcpu-pin-btn:hover{background:rgba(255,255,255,.12);}
+ .vcpu-dot{width:12px;height:12px;border-radius:50%;border:1.5px solid rgba(255,255,255,.3);}
+ .vcpu-dot.filled{background:var(--hero-text);border-color:var(--hero-text);}
+ .vcpu-adj-start.adjusted{background:rgba(146,64,14,.25) !important;border-color:#92400e !important;}
+ .vcpu-adj-early.set{background:rgba(127,29,29,.25) !important;border-color:#7f1d1d !important;}
  #productionView .row-actions button{border:1px solid var(--border);background:#fff;border-radius:5px;padding:4px 8px;font-size:12px;cursor:pointer;}
  #productionView .btn{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:13px;cursor:pointer;}
  #productionView .btn:hover{background:var(--accent-dark);}
@@ -14924,13 +14957,25 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  <span id="lb-last-updated" style="font-size:17px;color:var(--hero-muted);white-space:nowrap;text-align:center;"></span>
  </div>
- <!-- Prod Min Left: displayed here in place of the old Reset button, above the shift schedule bar -->
- <div id="pv-prodleft-header">
- <div class="pivot-card-label" style="margin-bottom:2px;text-align:center">Prod Min Left</div>
- <div style="display:flex;align-items:baseline;gap:6px;justify-content:center">
- <span class="pivot-card-value white" id="pv-prodleft">-</span>
- <span class="pivot-card-sub" id="pv-prodleft-sub">of - total</span>
- </div>
+ <!-- Labor so far + Live VCPU + Prod Min Left header cards -->
+ <div id="pv-prodleft-header" style="display:flex;gap:8px;align-items:stretch">
+  <div class="pivot-card" id="pv-labor-card" style="min-width:110px;padding:8px 12px">
+   <div class="pivot-card-label">Labor so far</div>
+   <div class="pivot-card-value white" id="pv-labor-cost">-</div>
+   <div class="pivot-card-sub" id="pv-labor-sub">- assoc</div>
+  </div>
+  <div class="pivot-card" id="pv-vcpu-card" style="min-width:110px;padding:8px 12px">
+   <div class="pivot-card-label">Live VCPU</div>
+   <div class="pivot-card-value white" id="pv-vcpu-val">-</div>
+   <div class="pivot-card-sub" id="pv-vcpu-sub">No target set</div>
+  </div>
+  <div style="min-width:110px;text-align:center;padding:8px 12px">
+   <div class="pivot-card-label" style="margin-bottom:2px;text-align:center">Prod Min Left</div>
+   <div style="display:flex;align-items:baseline;gap:6px;justify-content:center">
+    <span class="pivot-card-value white" id="pv-prodleft">-</span>
+    <span class="pivot-card-sub" id="pv-prodleft-sub">of - total</span>
+   </div>
+  </div>
  </div>
  </div>
 
@@ -15387,6 +15432,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <button class="admin-tab-btn" data-tab="associates">Associates</button>
  <button class="admin-tab-btn" data-tab="goals">Shift Goals</button>
  <button class="admin-tab-btn" data-tab="settings">Settings</button>
+ <button class="admin-tab-btn" data-tab="labor-rates">Labor Rates</button>
  </div>
 
  <!-- Stations tab -->
@@ -15508,6 +15554,95 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  others alone since there's no single right way to split the remainder.
  </div>
  </div>
+
+ <!-- Labor Rates tab -->
+ <div class="admin-pane admin-tab hidden" data-tab="labor-rates" id="labor-rates-pane">
+  <!-- PIN gate -->
+  <div id="vcpu-pin-gate" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:40px 0">
+   <div style="font-size:15px;font-weight:500;color:var(--hero-text)">Labor Rates - PIN Required</div>
+   <div style="font-size:13px;color:var(--hero-muted)">Enter your 4-digit PIN to access rate data</div>
+   <div id="vcpu-pin-dots" style="display:flex;gap:10px">
+    <div class="vcpu-dot"></div><div class="vcpu-dot"></div><div class="vcpu-dot"></div><div class="vcpu-dot"></div>
+   </div>
+   <div style="display:grid;grid-template-columns:repeat(3,52px);gap:8px">
+    <button class="vcpu-pin-btn" onclick="vcpu_pinPress('1')">1</button>
+    <button class="vcpu-pin-btn" onclick="vcpu_pinPress('2')">2</button>
+    <button class="vcpu-pin-btn" onclick="vcpu_pinPress('3')">3</button>
+    <button class="vcpu-pin-btn" onclick="vcpu_pinPress('4')">4</button>
+    <button class="vcpu-pin-btn" onclick="vcpu_pinPress('5')">5</button>
+    <button class="vcpu-pin-btn" onclick="vcpu_pinPress('6')">6</button>
+    <button class="vcpu-pin-btn" onclick="vcpu_pinPress('7')">7</button>
+    <button class="vcpu-pin-btn" onclick="vcpu_pinPress('8')">8</button>
+    <button class="vcpu-pin-btn" onclick="vcpu_pinPress('9')">9</button>
+    <button class="vcpu-pin-btn" onclick="vcpu_pinClear()" style="font-size:13px">CLR</button>
+    <button class="vcpu-pin-btn" onclick="vcpu_pinPress('0')">0</button>
+    <button class="vcpu-pin-btn" onclick="vcpu_pinBackspace()" style="font-size:13px">&#8592;</button>
+   </div>
+   <div id="vcpu-pin-error" style="font-size:12px;color:#f87171;min-height:16px"></div>
+   <div style="font-size:11px;color:var(--hero-muted)">PIN is set in the unlocked view</div>
+  </div>
+  <!-- Unlocked view -->
+  <div id="vcpu-unlocked" style="display:none">
+   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <div>
+     <div style="font-size:15px;font-weight:500;color:var(--hero-text)">Labor Rates</div>
+     <div style="font-size:12px;color:var(--hero-muted);margin-top:2px">Rates are used to calculate VCPU on the production board</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+     <button class="btn secondary" onclick="vcpu_lock()" style="font-size:12px">Lock</button>
+     <button class="btn" onclick="vcpu_saveAll()" style="font-size:12px">Save rates</button>
+    </div>
+   </div>
+
+   <!-- VCPU target + PIN change -->
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+    <div class="field">
+     <label>VCPU target ($/unit)</label>
+     <input type="number" id="vcpu-target-input" step="0.01" placeholder="e.g. 0.42">
+    </div>
+    <div class="field">
+     <label>Change PIN (4 digits)</label>
+     <input type="password" id="vcpu-new-pin" maxlength="4" placeholder="New PIN">
+     <button class="btn secondary" onclick="vcpu_savePin()" style="margin-top:4px;font-size:12px">Update PIN</button>
+    </div>
+   </div>
+
+   <!-- Time adjustments -->
+   <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <div class="field" style="margin:0">
+     <label>Shift date</label>
+     <input type="date" id="vcpu-adj-date">
+    </div>
+    <div style="font-size:12px;color:var(--hero-muted);margin-top:18px">Defaults: start = shift start, left early = blank (full shift)</div>
+   </div>
+
+   <!-- Legend -->
+   <div style="display:flex;gap:14px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--hero-muted)"><span style="width:10px;height:10px;border-radius:2px;background:#92400e;display:inline-block"></span> Start adjusted</div>
+    <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--hero-muted)"><span style="width:10px;height:10px;border-radius:2px;background:#7f1d1d;display:inline-block"></span> Left early</div>
+   </div>
+
+   <table class="admin-table" id="vcpu-assoc-table">
+    <thead>
+     <tr>
+      <th>Associate</th>
+      <th>Role</th>
+      <th>Hourly rate ($)</th>
+      <th>Start time</th>
+      <th>Left early</th>
+      <th>Hrs billed</th>
+     </tr>
+    </thead>
+    <tbody id="vcpu-assoc-tbody"></tbody>
+   </table>
+
+   <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.05);border-radius:8px;padding:10px 14px;margin-top:10px">
+    <div style="font-size:13px;color:var(--hero-muted)">Total labor cost this shift</div>
+    <div style="font-size:16px;font-weight:500;color:var(--hero-text)" id="vcpu-total-cost">-</div>
+   </div>
+  </div>
+ </div>
+
  </section>
 
  <!-- ---------- WEEKLY LOG VIEW ---------- -->
@@ -15872,6 +16007,11 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <option value="doctors-note">Called Out - Doctor's Note (no point)</option>
  <option value="vuto">VUTO - Voluntary Unpaid Time Off (no point)</option>
  </select>
+ </div>
+ <div class="mb-3" id="att-departure-wrap" style="display:none">
+ <label class="form-label fw-semibold">Time Left <span class="text-danger">*</span></label>
+ <input type="time" class="form-control" id="attDepartureTime">
+ <div class="form-text text-warning">Required — used to calculate actual hours for labor cost</div>
  </div>
  <div class="mb-3">
  <label class="form-label fw-semibold">Note <span class="text-muted small fw-normal">(optional)</span></label>
@@ -16936,6 +17076,13 @@ document.querySelectorAll(".admin-tab-btn").forEach(btn => {
  document.querySelectorAll(".admin-tab").forEach(p => p.classList.add("hidden"));
  btn.classList.add("active");
  document.querySelector(`.admin-tab[data-tab="${btn.dataset.tab}"]`).classList.remove("hidden");
+ // Initialize Labor Rates tab on open (only when locked so we don't reset state)
+ if (btn.dataset.tab === 'labor-rates' && !lb_vcpuUnlocked) {
+  lb_db.collection('lb_settings').doc('vcpuSettings').get().then(snap => {
+   if (snap.exists) lb_vcpuSettings = { ...lb_vcpuSettings, ...snap.data() };
+   lb_vcpuInitTab();
+  });
+ }
  });
 });
 
@@ -16991,6 +17138,7 @@ function lb_startListeners() {
 
 function lb_watchShift(shiftDate) {
  lb_currentShiftDate = shiftDate;
+ lb_vcpuLoadTodayAtt(); // subscribe to attendance summary for VCPU
  if (lb_unsubSegments) lb_unsubSegments();
  lb_unsubSegments = lb_db.collection("lb_assignments").doc(shiftDate).collection("segments")
  .onSnapshot(snap => {
@@ -17490,7 +17638,382 @@ function lb_renderBoard() {
  lb_renderScheduleBar(elapsedMinNow);
  lb_renderTrendChart();
  lb_renderInboundCharts();
+ lb_vcpuRender();
 }
+
+// ── VCPU / Labor Rates ────────────────────────────────────────────────
+// VCPU attendance cost map: attendance type -> cost behavior for labor calculation
+// 'none' = no cost to shift, 'full-shift' = full shift hours paid, 'half-shift' = half shift hours paid, 'hours-only' = only hours actually worked
+window.lb_vcpuAttCostMap = {
+ 'call-out':           'none',        // called out, no time used — no cost
+ 'call-out-sick-full': 'full-shift',  // called out, full sick time coverage — we pay
+ 'call-out-sick-half': 'half-shift',  // called out, partial sick time — we pay half
+ 'call-out-sick-no':   'none',        // called out, sick time insufficient — no cost
+ 'call-out-vac-full':  'full-shift',  // called out, vacation covers full shift — we pay
+ 'call-out-vac-half':  'half-shift',  // called out, vacation covers partial — we pay half
+ 'call-out-pending':   'none',        // pending, treat as no cost until resolved
+ 'ncns':               'none',        // NCNS — no cost
+ 'ncns-pending':       'none',
+ 'bereavement-ncns':   'none',
+ 'bereavement-pending':'none',
+ 'bereavement-docs':   'full-shift',  // bereavement with docs — paid absence
+ 'bereavement-no-docs':'none',
+ 'doctors-note':       'full-shift',  // doctor's note = paid sick — we pay
+ 'fmla-approved':      'none',        // FMLA typically unpaid or third-party
+ 'fmla-pending':       'none',
+ 'vuto':               'none',        // voluntary unpaid time off — no cost
+ 'left-early-before':  'hours-only',  // left before half shift, no paid time — actual hours only
+ 'left-early-after':   'hours-only',  // left after half shift, no paid time — actual hours only
+ 'left-early-sick':    'full-shift',  // left early but sick time covers rest — we pay full shift
+};
+
+// Today's attendance status keyed by associateId: { type, departureTime }
+let lb_vcpuTodayAtt = {};
+window.lb_vcpuTodayAtt = lb_vcpuTodayAtt;
+
+// Subscribe to lb_shiftAttSummary for the current shift date
+let lb_unsubVcpuAtt = null;
+function lb_vcpuLoadTodayAtt() {
+ if (lb_unsubVcpuAtt) lb_unsubVcpuAtt();
+ if (!lb_currentShiftDate) return;
+ lb_unsubVcpuAtt = lb_db.collection('lb_shiftAttSummary').doc(lb_currentShiftDate).onSnapshot(snap => {
+  lb_vcpuTodayAtt = snap.exists ? snap.data() : {};
+  window.lb_vcpuTodayAtt = lb_vcpuTodayAtt;
+  lb_vcpuRender(); // refresh cards whenever attendance changes
+ });
+}
+
+let lb_vcpuSettings = { pin: '', targetVcpu: null };
+let lb_vcpuPinEntry = '';
+let lb_vcpuUnlocked = false;
+let lb_vcpuAdjustments = {}; // associateId -> { startTime, leftEarlyTime }
+
+// Called when the Labor Rates tab is opened (settings already loaded by caller)
+function lb_vcpuInitTab() {
+ // Reset pin entry state
+ lb_vcpuPinEntry = '';
+ lb_vcpuUpdateDots();
+ document.getElementById('vcpu-pin-error').textContent = '';
+ // Set up date selector
+ const adjDate = document.getElementById('vcpu-adj-date');
+ if (adjDate) {
+  adjDate.value = lb_currentShiftDate;
+  // Avoid stacking multiple listeners — replace with a fresh element clone trick
+  const fresh = adjDate.cloneNode(true);
+  adjDate.parentNode.replaceChild(fresh, adjDate);
+  fresh.addEventListener('change', () => lb_vcpuLoadAdjustments(fresh.value));
+  lb_vcpuLoadAdjustments(lb_currentShiftDate);
+ }
+ // If no PIN set yet, go straight to unlocked view
+ if (!lb_vcpuSettings.pin) lb_vcpuShowUnlocked();
+}
+
+// PIN entry
+window.vcpu_pinPress = function(digit) {
+ if (lb_vcpuPinEntry.length >= 4) return;
+ lb_vcpuPinEntry += digit;
+ lb_vcpuUpdateDots();
+ if (lb_vcpuPinEntry.length === 4) {
+  setTimeout(() => {
+   if (lb_vcpuPinEntry === lb_vcpuSettings.pin || !lb_vcpuSettings.pin) {
+    lb_vcpuShowUnlocked();
+   } else {
+    document.getElementById('vcpu-pin-error').textContent = 'Incorrect PIN. Try again.';
+    lb_vcpuPinEntry = '';
+    lb_vcpuUpdateDots();
+   }
+  }, 120);
+ }
+};
+window.vcpu_pinClear = function() { lb_vcpuPinEntry = ''; lb_vcpuUpdateDots(); document.getElementById('vcpu-pin-error').textContent = ''; };
+window.vcpu_pinBackspace = function() { lb_vcpuPinEntry = lb_vcpuPinEntry.slice(0, -1); lb_vcpuUpdateDots(); };
+function lb_vcpuUpdateDots() {
+ const dots = document.querySelectorAll('.vcpu-dot');
+ dots.forEach((d, i) => d.classList.toggle('filled', i < lb_vcpuPinEntry.length));
+}
+function lb_vcpuShowUnlocked() {
+ lb_vcpuUnlocked = true;
+ document.getElementById('vcpu-pin-gate').style.display = 'none';
+ document.getElementById('vcpu-unlocked').style.display = '';
+ const t = document.getElementById('vcpu-target-input');
+ if (t && lb_vcpuSettings.targetVcpu != null) t.value = lb_vcpuSettings.targetVcpu;
+ lb_vcpuRenderTable();
+}
+window.vcpu_lock = function() {
+ lb_vcpuUnlocked = false;
+ lb_vcpuPinEntry = '';
+ document.getElementById('vcpu-pin-gate').style.display = '';
+ document.getElementById('vcpu-unlocked').style.display = 'none';
+ document.getElementById('vcpu-pin-error').textContent = '';
+ lb_vcpuUpdateDots();
+};
+
+// Save PIN
+window.vcpu_savePin = function() {
+ const newPin = (document.getElementById('vcpu-new-pin').value || '').trim();
+ if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) { alert('PIN must be exactly 4 digits.'); return; }
+ lb_vcpuSettings.pin = newPin;
+ lb_db.collection('lb_settings').doc('vcpuSettings').set({ pin: newPin }, { merge: true });
+ document.getElementById('vcpu-new-pin').value = '';
+ alert('PIN updated.');
+};
+
+// Save all rates + target + adjustments
+window.vcpu_saveAll = function() {
+ const targetVal = parseFloat(document.getElementById('vcpu-target-input').value);
+ if (!isNaN(targetVal)) {
+  lb_vcpuSettings.targetVcpu = targetVal;
+  lb_db.collection('lb_settings').doc('vcpuSettings').set({ targetVcpu: targetVal }, { merge: true });
+ }
+ // Save rates
+ const rateInputs = document.querySelectorAll('#vcpu-assoc-tbody input[data-assoc-rate]');
+ const saves = [];
+ rateInputs.forEach(inp => {
+  const aId = inp.dataset.assocRate;
+  const rate = parseFloat(inp.value);
+  if (aId && !isNaN(rate)) {
+   saves.push(lb_db.collection('lb_associates').doc(aId).update({ hourlyRate: rate }));
+   const a = lb_associates.find(x => x.id === aId);
+   if (a) a.hourlyRate = rate;
+  }
+ });
+ // Save adjustments for the date shown
+ const adjDate = document.getElementById('vcpu-adj-date').value;
+ lb_vcpuAdjustments = {};
+ document.querySelectorAll('#vcpu-assoc-tbody tr[data-assoc-id]').forEach(row => {
+  const aId = row.dataset.assocId;
+  const startEl = row.querySelector('.vcpu-adj-start');
+  const earlyEl = row.querySelector('.vcpu-adj-early');
+  lb_vcpuAdjustments[aId] = {
+   startTime: startEl ? startEl.value : '',
+   leftEarlyTime: earlyEl ? earlyEl.value : ''
+  };
+ });
+ saves.push(lb_db.collection('lb_laborAdjustments').doc(adjDate).set(lb_vcpuAdjustments));
+ Promise.all(saves).then(() => alert('Saved.')).catch(e => alert('Error saving: ' + e.message));
+ lb_vcpuRender();
+};
+
+// Load adjustments for a given date
+function lb_vcpuLoadAdjustments(date) {
+ lb_db.collection('lb_laborAdjustments').doc(date).get().then(snap => {
+  lb_vcpuAdjustments = snap.exists ? snap.data() : {};
+  lb_vcpuRenderTable();
+ });
+}
+
+// Attendance status helpers for the Labor Rates table
+function _vcpuAttLabel(type) {
+ if (!type) return '';
+ if (type === 'ncns' || type === 'ncns-pending') return 'NCNS';
+ if (type === 'bereavement-ncns') return 'NCNS';
+ if (type.startsWith('call-out-sick')) return 'Call Out (Sick)';
+ if (type.startsWith('call-out-vac')) return 'Call Out (Vacation)';
+ if (type === 'call-out' || type === 'call-out-pending') return 'Call Out';
+ if (type === 'doctors-note') return 'Dr. Note';
+ if (type === 'left-early-sick') return 'Left Early (Sick)';
+ if (type === 'left-early-before' || type === 'left-early-after') return 'Left Early';
+ if (type === 'vuto') return 'VUTO';
+ if (type === 'fmla-approved') return 'FMLA';
+ if (type === 'bereavement-docs') return 'Bereavement';
+ return type;
+}
+function _vcpuAttColor(type) {
+ const costType = (window.lb_vcpuAttCostMap || {})[type];
+ if (!costType || costType === 'none') return 'rgba(107,114,128,0.7)'; // gray — no cost
+ if (costType === 'hours-only') return 'rgba(30,58,138,0.8)'; // navy — partial cost
+ return 'rgba(146,64,14,0.8)'; // amber — full/half cost (paid time used)
+}
+
+// Render the associate table
+function lb_vcpuRenderTable() {
+ const tbody = document.getElementById('vcpu-assoc-tbody');
+ if (!tbody) return;
+ const shiftHour = lb_appSettings.shiftStartHour || 17;
+ const shiftH = Math.floor(shiftHour);
+ const shiftM = Math.round((shiftHour % 1) * 60);
+ const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
+ const assocs = lb_associates.filter(a => !a.automated && a.status !== 'inactive');
+ tbody.innerHTML = assocs.map(a => {
+  const adj = lb_vcpuAdjustments[a.id] || {};
+  const att = lb_vcpuTodayAtt[a.id];
+  const startVal = adj.startTime || defaultStart;
+  const earlyVal = att?.departureTime || adj.leftEarlyTime || '';
+  const isAdjusted = adj.startTime && adj.startTime !== defaultStart;
+  const isEarly = !!earlyVal;
+  const hrs = lb_vcpuHoursFor(a.id, defaultStart);
+  const cost = hrs * (a.hourlyRate || 0);
+  const attLabel = att ? _vcpuAttLabel(att.type) : '';
+  const attColor = att ? _vcpuAttColor(att.type) : '';
+  const attBadge = att ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${attColor};color:#fff;margin-left:4px;vertical-align:middle">${attLabel}</span>` : '';
+  const costType = att ? (window.lb_vcpuAttCostMap || {})[att.type] : null;
+  const isAbsent = costType === 'none' && att; // called out, NCNS, VUTO — no cost, grey out inputs
+  const inputStyle = isAbsent ? 'opacity:0.4;pointer-events:none' : '';
+  return `<tr data-assoc-id="${a.id}"${isAbsent ? ' style="opacity:0.65"' : ''}>
+   <td>${a.name || a.employeeId}${attBadge}</td>
+   <td style="color:var(--hero-muted);font-size:12px">${a.role || '-'}</td>
+   <td><input type="number" step="0.01" data-assoc-rate="${a.id}" value="${a.hourlyRate != null ? a.hourlyRate : ''}" placeholder="$/hr" style="width:80px"></td>
+   <td><input type="time" class="vcpu-adj-start${isAdjusted?' adjusted':''}" value="${startVal}" onchange="lb_vcpuUpdateRow(this,'start')" style="${inputStyle}"></td>
+   <td><input type="time" class="vcpu-adj-early${isEarly?' set':''}" value="${earlyVal}" placeholder="Still here" onchange="lb_vcpuUpdateRow(this,'early')" ${att?.departureTime ? 'title="Set via attendance log" style="'+inputStyle+'"' : 'style="'+inputStyle+'"'}></td>
+   <td style="font-size:12px;color:var(--hero-muted);white-space:nowrap">${isAbsent ? '<span style="color:rgba(107,114,128,0.7)">No cost</span>' : hrs.toFixed(1)+'h'+(a.hourlyRate ? ' · $'+cost.toFixed(2) : '')}</td>
+  </tr>`;
+ }).join('');
+ lb_vcpuUpdateTotalCost();
+}
+
+// Inline row change handler
+window.lb_vcpuUpdateRow = function(el, type) {
+ const row = el.closest('tr');
+ const aId = row.dataset.assocId;
+ const shiftHour = lb_appSettings.shiftStartHour || 17;
+ const shiftH = Math.floor(shiftHour);
+ const shiftM = Math.round((shiftHour % 1) * 60);
+ const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
+ if (type === 'start') {
+  el.classList.toggle('adjusted', !!el.value && el.value !== defaultStart);
+  if (!lb_vcpuAdjustments[aId]) lb_vcpuAdjustments[aId] = {};
+  lb_vcpuAdjustments[aId].startTime = el.value;
+ } else {
+  el.classList.toggle('set', !!el.value);
+  if (!lb_vcpuAdjustments[aId]) lb_vcpuAdjustments[aId] = {};
+  lb_vcpuAdjustments[aId].leftEarlyTime = el.value;
+ }
+ // Update hrs cell
+ const a = lb_associates.find(x => x.id === aId);
+ const hrs = lb_vcpuHoursFor(aId, defaultStart);
+ const cost = hrs * (a && a.hourlyRate ? a.hourlyRate : 0);
+ const cells = row.querySelectorAll('td');
+ if (cells[5]) cells[5].textContent = hrs.toFixed(1) + 'h' + (a && a.hourlyRate ? ' · $'+cost.toFixed(2) : '');
+ lb_vcpuUpdateTotalCost();
+};
+
+// How many hours an associate has billed so far.
+// Checks attendance status first; falls back to manual adjustments.
+function lb_vcpuHoursFor(assocId, defaultStart) {
+ const shiftDateStr = (document.getElementById('vcpu-adj-date') || {}).value || lb_currentShiftDate;
+ const adj = lb_vcpuAdjustments[assocId] || {};
+ const att = lb_vcpuTodayAtt[assocId];
+
+ if (att && att.type) {
+  const costType = (window.lb_vcpuAttCostMap || {})[att.type];
+  if (costType === 'none') return 0;
+  const shiftLen = lb_appSettings.shiftLengthHours || 10;
+  if (costType === 'full-shift') return shiftLen;
+  if (costType === 'half-shift') return shiftLen / 2;
+  if (costType === 'hours-only') {
+   // Use departure time from attendance entry first, then fall back to manual adj
+   const depTime = att.departureTime || adj.leftEarlyTime || '';
+   if (depTime) {
+    const startStr = adj.startTime || defaultStart;
+    const [sH, sM] = startStr.split(':').map(Number);
+    const startDt = new Date(shiftDateStr + 'T00:00:00');
+    startDt.setHours(sH, sM, 0, 0);
+    const [eH, eM] = depTime.split(':').map(Number);
+    const endDt = new Date(shiftDateStr + 'T00:00:00');
+    endDt.setHours(eH, eM, 0, 0);
+    if (endDt < startDt) endDt.setDate(endDt.getDate() + 1);
+    return Math.max(0, (endDt - startDt) / 3600000);
+   }
+   // No departure time recorded yet — fall through to time-in-progress calc
+  }
+ }
+
+ // No attendance event (or late/other type): hours from effective start to now / manual early-out
+ const startStr = adj.startTime || defaultStart;
+ const [sH, sM] = startStr.split(':').map(Number);
+ const startDt = new Date(shiftDateStr + 'T00:00:00');
+ startDt.setHours(sH, sM, 0, 0);
+ const endDt = adj.leftEarlyTime
+  ? (() => { const [eH, eM] = adj.leftEarlyTime.split(':').map(Number); const d = new Date(shiftDateStr + 'T00:00:00'); d.setHours(eH, eM, 0, 0); if (d < startDt) d.setDate(d.getDate()+1); return d; })()
+  : new Date();
+ let ms = endDt - startDt;
+ if (ms < 0) ms += 24 * 3600000;
+ return Math.max(0, ms / 3600000);
+}
+
+function lb_vcpuUpdateTotalCost() {
+ const el = document.getElementById('vcpu-total-cost');
+ if (!el) return;
+ const shiftHour = lb_appSettings.shiftStartHour || 17;
+ const shiftH = Math.floor(shiftHour);
+ const shiftM = Math.round((shiftHour % 1) * 60);
+ const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
+ const assocs = lb_associates.filter(a => !a.automated && a.status !== 'inactive');
+ const total = assocs.reduce((sum, a) => {
+  const hrs = lb_vcpuHoursFor(a.id, defaultStart);
+  return sum + hrs * (a.hourlyRate || 0);
+ }, 0);
+ el.textContent = '$' + total.toFixed(2);
+}
+
+// Calculate total labor cost and VCPU - called from lb_vcpuRender
+function lb_vcpuCalc() {
+ const shiftHour = lb_appSettings.shiftStartHour || 17;
+ const shiftH = Math.floor(shiftHour);
+ const shiftM = Math.round((shiftHour % 1) * 60);
+ const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
+ const assocs = lb_associates.filter(a => !a.automated && a.status !== 'inactive' && a.hourlyRate);
+ let totalCost = 0, assocCount = 0, totalHours = 0, callOutCount = 0, ncnsCount = 0;
+ assocs.forEach(a => {
+  const hrs = lb_vcpuHoursFor(a.id, defaultStart);
+  const att = lb_vcpuTodayAtt[a.id];
+  const costType = att ? (window.lb_vcpuAttCostMap || {})[att.type] : null;
+  if (att) {
+   if (att.type === 'ncns' || att.type === 'ncns-pending' || att.type === 'bereavement-ncns') ncnsCount++;
+   else if (costType === 'none') callOutCount++;
+  }
+  if (hrs > 0) { totalCost += hrs * a.hourlyRate; assocCount++; totalHours += hrs; }
+ });
+ // Total units = Pack + Pick from uphHistory for today
+ const packUnits = lb_uphHistory.filter(h => h.shiftDate === lb_currentShiftDate && h.tranType === LB_PACKOUT_TRAN_TYPE).reduce((s,h) => s+(h.units||0), 0);
+ const pickUnits = lb_uphHistory.filter(h => h.shiftDate === lb_currentShiftDate && h.tranType === LB_PICK_TRAN_TYPE).reduce((s,h) => s+(h.units||0), 0);
+ const totalUnits = packUnits + pickUnits;
+ const vcpu = totalUnits > 0 ? totalCost / totalUnits : null;
+ const avgHrs = assocCount > 0 ? totalHours / assocCount : 0;
+ return { totalCost, vcpu, assocCount, avgHrs, totalUnits, callOutCount, ncnsCount };
+}
+
+// Update the two header cards on the production board
+function lb_vcpuRender() {
+ const laborEl = document.getElementById('pv-labor-cost');
+ const laborSub = document.getElementById('pv-labor-sub');
+ const vcpuEl = document.getElementById('pv-vcpu-val');
+ const vcpuSub = document.getElementById('pv-vcpu-sub');
+ if (!laborEl) return;
+ const { totalCost, vcpu, assocCount, avgHrs, callOutCount, ncnsCount } = lb_vcpuCalc();
+ // Labor so far card
+ if (totalCost > 0) {
+  laborEl.textContent = '$' + Math.round(totalCost).toLocaleString();
+  laborEl.className = 'pivot-card-value white';
+  let subParts = [assocCount + ' paid · avg ' + avgHrs.toFixed(1) + 'h'];
+  if (callOutCount > 0) subParts.push(callOutCount + ' CO');
+  if (ncnsCount > 0) subParts.push(ncnsCount + ' NCNS');
+  laborSub.textContent = subParts.join(' · ');
+ } else {
+  laborEl.textContent = '-';
+  laborEl.className = 'pivot-card-value white';
+  laborSub.textContent = 'Set rates in Labor Rates tab';
+ }
+ // Live VCPU card
+ if (vcpu !== null) {
+  vcpuEl.textContent = '$' + vcpu.toFixed(3);
+  const target = lb_vcpuSettings.targetVcpu;
+  if (target) {
+   const diff = vcpu - target;
+   vcpuEl.className = 'pivot-card-value ' + (diff <= 0 ? 'green' : diff <= target * 0.1 ? 'yellow' : 'red');
+   vcpuSub.textContent = 'Target $' + target.toFixed(2) + ' · ' + (diff >= 0 ? '+' : '') + '$' + diff.toFixed(3);
+  } else {
+   vcpuEl.className = 'pivot-card-value white';
+   vcpuSub.textContent = 'No target set';
+  }
+ } else {
+  vcpuEl.textContent = '-';
+  vcpuEl.className = 'pivot-card-value white';
+  vcpuSub.textContent = totalCost > 0 ? 'No units yet' : 'Set rates in Labor Rates tab';
+ }
+}
+
+// Labor Rates tab init is handled by the admin-tab-btn click handler above
 
 // Which non-production window (if any) elapsedMinNow currently falls in, matching the labeled
 // order lb_shiftBreakOffsetsMinutes() always returns in: Startup, Break, Lunch, Break, Cleanup.
