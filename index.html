@@ -16809,7 +16809,8 @@ window.lb_syncCertToRole = async function(employeeId, assocName, certLabel, newS
  nowMarker.style.left = nowPct.toFixed(3) + "%";
  }
  // Live labor cost — recalculates hours to now every second
- if (typeof lb_vcpuRender === 'function') lb_vcpuRender();
+ // try/catch guards against the first tick firing before VCPU let-variables are initialized
+ if (typeof lb_vcpuRender === 'function') { try { lb_vcpuRender(); } catch(e) {} }
  }
  lb_tick();
  setInterval(lb_tick, 1000);
