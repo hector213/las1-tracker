@@ -17701,7 +17701,8 @@ function lb_vcpuLoadTodayAtt() {
  lb_unsubVcpuAtt = lb_db.collection('lb_shiftAttSummary').doc(lb_currentShiftDate).onSnapshot(snap => {
   lb_vcpuTodayAtt = snap.exists ? snap.data() : {};
   window.lb_vcpuTodayAtt = lb_vcpuTodayAtt;
-  lb_vcpuRender(); // refresh cards whenever attendance changes
+  lb_vcpuRender(); // refresh header cards whenever attendance changes
+  if (lb_vcpuUnlocked) lb_vcpuRenderTable(); // also refresh table if Labor Rates tab is open
  });
 }
 
@@ -17929,12 +17930,12 @@ window.lb_vcpuUpdateRow = function(el, type) {
   if (!lb_vcpuAdjustments[aId]) lb_vcpuAdjustments[aId] = {};
   lb_vcpuAdjustments[aId].leftEarlyTime = el.value;
  }
- // Update hrs cell
- const a = lb_associates.find(x => x.id === aId);
+ // Update hrs billed cell (index 6: name, role, exempt, rate, start, early, hrs)
+ const hourlyRate = lb_vcpuRates[aId]?.hourlyRate || 0;
  const hrs = lb_vcpuHoursFor(aId, defaultStart);
- const cost = hrs * (a && a.hourlyRate ? a.hourlyRate : 0);
+ const cost = hrs * hourlyRate;
  const cells = row.querySelectorAll('td');
- if (cells[5]) cells[5].textContent = hrs.toFixed(1) + 'h' + (a && a.hourlyRate ? ' · $'+cost.toFixed(2) : '');
+ if (cells[6]) cells[6].textContent = hrs.toFixed(1) + 'h' + (hourlyRate ? ' · $'+cost.toFixed(2) : '');
  lb_vcpuUpdateTotalCost();
 };
 
