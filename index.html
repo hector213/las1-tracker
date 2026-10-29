@@ -6961,16 +6961,20 @@ window.deleteAttendance = async (entryId, type, pts) => {
   const deletedEntry = lastAttendance.find(e => e.id === entryId);
   const entryDate = deletedEntry?.date || '';
   if (entryDate === window.lb_currentShiftDate && window.lb_vcpuAttCostMap[type] !== undefined) {
-   // Use compat SDK FieldValue.delete() to remove the associate's key from the summary doc
-   const fvDelete = window.firebase?.firestore?.FieldValue?.delete();
-   if (fvDelete) {
-    window.lb_db.collection('lb_shiftAttSummary').doc(entryDate).update({ [currentAssociateId]: fvDelete }).catch(() => {});
-   }
-   // Also clear in-memory immediately so cards update without waiting for snapshot
+   // Clear in-memory immediately so cards update right away
    if (window.lb_vcpuTodayAtt) {
     delete window.lb_vcpuTodayAtt[currentAssociateId];
     if (typeof window.lb_vcpuRender === 'function') window.lb_vcpuRender();
+    if (typeof window.lb_vcpuRenderTable === 'function') window.lb_vcpuRenderTable();
    }
+   // Rewrite lb_shiftAttSummary doc without this associate's key (avoids FieldValue.delete SDK issues)
+   window.lb_db.collection('lb_shiftAttSummary').doc(entryDate).get().then(snap => {
+    if (snap.exists) {
+     const data = snap.data() || {};
+     delete data[currentAssociateId];
+     window.lb_db.collection('lb_shiftAttSummary').doc(entryDate).set(data);
+    }
+   }).catch(() => {});
   }
  }
  loadTodayAttendanceStats().then(() => {
@@ -17932,6 +17936,7 @@ function lb_vcpuRenderTable() {
  }).join('');
  lb_vcpuUpdateTotalCost();
 }
+window.lb_vcpuRenderTable = lb_vcpuRenderTable; // expose to ES module for attendance delete sync
 
 // Inline row change handler
 window.lb_vcpuUpdateRow = function(el, type) {
