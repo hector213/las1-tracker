@@ -15643,40 +15643,64 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     </div>
    </div>
 
+   <!-- Packout units row -->
+   <div style="display:flex;align-items:flex-end;gap:12px;margin-bottom:16px;background:rgba(255,255,255,.04);border-radius:8px;padding:10px 14px">
+    <div class="field" style="margin:0">
+     <label style="font-size:11px">Auto-detected units (from import)</label>
+     <div style="font-size:18px;font-weight:700;color:var(--hero-text)" id="vcpu-auto-units">0</div>
+    </div>
+    <div style="font-size:18px;color:var(--hero-muted);padding-bottom:2px">+</div>
+    <div class="field" style="margin:0">
+     <label style="font-size:11px">Additional units (manual)</label>
+     <input type="number" id="vcpu-manual-units" min="0" step="1" placeholder="0" style="width:90px" oninput="lb_vcpuSaveManualUnits()">
+    </div>
+    <div style="font-size:18px;color:var(--hero-muted);padding-bottom:2px">=</div>
+    <div class="field" style="margin:0">
+     <label style="font-size:11px">Total units used for VCPU</label>
+     <div style="font-size:18px;font-weight:700;color:var(--orange)" id="vcpu-total-units">0</div>
+    </div>
+   </div>
+
    <!-- Time adjustments -->
    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
     <div class="field" style="margin:0">
      <label>Shift date</label>
      <input type="date" id="vcpu-adj-date">
     </div>
-    <div style="font-size:12px;color:var(--hero-muted);margin-top:18px">Defaults: start = shift start, left early = blank (full shift)</div>
+    <div style="font-size:12px;color:var(--hero-muted);margin-top:18px">Defaults: start = shift start, end time = blank (runs to shift end or now)</div>
    </div>
 
    <!-- Legend -->
    <div style="display:flex;gap:14px;margin-bottom:8px">
     <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--hero-muted)"><span style="width:10px;height:10px;border-radius:2px;background:#92400e;display:inline-block"></span> Start adjusted</div>
-    <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--hero-muted)"><span style="width:10px;height:10px;border-radius:2px;background:#7f1d1d;display:inline-block"></span> Left early</div>
+    <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--hero-muted)"><span style="width:10px;height:10px;border-radius:2px;background:#7f1d1d;display:inline-block"></span> End time set</div>
    </div>
+
+   <!-- Dept filter bar -->
+   <div id="vcpu-dept-filter" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
 
    <table class="admin-table" id="vcpu-assoc-table">
     <thead>
      <tr>
       <th>Associate</th>
       <th>Role</th>
+      <th>Dept</th>
       <th>Exempt</th>
       <th>Hourly rate ($)</th>
       <th>Start time</th>
-      <th>Left early</th>
+      <th>End time</th>
       <th>Hrs billed</th>
      </tr>
     </thead>
     <tbody id="vcpu-assoc-tbody"></tbody>
    </table>
 
+   <!-- Total + dept breakdown -->
    <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.05);border-radius:8px;padding:10px 14px;margin-top:10px">
-    <div style="font-size:13px;color:var(--hero-muted)">Total labor cost this shift</div>
+    <div style="font-size:13px;color:var(--hero-muted)" id="vcpu-total-label">Total labor cost this shift</div>
     <div style="font-size:16px;font-weight:500;color:var(--hero-text)" id="vcpu-total-cost">-</div>
    </div>
+   <div id="vcpu-dept-summary" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px"></div>
   </div>
  </div>
 
@@ -17136,7 +17160,10 @@ document.querySelectorAll(".admin-tab-btn").forEach(btn => {
 function lb_startListeners() {
  // Pre-load vcpuSettings + vcpuRates so board cards render correctly on load
  lb_db.collection('lb_settings').doc('vcpuSettings').get().then(snap => {
-  if (snap.exists) lb_vcpuSettings = { ...lb_vcpuSettings, ...snap.data() };
+  if (snap.exists) {
+   lb_vcpuSettings = { ...lb_vcpuSettings, ...snap.data() };
+   lb_vcpuManualUnits = parseInt(lb_vcpuSettings.manualUnits) || 0;
+  }
   return lb_db.collection('lb_settings').doc('vcpuRates').get();
  }).then(snap => {
   if (snap && snap.exists) lb_vcpuRates = snap.data() || {};
@@ -17741,6 +17768,7 @@ let lb_vcpuSettings = { pin: '', targetVcpu: null, fringeRate: 22 };
 let lb_vcpuPinEntry = '';
 let lb_vcpuUnlocked = false;
 let lb_vcpuAdjustments = {}; // associateId -> { startTime, leftEarlyTime }
+let lb_vcpuManualUnits = 0; // additional units added manually in Labor Rates tab
 let lb_vcpuRates = {}; // associateId -> { hourlyRate, exempt } — stored in lb_settings/vcpuRates, NOT lb_associates
 
 // Called when the Labor Rates tab is opened (settings already loaded by caller)
@@ -17800,6 +17828,9 @@ function lb_vcpuShowUnlocked() {
  if (t && lb_vcpuSettings.targetVcpu != null) t.value = lb_vcpuSettings.targetVcpu;
  const fr = document.getElementById('vcpu-fringe-input');
  if (fr) fr.value = lb_vcpuSettings.fringeRate ?? 22;
+ const mu = document.getElementById('vcpu-manual-units');
+ if (mu) mu.value = lb_vcpuManualUnits || '';
+ lb_vcpuRender(); // refresh units display
  lb_vcpuRenderTable();
 }
 window.vcpu_lock = function() {
@@ -17865,6 +17896,15 @@ window.vcpu_saveAll = function() {
  lb_vcpuRender();
 };
 
+// Save manual units instantly when the input changes
+window.lb_vcpuSaveManualUnits = function() {
+ const el = document.getElementById('vcpu-manual-units');
+ const val = parseInt(el?.value) || 0;
+ lb_vcpuManualUnits = val;
+ lb_db.collection('lb_settings').doc('vcpuSettings').set({ manualUnits: val }, { merge: true });
+ lb_vcpuRender();
+};
+
 // Load adjustments for a given date
 function lb_vcpuLoadAdjustments(date) {
  lb_db.collection('lb_laborAdjustments').doc(date).get().then(snap => {
@@ -17898,6 +17938,8 @@ function _vcpuAttColor(type) {
 
 // Render the associate table — only shows associates currently on the board (active segments)
 // This naturally eliminates duplicate logins: only the placed name appears
+let lb_vcpuActiveDept = 'all'; // currently selected dept filter
+
 function lb_vcpuRenderTable() {
  const tbody = document.getElementById('vcpu-assoc-tbody');
  if (!tbody) return;
@@ -17905,15 +17947,27 @@ function lb_vcpuRenderTable() {
  const shiftH = Math.floor(shiftHour);
  const shiftM = Math.round((shiftHour % 1) * 60);
  const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
- // Pull from main dashboard associate cards — active associates only
  const mainAssocs = window.lb_getAllAssociates ? window.lb_getAllAssociates() : [];
  const assocs = mainAssocs.filter(a => a.status === 'active');
  if (!assocs.length) {
-  tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;opacity:.5;padding:12px">No active associates found</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;opacity:.5;padding:12px">No active associates found</td></tr>`;
   lb_vcpuUpdateTotalCost();
   return;
  }
+
+ // Build unique dept list for filter bar
+ const depts = [...new Set(assocs.map(a => (a.department || 'No Dept').trim()))].sort();
+ const filterBar = document.getElementById('vcpu-dept-filter');
+ if (filterBar) {
+  filterBar.innerHTML = ['all', ...depts].map(d => {
+   const isActive = lb_vcpuActiveDept === d;
+   return `<button onclick="lb_vcpuSetDept('${d.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 10px;border-radius:12px;border:1px solid ${isActive ? 'var(--orange)' : 'rgba(255,255,255,.2)'};background:${isActive ? 'var(--orange)' : 'transparent'};color:${isActive ? '#fff' : 'var(--hero-muted)'};cursor:pointer;white-space:nowrap">${d === 'all' ? 'All Depts' : d}</button>`;
+  }).join('');
+ }
+
  tbody.innerHTML = assocs.map(a => {
+  const dept = (a.department || 'No Dept').trim();
+  const hidden = lb_vcpuActiveDept !== 'all' && dept !== lb_vcpuActiveDept;
   const rates = lb_vcpuRates[a.id] || {};
   const hourlyRate = rates.hourlyRate ?? null;
   const isExempt = !!rates.exempt;
@@ -17931,17 +17985,67 @@ function lb_vcpuRenderTable() {
   const costType = att ? (window.lb_vcpuAttCostMap || {})[att.type] : null;
   const isAbsent = costType === 'none' && att;
   const inputStyle = isAbsent ? 'opacity:0.4;pointer-events:none' : '';
-  return `<tr data-assoc-id="${a.id}"${isAbsent ? ' style="opacity:0.65"' : ''}>
+  return `<tr data-assoc-id="${a.id}" data-dept="${dept}"${hidden ? ' style="display:none"' : (isAbsent ? ' style="opacity:0.65"' : '')}>
    <td>${a.name || a.employeeId}${attBadge}</td>
    <td style="color:var(--hero-muted);font-size:12px">${a.role || '-'}</td>
+   <td style="color:var(--hero-muted);font-size:12px">${dept}</td>
    <td style="text-align:center"><input type="checkbox" data-assoc-exempt="${a.id}"${isExempt ? ' checked' : ''} title="Exempt = salaried, excluded from VCPU"></td>
    <td><input type="number" step="0.01" data-assoc-rate="${a.id}" value="${hourlyRate != null ? hourlyRate : ''}" placeholder="$/hr" style="width:80px"></td>
    <td><input type="time" class="vcpu-adj-start${isAdjusted?' adjusted':''}" value="${startVal}" onchange="lb_vcpuUpdateRow(this,'start')" style="${inputStyle}"></td>
-   <td><input type="time" class="vcpu-adj-early${isEarly?' set':''}" value="${earlyVal}" placeholder="Still here" onchange="lb_vcpuUpdateRow(this,'early')" ${att?.departureTime ? 'title="Set via attendance log" style="'+inputStyle+'"' : 'style="'+inputStyle+'"'}></td>
+   <td><input type="time" class="vcpu-adj-early${isEarly?' set':''}" value="${earlyVal}" placeholder="Full shift" onchange="lb_vcpuUpdateRow(this,'early')" title="${att?.departureTime ? 'Set via attendance log — override allowed' : 'Enter departure or stayed-late time (any time past shift start)'}" style="${inputStyle}"></td>
    <td style="font-size:12px;color:var(--hero-muted);white-space:nowrap">${isAbsent ? '<span style="color:rgba(107,114,128,0.7)">No cost</span>' : hrs.toFixed(1)+'h'+(hourlyRate ? ' · $'+cost.toFixed(2) : '')+(isExempt ? '<span style="font-size:10px;opacity:.6"> (excl. VCPU)</span>' : '')}</td>
   </tr>`;
  }).join('');
+
  lb_vcpuUpdateTotalCost();
+ lb_vcpuRenderDeptSummary(assocs, defaultStart);
+}
+
+// Dept filter button handler
+window.lb_vcpuSetDept = function(dept) {
+ lb_vcpuActiveDept = dept;
+ // Show/hide rows and refresh filter bar highlights without full re-render
+ document.querySelectorAll('#vcpu-dept-filter button').forEach(btn => {
+  const btnDept = btn.textContent === 'All Depts' ? 'all' : btn.textContent;
+  const active = btnDept === dept;
+  btn.style.borderColor = active ? 'var(--orange)' : 'rgba(255,255,255,.2)';
+  btn.style.background = active ? 'var(--orange)' : 'transparent';
+  btn.style.color = active ? '#fff' : 'var(--hero-muted)';
+ });
+ document.querySelectorAll('#vcpu-assoc-tbody tr[data-assoc-id]').forEach(row => {
+  const rowDept = row.dataset.dept;
+  const hide = dept !== 'all' && rowDept !== dept;
+  row.style.display = hide ? 'none' : '';
+ });
+ lb_vcpuUpdateTotalCost();
+};
+
+// Dept breakdown summary cards
+function lb_vcpuRenderDeptSummary(assocs, defaultStart) {
+ const el = document.getElementById('vcpu-dept-summary');
+ if (!el) return;
+ // Build per-dept totals across ALL associates (not filtered)
+ const deptMap = {};
+ assocs.forEach(a => {
+  const dept = (a.department || 'No Dept').trim();
+  if (!deptMap[dept]) deptMap[dept] = { hrs: 0, cost: 0, count: 0 };
+  const rate = lb_vcpuRates[a.id]?.hourlyRate || 0;
+  const hrs = lb_vcpuHoursFor(a.id, defaultStart);
+  const costType = lb_vcpuTodayAtt[a.id] ? (window.lb_vcpuAttCostMap || {})[lb_vcpuTodayAtt[a.id].type] : null;
+  if (costType !== 'none') {
+   deptMap[dept].hrs += hrs;
+   deptMap[dept].cost += hrs * rate;
+   deptMap[dept].count++;
+  }
+ });
+ el.innerHTML = Object.entries(deptMap).sort((a,b) => b[1].cost - a[1].cost).map(([dept, d]) => {
+  const isActive = lb_vcpuActiveDept === dept;
+  return `<div onclick="lb_vcpuSetDept('${dept.replace(/'/g,"\\'")}')" style="cursor:pointer;padding:8px 14px;border-radius:8px;border:1px solid ${isActive ? 'var(--orange)' : 'rgba(255,255,255,.12)'};background:rgba(255,255,255,.04)">
+   <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:${isActive ? 'var(--orange)' : 'var(--hero-muted)'};margin-bottom:2px">${dept}</div>
+   <div style="font-size:14px;font-weight:700;color:var(--hero-text)">$${d.cost.toFixed(0)}</div>
+   <div style="font-size:11px;color:var(--hero-muted)">${d.hrs.toFixed(1)}h · ${d.count} assoc</div>
+  </div>`;
+ }).join('');
 }
 window.lb_vcpuRenderTable = lb_vcpuRenderTable; // expose to ES module for attendance delete sync
 
@@ -17962,12 +18066,12 @@ window.lb_vcpuUpdateRow = function(el, type) {
   if (!lb_vcpuAdjustments[aId]) lb_vcpuAdjustments[aId] = {};
   lb_vcpuAdjustments[aId].leftEarlyTime = el.value;
  }
- // Update hrs billed cell (index 6: name, role, exempt, rate, start, early, hrs)
+ // Update hrs billed cell (index 7: name, role, dept, exempt, rate, start, early, hrs)
  const hourlyRate = lb_vcpuRates[aId]?.hourlyRate || 0;
  const hrs = lb_vcpuHoursFor(aId, defaultStart);
  const cost = hrs * hourlyRate;
  const cells = row.querySelectorAll('td');
- if (cells[6]) cells[6].textContent = hrs.toFixed(1) + 'h' + (hourlyRate ? ' · $'+cost.toFixed(2) : '');
+ if (cells[7]) cells[7].textContent = hrs.toFixed(1) + 'h' + (hourlyRate ? ' · $'+cost.toFixed(2) : '');
  lb_vcpuUpdateTotalCost();
 };
 
@@ -18038,18 +18142,31 @@ function lb_vcpuHoursFor(assocId, defaultStart) {
 
 function lb_vcpuUpdateTotalCost() {
  const el = document.getElementById('vcpu-total-cost');
+ const labelEl = document.getElementById('vcpu-total-label');
  if (!el) return;
  const shiftHour = lb_appSettings.shiftStartHour || 17;
  const shiftH = Math.floor(shiftHour);
  const shiftM = Math.round((shiftHour % 1) * 60);
  const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
  const mainAssocs = window.lb_getAllAssociates ? window.lb_getAllAssociates() : [];
- const assocs = mainAssocs.filter(a => a.status === 'active');
+ // Sum only visible (non-filtered) associates
+ const assocs = mainAssocs.filter(a => {
+  if (a.status !== 'active') return false;
+  if (lb_vcpuActiveDept === 'all') return true;
+  return (a.department || 'No Dept').trim() === lb_vcpuActiveDept;
+ });
+ let totalHrs = 0;
  const total = assocs.reduce((sum, a) => {
   const rate = lb_vcpuRates[a.id]?.hourlyRate || 0;
-  return sum + lb_vcpuHoursFor(a.id, defaultStart) * rate;
+  const hrs = lb_vcpuHoursFor(a.id, defaultStart);
+  totalHrs += hrs;
+  return sum + hrs * rate;
  }, 0);
  el.textContent = '$' + total.toFixed(2);
+ if (labelEl) {
+  const deptLabel = lb_vcpuActiveDept === 'all' ? 'Total labor cost this shift' : `${lb_vcpuActiveDept} — ${totalHrs.toFixed(1)}h billed`;
+  labelEl.textContent = deptLabel;
+ }
 }
 
 // Calculate total labor cost and VCPU - called from lb_vcpuRender
@@ -18073,13 +18190,14 @@ function lb_vcpuCalc() {
   }
   if (hrs > 0) { totalCost += hrs * rate; assocCount++; totalHours += hrs; }
  });
- // Total units = Packout (shipped) only — matches "Shipped" on the cost spreadsheet
- const totalUnits = lb_uphHistory.filter(h => h.shiftDate === lb_currentShiftDate && h.tranType === LB_PACKOUT_TRAN_TYPE).reduce((s,h) => s+(h.units||0), 0);
+ // Total units = Packout (shipped) only + any manually added units
+ const autoUnits = lb_uphHistory.filter(h => h.shiftDate === lb_currentShiftDate && h.tranType === LB_PACKOUT_TRAN_TYPE).reduce((s,h) => s+(h.units||0), 0);
+ const totalUnits = autoUnits + (lb_vcpuManualUnits || 0);
  const fringeMultiplier = 1 + ((lb_vcpuSettings.fringeRate ?? 22) / 100);
  const totalCostWithFringe = totalCost * fringeMultiplier;
  const vcpu = totalUnits > 0 ? totalCostWithFringe / totalUnits : null;
  const avgHrs = assocCount > 0 ? totalHours / assocCount : 0;
- return { totalCost: totalCostWithFringe, vcpu, assocCount, avgHrs, totalUnits, callOutCount, ncnsCount };
+ return { totalCost: totalCostWithFringe, vcpu, assocCount, avgHrs, totalUnits, autoUnits, callOutCount, ncnsCount };
 }
 
 // Update the two header cards on the production board
@@ -18089,7 +18207,12 @@ function lb_vcpuRender() {
  const vcpuEl = document.getElementById('pv-vcpu-val');
  const vcpuSub = document.getElementById('pv-vcpu-sub');
  if (!laborEl) return;
- const { totalCost, vcpu, assocCount, avgHrs, callOutCount, ncnsCount } = lb_vcpuCalc();
+ const { totalCost, vcpu, assocCount, avgHrs, callOutCount, ncnsCount, autoUnits, totalUnits } = lb_vcpuCalc();
+ // Refresh units display in Labor Rates tab if visible
+ const autoUnitsEl = document.getElementById('vcpu-auto-units');
+ const totalUnitsEl = document.getElementById('vcpu-total-units');
+ if (autoUnitsEl) autoUnitsEl.textContent = autoUnits.toLocaleString();
+ if (totalUnitsEl) totalUnitsEl.textContent = totalUnits.toLocaleString();
  // Labor so far card
  if (totalCost > 0) {
   laborEl.textContent = '$' + Math.round(totalCost).toLocaleString();
