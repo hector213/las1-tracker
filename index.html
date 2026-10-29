@@ -6955,6 +6955,24 @@ window.deleteAttendance = async (entryId, type, pts) => {
  recalcAttExpiry(currentAssociateId); // update nextAttExpiry on associate doc (non-blocking)
  listenAttendance(currentAssociateId); // refresh the attendance list immediately
  checkPendingNotifications(); // refresh threshold alerts in notification banner
+ // If this attendance entry was for today's shift and was in the VCPU cost map,
+ // remove it from lb_shiftAttSummary so VCPU stops treating them as absent/early
+ if (window.lb_db && window.lb_currentShiftDate && window.lb_vcpuAttCostMap) {
+  const deletedEntry = lastAttendance.find(e => e.id === entryId);
+  const entryDate = deletedEntry?.date || '';
+  if (entryDate === window.lb_currentShiftDate && window.lb_vcpuAttCostMap[type] !== undefined) {
+   // Use compat SDK FieldValue.delete() to remove the associate's key from the summary doc
+   const fvDelete = window.firebase?.firestore?.FieldValue?.delete();
+   if (fvDelete) {
+    window.lb_db.collection('lb_shiftAttSummary').doc(entryDate).update({ [currentAssociateId]: fvDelete }).catch(() => {});
+   }
+   // Also clear in-memory immediately so cards update without waiting for snapshot
+   if (window.lb_vcpuTodayAtt) {
+    delete window.lb_vcpuTodayAtt[currentAssociateId];
+    if (typeof window.lb_vcpuRender === 'function') window.lb_vcpuRender();
+   }
+  }
+ }
  loadTodayAttendanceStats().then(() => {
  const activeAll = allAssociates.filter(a => a.status === 'active');
  const activeAssoc = activeAll.filter(a => a.position !== 'supervisor' && a.position !== 'ops-manager' && a.position !== 'lead');
