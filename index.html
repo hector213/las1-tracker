@@ -17938,7 +17938,18 @@ function _vcpuAttColor(type) {
 
 // Render the associate table — only shows associates currently on the board (active segments)
 // This naturally eliminates duplicate logins: only the placed name appears
-let lb_vcpuActiveDept = 'all'; // currently selected dept filter
+// Fixed canonical depts and normalization map
+const LB_DEPT_ORDER = ['Outbound', 'Inbound', 'Maintenance', 'Inventory Control'];
+const LB_DEPT_NORMALIZE = {
+ 'outbound': 'Outbound', 'pack': 'Outbound', 'pick': 'Outbound', 'operations': 'Outbound',
+ 'inbound': 'Inbound', 'receiving': 'Inbound',
+ 'maintenance': 'Maintenance', 'facilities': 'Maintenance',
+ 'inventory control': 'Inventory Control', 'inventory': 'Inventory Control', 'ic': 'Inventory Control',
+};
+function lb_vcpuNormDept(dept) {
+ return LB_DEPT_NORMALIZE[(dept||'').toLowerCase().trim()] || (dept || 'Other');
+}
+let lb_vcpuSelectedDepts = new Set(); // empty = all selected
 
 function lb_vcpuRenderTable() {
  const tbody = document.getElementById('vcpu-assoc-tbody');
@@ -17955,19 +17966,21 @@ function lb_vcpuRenderTable() {
   return;
  }
 
- // Build unique dept list for filter bar
- const depts = [...new Set(assocs.map(a => (a.department || 'No Dept').trim()))].sort();
+ // Build filter bar — fixed 4 depts + All
  const filterBar = document.getElementById('vcpu-dept-filter');
  if (filterBar) {
-  filterBar.innerHTML = ['all', ...depts].map(d => {
-   const isActive = lb_vcpuActiveDept === d;
-   return `<button onclick="lb_vcpuSetDept('${d.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 10px;border-radius:12px;border:1px solid ${isActive ? 'var(--orange)' : 'rgba(255,255,255,.2)'};background:${isActive ? 'var(--orange)' : 'transparent'};color:${isActive ? '#fff' : 'var(--hero-muted)'};cursor:pointer;white-space:nowrap">${d === 'all' ? 'All Depts' : d}</button>`;
-  }).join('');
+  const allSelected = lb_vcpuSelectedDepts.size === 0;
+  filterBar.innerHTML = `<button onclick="lb_vcpuSetDept('all')" style="font-size:12px;padding:4px 14px;border-radius:12px;border:1px solid ${allSelected ? '#ff7a1c' : 'rgba(255,255,255,.25)'};background:${allSelected ? '#ff7a1c' : 'rgba(255,255,255,.08)'};color:#ffffff;cursor:pointer;font-weight:${allSelected?'700':'400'}">All</button>` +
+   LB_DEPT_ORDER.map(d => {
+    const on = lb_vcpuSelectedDepts.has(d);
+    const clr = (LB_DEPT_COLORS||{})[d]?.accent || '#ff7a1c';
+    return `<button onclick="lb_vcpuToggleDept('${d}')" style="font-size:12px;padding:4px 14px;border-radius:12px;border:1px solid ${on ? clr : 'rgba(255,255,255,.25)'};background:${on ? clr : 'rgba(255,255,255,.08)'};color:#ffffff;cursor:pointer;font-weight:${on?'700':'400'}">${d}</button>`;
+   }).join('');
  }
 
  tbody.innerHTML = assocs.map(a => {
-  const dept = (a.department || 'No Dept').trim();
-  const hidden = lb_vcpuActiveDept !== 'all' && dept !== lb_vcpuActiveDept;
+  const dept = lb_vcpuNormDept(a.department);
+  const hidden = lb_vcpuSelectedDepts.size > 0 && !lb_vcpuSelectedDepts.has(dept);
   const rates = lb_vcpuRates[a.id] || {};
   const hourlyRate = rates.hourlyRate ?? null;
   const isExempt = !!rates.exempt;
@@ -17988,7 +18001,7 @@ function lb_vcpuRenderTable() {
   return `<tr data-assoc-id="${a.id}" data-dept="${dept}"${hidden ? ' style="display:none"' : (isAbsent ? ' style="opacity:0.65"' : '')}>
    <td>${a.name || a.employeeId}${attBadge}</td>
    <td style="color:var(--hero-muted);font-size:12px">${a.role || '-'}</td>
-   <td style="color:var(--hero-muted);font-size:12px">${dept}</td>
+   <td style="color:var(--hero-muted);font-size:12px">${lb_vcpuNormDept(a.department)}</td>
    <td style="text-align:center"><input type="checkbox" data-assoc-exempt="${a.id}"${isExempt ? ' checked' : ''} title="Exempt = salaried, excluded from VCPU"></td>
    <td><input type="number" step="0.01" data-assoc-rate="${a.id}" value="${hourlyRate != null ? hourlyRate : ''}" placeholder="$/hr" style="width:80px"></td>
    <td><input type="time" class="vcpu-adj-start${isAdjusted?' adjusted':''}" value="${startVal}" onchange="lb_vcpuUpdateRow(this,'start')" style="${inputStyle}"></td>
@@ -18001,34 +18014,55 @@ function lb_vcpuRenderTable() {
  lb_vcpuRenderDeptSummary(assocs, defaultStart);
 }
 
-// Dept filter button handler
+// Dept filter: clear to All
 window.lb_vcpuSetDept = function(dept) {
- lb_vcpuActiveDept = dept;
- // Show/hide rows and refresh filter bar highlights without full re-render
+ if (dept === 'all') lb_vcpuSelectedDepts.clear();
+ lb_vcpuApplyDeptFilter();
+};
+// Dept filter: toggle individual dept on/off
+window.lb_vcpuToggleDept = function(dept) {
+ if (lb_vcpuSelectedDepts.has(dept)) lb_vcpuSelectedDepts.delete(dept);
+ else lb_vcpuSelectedDepts.add(dept);
+ if (lb_vcpuSelectedDepts.size === LB_DEPT_ORDER.length) lb_vcpuSelectedDepts.clear(); // all on = same as all
+ lb_vcpuApplyDeptFilter();
+};
+function lb_vcpuApplyDeptFilter() {
+ const allSelected = lb_vcpuSelectedDepts.size === 0;
+ // Refresh filter bar button states
  document.querySelectorAll('#vcpu-dept-filter button').forEach(btn => {
-  const btnDept = btn.textContent === 'All Depts' ? 'all' : btn.textContent;
-  const active = btnDept === dept;
-  btn.style.borderColor = active ? 'var(--orange)' : 'rgba(255,255,255,.2)';
-  btn.style.background = active ? 'var(--orange)' : 'transparent';
-  btn.style.color = active ? '#fff' : 'var(--hero-muted)';
+  const isAll = btn.textContent === 'All';
+  const on = isAll ? allSelected : lb_vcpuSelectedDepts.has(btn.textContent);
+  const clr = isAll ? '#ff7a1c' : ((LB_DEPT_COLORS||{})[btn.textContent]?.accent || '#ff7a1c');
+  btn.style.borderColor = on ? clr : 'rgba(255,255,255,.25)';
+  btn.style.background = on ? clr : 'rgba(255,255,255,.08)';
+  btn.style.color = '#ffffff';
+  btn.style.fontWeight = on ? '700' : '400';
  });
+ // Show/hide rows
  document.querySelectorAll('#vcpu-assoc-tbody tr[data-assoc-id]').forEach(row => {
-  const rowDept = row.dataset.dept;
-  const hide = dept !== 'all' && rowDept !== dept;
+  const hide = !allSelected && !lb_vcpuSelectedDepts.has(row.dataset.dept);
   row.style.display = hide ? 'none' : '';
  });
  lb_vcpuUpdateTotalCost();
+}
+
+// Dept accent colors — CarParts palette
+const LB_DEPT_COLORS = {
+ 'Outbound':          { accent: '#ff7a1c', bg: 'rgba(255,122,28,.15)',  border: 'rgba(255,122,28,.5)'  },
+ 'Inbound':           { accent: '#38bdf8', bg: 'rgba(56,189,248,.12)',  border: 'rgba(56,189,248,.45)' },
+ 'Maintenance':       { accent: '#4ade80', bg: 'rgba(74,222,128,.12)',  border: 'rgba(74,222,128,.4)'  },
+ 'Inventory Control': { accent: '#c084fc', bg: 'rgba(192,132,252,.12)', border: 'rgba(192,132,252,.4)' },
 };
 
-// Dept breakdown summary cards
+// Dept breakdown summary cards — fixed canonical order
 function lb_vcpuRenderDeptSummary(assocs, defaultStart) {
  const el = document.getElementById('vcpu-dept-summary');
  if (!el) return;
- // Build per-dept totals across ALL associates (not filtered)
  const deptMap = {};
+ LB_DEPT_ORDER.forEach(d => { deptMap[d] = { hrs: 0, cost: 0, count: 0 }; });
  assocs.forEach(a => {
-  const dept = (a.department || 'No Dept').trim();
-  if (!deptMap[dept]) deptMap[dept] = { hrs: 0, cost: 0, count: 0 };
+  const dept = lb_vcpuNormDept(a.department);
+  if (!deptMap[dept]) return;
   const rate = lb_vcpuRates[a.id]?.hourlyRate || 0;
   const hrs = lb_vcpuHoursFor(a.id, defaultStart);
   const costType = lb_vcpuTodayAtt[a.id] ? (window.lb_vcpuAttCostMap || {})[lb_vcpuTodayAtt[a.id].type] : null;
@@ -18038,14 +18072,20 @@ function lb_vcpuRenderDeptSummary(assocs, defaultStart) {
    deptMap[dept].count++;
   }
  });
- el.innerHTML = Object.entries(deptMap).sort((a,b) => b[1].cost - a[1].cost).map(([dept, d]) => {
-  const isActive = lb_vcpuActiveDept === dept;
-  return `<div onclick="lb_vcpuSetDept('${dept.replace(/'/g,"\\'")}')" style="cursor:pointer;padding:8px 14px;border-radius:8px;border:1px solid ${isActive ? 'var(--orange)' : 'rgba(255,255,255,.12)'};background:rgba(255,255,255,.04)">
-   <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:${isActive ? 'var(--orange)' : 'var(--hero-muted)'};margin-bottom:2px">${dept}</div>
-   <div style="font-size:14px;font-weight:700;color:var(--hero-text)">$${d.cost.toFixed(0)}</div>
-   <div style="font-size:11px;color:var(--hero-muted)">${d.hrs.toFixed(1)}h · ${d.count} assoc</div>
+ el.innerHTML = LB_DEPT_ORDER.map(dept => {
+  const d = deptMap[dept];
+  const on = lb_vcpuSelectedDepts.has(dept);
+  const clr = LB_DEPT_COLORS[dept] || { accent: '#ff7a1c', bg: 'rgba(255,122,28,.15)', border: 'rgba(255,122,28,.5)' };
+  return `<div onclick="lb_vcpuToggleDept('${dept}')" style="cursor:pointer;flex:1;min-width:148px;padding:12px 16px;border-radius:10px;border:2px solid ${on ? clr.accent : 'rgba(255,255,255,.12)'};background:${on ? clr.bg : 'rgba(255,255,255,.04)'};transition:border-color .15s,background .15s">
+   <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${clr.accent};margin-bottom:6px">${dept}</div>
+   <div style="font-size:20px;font-weight:800;color:#ffffff;line-height:1;letter-spacing:-.02em">$${Math.round(d.cost).toLocaleString()}</div>
+   <div style="font-size:12px;color:#cbd5e1;margin-top:4px;font-weight:500">${d.hrs.toFixed(1)}h &nbsp;·&nbsp; ${d.count} assoc</div>
   </div>`;
  }).join('');
+ el.style.display = 'flex';
+ el.style.flexWrap = 'wrap';
+ el.style.gap = '8px';
+ el.style.marginTop = '10px';
 }
 window.lb_vcpuRenderTable = lb_vcpuRenderTable; // expose to ES module for attendance delete sync
 
@@ -18149,11 +18189,12 @@ function lb_vcpuUpdateTotalCost() {
  const shiftM = Math.round((shiftHour % 1) * 60);
  const defaultStart = `${String(shiftH).padStart(2,'0')}:${String(shiftM).padStart(2,'0')}`;
  const mainAssocs = window.lb_getAllAssociates ? window.lb_getAllAssociates() : [];
+ const allSelected = lb_vcpuSelectedDepts.size === 0;
  // Sum only visible (non-filtered) associates
  const assocs = mainAssocs.filter(a => {
   if (a.status !== 'active') return false;
-  if (lb_vcpuActiveDept === 'all') return true;
-  return (a.department || 'No Dept').trim() === lb_vcpuActiveDept;
+  if (allSelected) return true;
+  return lb_vcpuSelectedDepts.has(lb_vcpuNormDept(a.department));
  });
  let totalHrs = 0;
  const total = assocs.reduce((sum, a) => {
@@ -18164,7 +18205,8 @@ function lb_vcpuUpdateTotalCost() {
  }, 0);
  el.textContent = '$' + total.toFixed(2);
  if (labelEl) {
-  const deptLabel = lb_vcpuActiveDept === 'all' ? 'Total labor cost this shift' : `${lb_vcpuActiveDept} — ${totalHrs.toFixed(1)}h billed`;
+  const deptLabel = allSelected ? 'Total labor cost this shift'
+   : `${[...lb_vcpuSelectedDepts].join(' + ')} — ${totalHrs.toFixed(1)}h billed`;
   labelEl.textContent = deptLabel;
  }
 }
