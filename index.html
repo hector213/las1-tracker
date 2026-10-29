@@ -17970,11 +17970,11 @@ function lb_vcpuRenderTable() {
  const filterBar = document.getElementById('vcpu-dept-filter');
  if (filterBar) {
   const allSelected = lb_vcpuSelectedDepts.size === 0;
-  filterBar.innerHTML = `<button onclick="lb_vcpuSetDept('all')" style="font-size:12px;padding:4px 14px;border-radius:12px;border:1px solid ${allSelected ? '#ff7a1c' : 'rgba(255,255,255,.25)'};background:${allSelected ? '#ff7a1c' : 'rgba(255,255,255,.08)'};color:#ffffff;cursor:pointer;font-weight:${allSelected?'700':'400'}">All</button>` +
+  filterBar.innerHTML = `<button onclick="lb_vcpuSetDept('all')" style="font-size:12px;padding:4px 14px;border-radius:12px;border:1px solid ${allSelected ? '#ff7a1c' : '#cbd5e1'};background:${allSelected ? '#ff7a1c' : '#f1f5f9'};color:${allSelected ? '#fff' : '#1e293b'};cursor:pointer;font-weight:${allSelected?'700':'500'}">All</button>` +
    LB_DEPT_ORDER.map(d => {
     const on = lb_vcpuSelectedDepts.has(d);
     const clr = (LB_DEPT_COLORS||{})[d]?.accent || '#ff7a1c';
-    return `<button onclick="lb_vcpuToggleDept('${d}')" style="font-size:12px;padding:4px 14px;border-radius:12px;border:1px solid ${on ? clr : 'rgba(255,255,255,.25)'};background:${on ? clr : 'rgba(255,255,255,.08)'};color:#ffffff;cursor:pointer;font-weight:${on?'700':'400'}">${d}</button>`;
+    return `<button onclick="lb_vcpuToggleDept('${d}')" style="font-size:12px;padding:4px 14px;border-radius:12px;border:1px solid ${on ? clr : '#cbd5e1'};background:${on ? clr : '#f1f5f9'};color:${on ? '#fff' : '#1e293b'};cursor:pointer;font-weight:${on?'700':'500'}">${d}</button>`;
    }).join('');
  }
 
@@ -18033,10 +18033,10 @@ function lb_vcpuApplyDeptFilter() {
   const isAll = btn.textContent === 'All';
   const on = isAll ? allSelected : lb_vcpuSelectedDepts.has(btn.textContent);
   const clr = isAll ? '#ff7a1c' : ((LB_DEPT_COLORS||{})[btn.textContent]?.accent || '#ff7a1c');
-  btn.style.borderColor = on ? clr : 'rgba(255,255,255,.25)';
-  btn.style.background = on ? clr : 'rgba(255,255,255,.08)';
-  btn.style.color = '#ffffff';
-  btn.style.fontWeight = on ? '700' : '400';
+  btn.style.borderColor = on ? clr : '#cbd5e1';
+  btn.style.background = on ? clr : '#f1f5f9';
+  btn.style.color = on ? '#ffffff' : '#1e293b';
+  btn.style.fontWeight = on ? '700' : '500';
  });
  // Show/hide rows
  document.querySelectorAll('#vcpu-assoc-tbody tr[data-assoc-id]').forEach(row => {
