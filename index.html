@@ -12225,6 +12225,11 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  .pivot-eos-fn-cols{display:grid;grid-template-columns:1fr 1fr;padding:8px 12px;gap:12px;}
  .pivot-card-value{font-size:1.7rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1;}
  .pivot-card-sub{font-size:.7rem;color:var(--hero-muted);margin-top:2px;}
+ /* Header stat cards (Labor / VCPU / Prod Min Left) — ~20% larger */
+ #pv-prodleft-header .pivot-card,#pv-prodleft-header>div{padding:10px 15px!important;min-width:132px!important;}
+ #pv-prodleft-header .pivot-card-label{font-size:.82rem;}
+ #pv-prodleft-header .pivot-card-value{font-size:2.04rem;}
+ #pv-prodleft-header .pivot-card-sub{font-size:.84rem;}
  .pivot-card-value.green{color:#4ade80;} .pivot-card-value.red{color:#fca5a5;}
  .pivot-card-value.yellow{color:#facc15;} .pivot-card-value.white{color:#fff;} .pivot-card-value.accent{color:var(--orange);}
 
