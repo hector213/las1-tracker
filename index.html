@@ -821,6 +821,8 @@ onAuthStateChanged(auth, async (user) => {
  }
  if (roleAtLeast('om')) document.getElementById('navAdmin').classList.remove('d-none');
  if (roleAtLeast('om')) document.getElementById('navLeaderNotif').classList.remove('d-none');
+ const _lrBtn = document.getElementById('labor-rates-tab-btn');
+ if (_lrBtn && roleAtLeast('admin')) _lrBtn.style.display = '';
  if (currentUserRole !== 'viewer') document.getElementById('addAssocBtn').classList.remove('d-none');
  applyTabVisibility();
  restoreLastView();
@@ -15456,7 +15458,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <button class="admin-tab-btn" data-tab="associates">Associates</button>
  <button class="admin-tab-btn" data-tab="goals">Shift Goals</button>
  <button class="admin-tab-btn" data-tab="settings">Settings</button>
- <button class="admin-tab-btn" data-tab="labor-rates">Labor Rates</button>
+ <button class="admin-tab-btn" data-tab="labor-rates" id="labor-rates-tab-btn" style="display:none">Labor Rates</button>
  </div>
 
  <!-- Stations tab -->
