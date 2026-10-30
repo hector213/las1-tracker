@@ -15697,9 +15697,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
    </table>
 
    <!-- Total + dept breakdown -->
-   <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.05);border-radius:8px;padding:10px 14px;margin-top:10px">
-    <div style="font-size:13px;color:var(--hero-muted)" id="vcpu-total-label">Total labor cost this shift</div>
-    <div style="font-size:16px;font-weight:500;color:var(--hero-text)" id="vcpu-total-cost">-</div>
+   <div style="display:flex;align-items:center;justify-content:space-between;background:#f1f5f9;border-radius:8px;padding:10px 14px;margin-top:10px">
+    <div style="font-size:13px;color:#64748b" id="vcpu-total-label">Total labor cost this shift</div>
+    <div style="font-size:16px;font-weight:700;color:#1e293b" id="vcpu-total-cost">-</div>
    </div>
    <div id="vcpu-dept-summary" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px"></div>
   </div>
@@ -18110,10 +18110,10 @@ function lb_vcpuRenderDeptSummary(assocs, defaultStart) {
   const d = deptMap[dept];
   const on = lb_vcpuSelectedDepts.has(dept);
   const clr = LB_DEPT_COLORS[dept] || { accent: '#ff7a1c', bg: 'rgba(255,122,28,.15)', border: 'rgba(255,122,28,.5)' };
-  return `<div onclick="lb_vcpuToggleDept('${dept}')" style="cursor:pointer;flex:1;min-width:148px;padding:12px 16px;border-radius:10px;border:2px solid ${on ? clr.accent : 'rgba(255,255,255,.12)'};background:${on ? clr.bg : 'rgba(255,255,255,.04)'};transition:border-color .15s,background .15s">
+  return `<div onclick="lb_vcpuToggleDept('${dept}')" style="cursor:pointer;flex:1;min-width:148px;padding:12px 16px;border-radius:10px;border:2px solid ${on ? clr.accent : '#cbd5e1'};background:${on ? clr.bg : '#f8fafc'};transition:border-color .15s,background .15s">
    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${clr.accent};margin-bottom:6px">${dept}</div>
-   <div style="font-size:20px;font-weight:800;color:#ffffff;line-height:1;letter-spacing:-.02em">$${Math.round(d.cost).toLocaleString()}</div>
-   <div style="font-size:12px;color:#cbd5e1;margin-top:4px;font-weight:500">${d.hrs.toFixed(1)}h &nbsp;·&nbsp; ${d.count} assoc</div>
+   <div style="font-size:20px;font-weight:800;color:#1e293b;line-height:1;letter-spacing:-.02em">$${Math.round(d.cost).toLocaleString()}</div>
+   <div style="font-size:12px;color:#475569;margin-top:4px;font-weight:500">${d.hrs.toFixed(1)}h &nbsp;·&nbsp; ${d.count} assoc</div>
   </div>`;
  }).join('');
  el.style.display = 'flex';
