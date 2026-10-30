@@ -6868,7 +6868,7 @@ window.saveAttendance = async () => {
   const costMap = window.lb_vcpuAttCostMap || {};
   if (costMap[type] !== undefined) {
    window.lb_db.collection('lb_shiftAttSummary').doc(date).set(
-    { [currentAssociateId]: { type, departureTime: departureTime || '' } },
+    { [currentAssociateId]: { type, departureTime: departureTime || '', ts: Date.now() } },
     { merge: true }
    );
    // Update in-memory immediately so cards refresh without waiting for snapshot
@@ -13139,8 +13139,8 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  </div>
 
- <!-- Overdue Action Items Alert (leads+) -->
- <div id="overdueActionItemsAlert"></div>
+ <!-- Overdue Action Items Alert — populated by checkOverdueActionItems() but kept hidden from main dashboard -->
+ <div id="overdueActionItemsAlert" style="display:none"></div>
 
  <!-- Hidden stat placeholders (kept for JS compatibility, outside grid row) -->
  <div id="statHeadcount" class="d-none"></div>
@@ -15621,6 +15621,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
     </div>
     <div style="display:flex;gap:8px;align-items:center">
      <button class="btn secondary" onclick="vcpu_lock()" style="font-size:12px">Lock</button>
+     <button class="btn secondary" onclick="vcpu_clearShiftAtt()" style="font-size:12px;color:#f87171;border-color:#f87171" title="Wipe all attendance entries for today's shift (fixes VUTO carryover)">Clear shift att.</button>
      <button class="btn" onclick="vcpu_saveAll()" style="font-size:12px">Save rates</button>
     </div>
    </div>
@@ -17751,13 +17752,34 @@ window.lb_vcpuAttCostMap = {
 let lb_vcpuTodayAtt = {};
 window.lb_vcpuTodayAtt = lb_vcpuTodayAtt;
 
+// Returns the epoch ms timestamp for when the current shift started (e.g. Oct 29 5:00 PM)
+function lb_currentShiftStartMs() {
+ const d = new Date(lb_currentShiftDate + 'T00:00:00');
+ const h = Math.floor(lb_appSettings.shiftStartHour || 17);
+ const m = Math.round(((lb_appSettings.shiftStartHour || 17) % 1) * 60);
+ d.setHours(h, m, 0, 0);
+ return d.getTime();
+}
+
 // Subscribe to lb_shiftAttSummary for the current shift date
+// Filters out any entries whose `ts` (write timestamp) is before the current shift started —
+// prevents VUTO/early-outs logged in the early AM of one calendar day from
+// bleeding into the next shift that falls on the same calendar date.
 let lb_unsubVcpuAtt = null;
 function lb_vcpuLoadTodayAtt() {
  if (lb_unsubVcpuAtt) lb_unsubVcpuAtt();
  if (!lb_currentShiftDate) return;
  lb_unsubVcpuAtt = lb_db.collection('lb_shiftAttSummary').doc(lb_currentShiftDate).onSnapshot(snap => {
-  lb_vcpuTodayAtt = snap.exists ? snap.data() : {};
+  const raw = snap.exists ? snap.data() : {};
+  const shiftStartMs = lb_currentShiftStartMs();
+  // Keep entries that either have no ts (legacy) and date matches exactly,
+  // or whose ts shows they were written during or after this shift started.
+  lb_vcpuTodayAtt = {};
+  Object.entries(raw).forEach(([assocId, entry]) => {
+   // If the entry has a timestamp and it predates this shift's start, skip it (carryover)
+   if (entry.ts && entry.ts < shiftStartMs) return;
+   lb_vcpuTodayAtt[assocId] = entry;
+  });
   window.lb_vcpuTodayAtt = lb_vcpuTodayAtt;
   lb_vcpuRender(); // refresh header cards whenever attendance changes
   if (lb_vcpuUnlocked) lb_vcpuRenderTable(); // also refresh table if Labor Rates tab is open
@@ -17894,6 +17916,18 @@ window.vcpu_saveAll = function() {
  saves.push(lb_db.collection('lb_laborAdjustments').doc(adjDate).set(lb_vcpuAdjustments));
  Promise.all(saves).then(() => alert('Saved.')).catch(e => alert('Error saving: ' + e.message));
  lb_vcpuRender();
+};
+
+// Clear all attendance entries for today's shift date — fixes VUTO carryover from previous shifts
+window.vcpu_clearShiftAtt = function() {
+ if (!lb_currentShiftDate) return;
+ if (!confirm(`Clear all attendance tracking for shift date ${lb_currentShiftDate}?\n\nThis removes VUTO/early-out entries carried over from a previous shift. Re-entering attendance will re-add them.`)) return;
+ lb_db.collection('lb_shiftAttSummary').doc(lb_currentShiftDate).set({}).then(() => {
+  lb_vcpuTodayAtt = {};
+  window.lb_vcpuTodayAtt = lb_vcpuTodayAtt;
+  lb_vcpuRender();
+  if (lb_vcpuUnlocked) lb_vcpuRenderTable();
+ }).catch(e => alert('Error clearing: ' + e.message));
 };
 
 // Save manual units instantly when the input changes
