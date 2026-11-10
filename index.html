@@ -8139,6 +8139,88 @@ window.clearPlFilters = () => {
  renderPointsLog();
 };
 
+// ─── Attendance Points Export ──────────────────────────────────────────
+function _csvCell(v) {
+ const s = (v == null ? '' : String(v)).replace(/"/g, '""');
+ return /[",\n\r]/.test(s) ? `"${s}"` : s;
+}
+function _csvRow(arr) { return arr.map(_csvCell).join(','); }
+function _csvDownload(filename, rows) {
+ const blob = new Blob([rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+ const a = document.createElement('a');
+ a.href = URL.createObjectURL(blob);
+ a.download = filename;
+ a.click();
+ URL.revokeObjectURL(a.href);
+}
+
+// Summary: one row per associate, points total from in-memory data
+window.exportAttPointsSummary = function() {
+ const today = new Date().toISOString().slice(0,10);
+ const rows = [
+  _csvRow(['Name','Department','Status','Hire Date','Attendance Points','Notes']),
+ ];
+ [...allAssociates]
+  .sort((a,b) => (a.department||'').localeCompare(b.department||'') || a.name.localeCompare(b.name))
+  .forEach(a => {
+   rows.push(_csvRow([
+    a.name,
+    a.department || '',
+    a.status || 'active',
+    a.hireDate || '',
+    a.attendancePoints ?? 0,
+    '',
+   ]));
+  });
+ _csvDownload(`attendance_points_summary_${today}.csv`, rows);
+};
+
+// Full log: fetches every attendance entry for every associate from Firestore
+window.exportAttPointsLog = async function() {
+ const btn = document.getElementById('exportAttLogBtn');
+ if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Fetching…'; }
+ try {
+  const today = new Date().toISOString().slice(0,10);
+  const rows = [
+   _csvRow(['Associate','Department','Status','Date','Event Type','Note','Points','Added By','Expired','Created At']),
+  ];
+  const assocMap = {};
+  allAssociates.forEach(a => { assocMap[a.id] = a; });
+  const allEntries = [];
+  await Promise.all(
+   allAssociates.map(a =>
+    getDocs(collection(db, 'attendance', a.id, 'entries'))
+     .then(snap => snap.docs.forEach(d => {
+      const e = d.data();
+      allEntries.push({ assoc: a, ...e });
+     }))
+     .catch(() => {})
+   )
+  );
+  // Sort by associate name, then date descending
+  allEntries.sort((a,b) => a.assoc.name.localeCompare(b.assoc.name) || (b.date||'').localeCompare(a.date||''));
+  allEntries.forEach(e => {
+   rows.push(_csvRow([
+    e.assoc.name,
+    e.assoc.department || '',
+    e.assoc.status || 'active',
+    e.date || '',
+    e.type || '',
+    e.note || '',
+    e.expired ? 0 : (e.points ?? 0),
+    e.addedBy || '',
+    e.expired ? 'Yes' : 'No',
+    (e.createdAt || '').slice(0,10),
+   ]));
+  });
+  _csvDownload(`attendance_log_full_${today}.csv`, rows);
+ } catch(err) {
+  alert('Export failed: ' + err.message);
+ } finally {
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download me-1"></i>Export Full Att. Log'; }
+ }
+};
+
 // ─── HR Records ───────────────────────────────────────────────────────
 window.loadHRRecords = async () => {
  showView('hrrecords');
@@ -14138,6 +14220,10 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div id="pointslogView" class="view d-none">
  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
  <h1 class="page-title"><i class="fas fa-star me-2" style="color:var(--orange)"></i>Engagement Points Log</h1>
+ <div class="d-flex gap-2">
+  <button class="btn btn-sm btn-outline-secondary" onclick="exportPointsSummary()" title="Export one row per associate with their current points total"><i class="fas fa-file-csv me-1"></i>Export Summary</button>
+  <button class="btn btn-sm btn-outline-secondary" onclick="exportPointsLog()" title="Export all log entries (respects current filters)"><i class="fas fa-download me-1"></i>Export Log</button>
+ </div>
  </div>
  <div class="admin-card">
  <div class="d-flex gap-2 mb-3 flex-wrap align-items-end">
@@ -14192,7 +14278,11 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <div id="hrrecordsView" class="view d-none">
  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
  <h1 class="page-title"><i class="fas fa-file-signature me-2" style="color:var(--orange)"></i>HR Records - Signed Warnings</h1>
- <button class="btn btn-sm btn-orange" onclick="loadHRRecords()"><i class="fas fa-sync me-1"></i>Refresh</button>
+ <div class="d-flex gap-2 flex-wrap">
+  <button class="btn btn-sm btn-outline-secondary" onclick="exportAttPointsSummary()" title="One row per associate — name, dept, status, hire date, current attendance points"><i class="fas fa-file-csv me-1"></i>Export Points Summary</button>
+  <button class="btn btn-sm btn-outline-secondary" id="exportAttLogBtn" onclick="exportAttPointsLog()" title="Full detail — every attendance entry for every associate"><i class="fas fa-download me-1"></i>Export Full Att. Log</button>
+  <button class="btn btn-sm btn-orange" onclick="loadHRRecords()"><i class="fas fa-sync me-1"></i>Refresh</button>
+ </div>
  </div>
  <div class="card shadow-sm mb-3" style="border:none">
  <div class="card-body py-2 px-3 d-flex gap-2 flex-wrap align-items-center">
