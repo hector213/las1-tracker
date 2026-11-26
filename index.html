@@ -8227,6 +8227,7 @@ let ipoSelectedPO = null;
 let ipoViewMode = 'progress';
 let ipoEditingPO = null;
 let ipoProgressSort = 'most'; // 'most' = most received first, 'least' = least received first
+let ipoExpandedTypes = new Set(); // item type names currently expanded to show SKUs
 
 const IPO_COLORS = [
  '#2a78d6','#eb6834','#1baf7a','#eda100','#9b59b6','#16a085',
@@ -8508,6 +8509,15 @@ window.ipoToggleProgressSort = function() {
  if (po) ipoRenderProgress(po);
 };
 
+window.ipoToggleType = function(typeName) {
+ if (ipoExpandedTypes.has(typeName)) ipoExpandedTypes.delete(typeName);
+ else ipoExpandedTypes.add(typeName);
+ const po = ipoAllPOs[ipoSelectedPO];
+ if (!po) return;
+ if (ipoViewMode === 'progress') ipoRenderProgress(po);
+ else ipoRenderWeight(po);
+};
+
 function ipoRenderProgress(po) {
  const sorted = [...po.types].sort((a,b) => {
   const pa = a.expected > 0 ? a.received / a.expected : (ipoProgressSort === 'most' ? -1 : 2);
@@ -8540,17 +8550,52 @@ function ipoRenderProgress(po) {
   else if (pct < 30)    { badge = 'Behind';      bgC = '#fee2e2'; txtC = '#dc2626'; }
   else if (pct < 70)    { badge = 'In progress'; bgC = '#dbeafe'; txtC = '#2563eb'; }
   else                  { badge = 'Almost done'; bgC = '#ecfdf5'; txtC = '#059669'; }
-  return `<div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:.5px solid #e2e8f0">
-   <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></span>
-   <span style="min-width:200px;flex-shrink:0;font-size:12px;font-weight:500;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
-   <div style="flex:1;height:10px;background:#e2e8f0;border-radius:5px;overflow:hidden">
-    <div style="height:100%;width:${pct}%;background:${color};border-radius:5px"></div>
+  const isOpen = ipoExpandedTypes.has(t.name);
+  const skuRows = isOpen ? ipoSkuRows(po, t.name, color) : '';
+  const tn = t.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  return `<div style="border-bottom:.5px solid #e2e8f0">
+   <div onclick="ipoToggleType('${tn}')" style="display:flex;align-items:center;gap:6px;padding:8px 0;cursor:pointer" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+    <i class="fas fa-chevron-${isOpen?'down':'right'}" style="width:10px;font-size:9px;color:#94a3b8;flex-shrink:0"></i>
+    <span style="min-width:196px;flex-shrink:0;font-size:12px;font-weight:500;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
+    <div style="flex:1;height:10px;background:#e2e8f0;border-radius:5px;overflow:hidden">
+     <div style="height:100%;width:${pct}%;background:${color};border-radius:5px"></div>
+    </div>
+    <span style="min-width:120px;text-align:right;font-size:11px;color:#64748b">${t.received.toLocaleString()} / ${t.expected.toLocaleString()}</span>
+    <span style="min-width:46px;text-align:right;font-size:12px;font-weight:700;color:${pct===100?'#059669':pct>0?'#2563eb':'#94a3b8'}">${pct}%</span>
+    <span style="min-width:84px;text-align:center;font-size:10px;padding:2px 7px;border-radius:4px;background:${bgC};color:${txtC};font-weight:600;white-space:nowrap">${badge}</span>
    </div>
-   <span style="min-width:120px;text-align:right;font-size:11px;color:#64748b">${t.received.toLocaleString()} / ${t.expected.toLocaleString()}</span>
-   <span style="min-width:46px;text-align:right;font-size:12px;font-weight:700;color:${pct===100?'#059669':pct>0?'#2563eb':'#94a3b8'}">${pct}%</span>
-   <span style="min-width:84px;text-align:center;font-size:10px;padding:2px 7px;border-radius:4px;background:${bgC};color:${txtC};font-weight:600;white-space:nowrap">${badge}</span>
+   ${skuRows}
   </div>`;
  }).join('');
+}
+
+function ipoSkuRows(po, typeName, accentColor) {
+ const lines = (po.lines || []).filter(l => l.description === typeName);
+ if (!lines.length) return `<div style="padding:6px 18px 10px;font-size:11px;color:#94a3b8;font-style:italic">No SKU detail available</div>`;
+ const invColors = { RP:'#2a78d6', RS:'#eb6834', FG:'#1baf7a' };
+ return `<div style="background:#f8fafc;border-radius:6px;margin:0 0 8px 18px;overflow:hidden">
+  <div style="display:grid;grid-template-columns:1fr 90px 90px 60px 54px;gap:0;padding:5px 10px;font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;border-bottom:.5px solid #e2e8f0">
+   <span>SKU / Item #</span><span style="text-align:right">Expected</span><span style="text-align:right">Received</span><span style="text-align:right">Done</span><span style="text-align:center">Type</span>
+  </div>
+  ${lines.map(l => {
+   const exp  = l.qtyExpected  || 0;
+   const recv = l.qtyReceived  || 0;
+   const pct  = exp > 0 ? Math.round(recv / exp * 100) : 0;
+   const iClr = invColors[l.inventoryType] || '#64748b';
+   const pClr = pct === 100 ? '#059669' : pct > 0 ? '#2563eb' : '#94a3b8';
+   return `<div style="display:grid;grid-template-columns:1fr 90px 90px 60px 54px;gap:0;padding:5px 10px;border-bottom:.5px solid #e2e8f0;align-items:center">
+    <div>
+     <div style="font-size:11px;font-weight:600;color:#1e293b;font-family:monospace">${escapeHtml(l.itemNumber||'—')}</div>
+     ${l.lineNumber ? `<div style="font-size:9px;color:#94a3b8">Line ${escapeHtml(l.lineNumber)}</div>` : ''}
+     <div style="height:3px;background:#e2e8f0;border-radius:2px;margin-top:3px;overflow:hidden;max-width:120px"><div style="height:100%;width:${pct}%;background:${accentColor};border-radius:2px"></div></div>
+    </div>
+    <div style="text-align:right;font-size:11px;color:#64748b">${exp.toLocaleString()}</div>
+    <div style="text-align:right;font-size:11px;color:#64748b">${recv.toLocaleString()}</div>
+    <div style="text-align:right;font-size:12px;font-weight:700;color:${pClr}">${pct}%</div>
+    <div style="text-align:center"><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:${iClr}18;color:${iClr};font-weight:700">${escapeHtml(l.inventoryType||'—')}</span></div>
+   </div>`;
+  }).join('')}
+ </div>`;
 }
 
 function ipoRenderWeight(po) {
@@ -8592,15 +8637,22 @@ function ipoRenderWeight(po) {
   const barW   = Math.round(t.expected / max * 100);
   const donePct = t.expected > 0 ? Math.round(t.received / t.expected * 100) : 0;
   const color  = IPO_COLORS[i % IPO_COLORS.length];
-  return `<div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:.5px solid #e2e8f0">
-   <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></span>
-   <span style="min-width:200px;flex-shrink:0;font-size:12px;font-weight:500;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
-   <div style="flex:1;height:14px;background:#e2e8f0;border-radius:5px;overflow:hidden">
-    <div style="height:100%;width:${barW}%;background:${color};opacity:.75;border-radius:5px"></div>
+  const isOpen = ipoExpandedTypes.has(t.name);
+  const skuRows = isOpen ? ipoSkuRows(po, t.name, color) : '';
+  const tn = t.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  return `<div style="border-bottom:.5px solid #e2e8f0">
+   <div onclick="ipoToggleType('${tn}')" style="display:flex;align-items:center;gap:6px;padding:8px 0;cursor:pointer" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+    <i class="fas fa-chevron-${isOpen?'down':'right'}" style="width:10px;font-size:9px;color:#94a3b8;flex-shrink:0"></i>
+    <span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></span>
+    <span style="min-width:190px;flex-shrink:0;font-size:12px;font-weight:500;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
+    <div style="flex:1;height:14px;background:#e2e8f0;border-radius:5px;overflow:hidden">
+     <div style="height:100%;width:${barW}%;background:${color};opacity:.75;border-radius:5px"></div>
+    </div>
+    <span style="min-width:52px;text-align:right;font-size:13px;font-weight:700;color:${color}">${wPct}%</span>
+    <span style="min-width:100px;text-align:right;font-size:11px;color:#64748b">${t.expected.toLocaleString()} units</span>
+    <span style="min-width:46px;text-align:right;font-size:12px;font-weight:700;color:${donePct===100?'#059669':donePct>0?'#2563eb':'#94a3b8'}">${donePct}%</span>
    </div>
-   <span style="min-width:52px;text-align:right;font-size:13px;font-weight:700;color:${color}">${wPct}%</span>
-   <span style="min-width:100px;text-align:right;font-size:11px;color:#64748b">${t.expected.toLocaleString()} units</span>
-   <span style="min-width:46px;text-align:right;font-size:12px;font-weight:700;color:${donePct===100?'#059669':donePct>0?'#2563eb':'#94a3b8'}">${donePct}%</span>
+   ${skuRows}
   </div>`;
  }).join('');
 }
