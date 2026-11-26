@@ -1536,7 +1536,6 @@ async function restoreLastView() {
  if (view === 'admin') { loadAdminPanel(); return; }
  if (view === 'timeoff') { loadTimeOff(); return; }
  if (view === 'hrrecords') { loadHRRecords(); return; }
- if (view === 'inboundPOs') { loadInboundPOs(); return; }
  if (view === 'help') { showView('help'); return; }
  loadDashboard();
 }
@@ -8232,14 +8231,19 @@ const IPO_COLORS = [
  '#e74c3c','#2980b9','#27ae60','#f39c12','#8e44ad','#c0392b'
 ];
 
-window.loadInboundPOs = async function() {
- showView('inboundPOs');
- detachAll();
+// Navigate to Production tab → Inbound POs sub-tab
+window.loadInboundPOs = function() {
+ showView('production');
+ if (typeof window.lb_showView === 'function') window.lb_showView('inbound-pos');
+};
+
+// Load PO data and render (called by lb_showView when inbound-pos tab activates)
+window.lbIpoLoad = async function() {
  const shiftDate = (typeof window.lb_currentShiftDate === 'string' && window.lb_currentShiftDate)
   ? window.lb_currentShiftDate
   : new Date().toISOString().slice(0,10);
  const lbl = document.getElementById('ipo-shift-label');
- if (lbl) lbl.textContent = 'Shift date: ' + shiftDate;
+ if (lbl) lbl.textContent = 'Shift: ' + shiftDate;
 
  try {
   const snap = await getDocs(query(collection(db, 'lb_inboundPOs'), where('shiftDate', '==', shiftDate)));
@@ -13427,9 +13431,6 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <a class="nav-link" data-view="production" onclick="event.preventDefault(); showView('production')">
  <i class="fas fa-industry"></i><span>Production</span>
  </a>
- <a class="nav-link" data-view="inboundPOs" onclick="loadInboundPOs()">
- <i class="fas fa-boxes"></i><span>Inbound POs</span>
- </a>
  <a class="nav-link" data-view="shiftCulture" onclick="event.preventDefault(); showView('shiftCulture')">
  <i class="fas fa-fire"></i><span>Shift Culture</span>
  </a>
@@ -14646,48 +14647,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
 
  <!-- INBOUND POs VIEW -->
- <div id="inboundPOsView" class="view d-none">
-  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-   <div>
-    <h1 class="page-title"><i class="fas fa-boxes me-2" style="color:var(--orange)"></i>Inbound POs</h1>
-    <div class="text-muted small mt-1" id="ipo-shift-label"></div>
-   </div>
-   <div class="d-flex gap-2 align-items-center">
-    <label class="btn btn-sm btn-orange mb-0" for="ipo-upload-input" style="cursor:pointer"><i class="fas fa-upload me-1"></i>Upload PO</label>
-    <input type="file" id="ipo-upload-input" accept=".xlsx,.xls" style="display:none" onchange="ipoHandleUpload(this)">
-   </div>
-  </div>
-
-  <!-- PO cards row + upload tile -->
-  <div id="ipo-cards-row" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px"></div>
-
-  <!-- Empty state -->
-  <div id="ipo-empty" class="admin-card text-center py-5" style="display:none">
-   <i class="fas fa-box-open fa-3x mb-3" style="color:var(--orange);opacity:.6"></i>
-   <div class="fw-bold mb-1">No POs uploaded yet</div>
-   <div class="text-muted small mb-3">Upload a PO Excel file to get started</div>
-   <label class="btn btn-orange" for="ipo-upload-input" style="cursor:pointer"><i class="fas fa-upload me-1"></i>Upload PO</label>
-  </div>
-
-  <!-- Selected PO detail panel -->
-  <div id="ipo-detail" style="display:none">
-   <!-- Stat cards -->
-   <div id="ipo-stats-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px"></div>
-
-   <!-- Overall progress bar -->
-   <div class="admin-card" style="padding:14px 16px;margin-bottom:10px" id="ipo-overall-prog"></div>
-
-   <!-- View toggle -->
-   <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
-    <span style="font-size:12px;color:#64748b;font-weight:600">View:</span>
-    <button id="ipo-vbtn-progress" onclick="ipoSetView('progress')" style="font-size:12px;padding:4px 14px;border-radius:6px;border:1.5px solid #2a78d6;background:#2a78d6;color:#fff;cursor:pointer;font-weight:600">By Progress</button>
-    <button id="ipo-vbtn-weight" onclick="ipoSetView('weight')" style="font-size:12px;padding:4px 14px;border-radius:6px;border:1.5px solid #cbd5e1;background:#fff;color:#64748b;cursor:pointer;font-weight:600">By Weight</button>
-   </div>
-
-   <div id="ipo-view-progress" class="admin-card" style="padding:14px 16px"></div>
-   <div id="ipo-view-weight" class="admin-card" style="padding:14px 16px;display:none"></div>
-  </div>
- </div>
+ <div id="inboundPOsView" class="view d-none"></div>
 
  <!-- COVERAGE VIEW -->
  <div id="coverageView" class="view d-none">
@@ -15414,6 +15374,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <button id="lb-nav-assoc-trend">Associate UPH</button>
  <button id="lb-nav-assoc-numbers">Outbound Rates</button>
  <button id="lb-nav-inbound">Inbound Rates</button>
+ <button id="lb-nav-inbound-pos">Inbound POs</button>
  <button id="lb-nav-weekly">Weekly Metrics</button>
  <button id="lb-nav-import">Import Data</button>
  <button id="lb-nav-admin">Admin</button>
@@ -15840,6 +15801,33 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  combined activity across all of them for that Tran Type. The table beside the chart is
  the actual raw units scanned in each clock hour - not an average, not smoothed.
  </div>
+ </div>
+ </section>
+
+ <!-- ---------- INBOUND POs VIEW ---------- -->
+ <section id="lb-inbound-pos-view" class="hidden">
+ <div class="panel" style="margin:1.5rem;max-width:none">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+   <h2 style="margin:0;color:var(--hero-text)">Inbound POs <span style="font-size:13px;font-weight:400;color:var(--hero-muted)" id="ipo-shift-label"></span></h2>
+   <label for="ipo-upload-input" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:6px;background:var(--orange);color:#fff;font-size:12px;font-weight:600"><i class="fas fa-sync-alt"></i> Update PO</label>
+   <input type="file" id="ipo-upload-input" accept=".xlsx,.xls" style="display:none" onchange="ipoHandleUpload(this)">
+  </div>
+  <div id="ipo-cards-row" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px"></div>
+  <div id="ipo-empty" style="display:none;text-align:center;padding:2rem 0;color:var(--hero-muted)">
+   <i class="fas fa-box-open" style="font-size:2rem;margin-bottom:8px;display:block;opacity:.5"></i>
+   No POs uploaded for this shift. Upload a file to get started.
+  </div>
+  <div id="ipo-detail" style="display:none">
+   <div id="ipo-stats-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:12px"></div>
+   <div id="ipo-overall-prog" style="margin-bottom:12px"></div>
+   <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+    <span style="font-size:12px;color:var(--hero-muted);font-weight:600">View:</span>
+    <button id="ipo-vbtn-progress" onclick="ipoSetView('progress')" style="font-size:12px;padding:4px 14px;border-radius:6px;border:1.5px solid #2a78d6;background:#2a78d6;color:#fff;cursor:pointer;font-weight:600">By Progress</button>
+    <button id="ipo-vbtn-weight" onclick="ipoSetView('weight')" style="font-size:12px;padding:4px 14px;border-radius:6px;border:1.5px solid rgba(255,255,255,.3);background:transparent;color:var(--hero-muted);cursor:pointer;font-weight:600">By Weight</button>
+   </div>
+   <div id="ipo-view-progress" style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px 16px"></div>
+   <div id="ipo-view-weight" style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px 16px;display:none"></div>
+  </div>
  </div>
  </section>
 
@@ -17533,6 +17521,7 @@ function lb_bucketIndexForHour(hh, buckets) {
 document.getElementById("lb-nav-board").addEventListener("click", () => lb_showView("board"));
 document.getElementById("lb-nav-trend").addEventListener("click", () => lb_showView("trend"));
 document.getElementById("lb-nav-inbound").addEventListener("click", () => lb_showView("inbound"));
+document.getElementById("lb-nav-inbound-pos").addEventListener("click", () => lb_showView("inbound-pos"));
 document.getElementById("lb-nav-assoc-trend").addEventListener("click", () => lb_showView("assoc-trend"));
 document.getElementById("lb-nav-assoc-numbers").addEventListener("click", () => lb_showView("assoc-numbers"));
 document.getElementById("lb-nav-import").addEventListener("click", () => lb_showView("import"));
@@ -17542,6 +17531,7 @@ function lb_showView(v) {
  document.getElementById("lb-board-view").classList.toggle("hidden", v !== "board");
  document.getElementById("lb-trend-view").classList.toggle("hidden", v !== "trend");
  document.getElementById("lb-inbound-view").classList.toggle("hidden", v !== "inbound");
+ document.getElementById("lb-inbound-pos-view").classList.toggle("hidden", v !== "inbound-pos");
  document.getElementById("lb-assoc-trend-view").classList.toggle("hidden", v !== "assoc-trend");
  document.getElementById("lb-assoc-numbers-view").classList.toggle("hidden", v !== "assoc-numbers");
  document.getElementById("lb-import-view").classList.toggle("hidden", v !== "import");
@@ -17550,6 +17540,7 @@ function lb_showView(v) {
  document.getElementById("lb-nav-board").classList.toggle("active", v === "board");
  document.getElementById("lb-nav-trend").classList.toggle("active", v === "trend");
  document.getElementById("lb-nav-inbound").classList.toggle("active", v === "inbound");
+ document.getElementById("lb-nav-inbound-pos").classList.toggle("active", v === "inbound-pos");
  document.getElementById("lb-nav-assoc-trend").classList.toggle("active", v === "assoc-trend");
  document.getElementById("lb-nav-assoc-numbers").classList.toggle("active", v === "assoc-numbers");
  document.getElementById("lb-nav-import").classList.toggle("active", v === "import");
@@ -17579,6 +17570,9 @@ function lb_showView(v) {
  }
  if (v === "assoc-numbers") {
  lb_renderAssocNumbers();
+ }
+ if (v === "inbound-pos") {
+ if (typeof window.lbIpoLoad === 'function') window.lbIpoLoad();
  }
 }
 
