@@ -1536,6 +1536,7 @@ async function restoreLastView() {
  if (view === 'admin') { loadAdminPanel(); return; }
  if (view === 'timeoff') { loadTimeOff(); return; }
  if (view === 'hrrecords') { loadHRRecords(); return; }
+ if (view === 'inboundPOs') { loadInboundPOs(); return; }
  if (view === 'help') { showView('help'); return; }
  loadDashboard();
 }
@@ -8221,6 +8222,314 @@ window.exportAttPointsLog = async function() {
  }
 };
 
+// ─── Inbound POs ──────────────────────────────────────────────────────
+let ipoAllPOs = {};       // keyed by poNumber
+let ipoSelectedPO = null;
+let ipoViewMode = 'progress';
+
+const IPO_COLORS = [
+ '#2a78d6','#eb6834','#1baf7a','#eda100','#9b59b6','#16a085',
+ '#e74c3c','#2980b9','#27ae60','#f39c12','#8e44ad','#c0392b'
+];
+
+window.loadInboundPOs = async function() {
+ showView('inboundPOs');
+ detachAll();
+ const shiftDate = (typeof window.lb_currentShiftDate === 'string' && window.lb_currentShiftDate)
+  ? window.lb_currentShiftDate
+  : new Date().toISOString().slice(0,10);
+ const lbl = document.getElementById('ipo-shift-label');
+ if (lbl) lbl.textContent = 'Shift date: ' + shiftDate;
+
+ try {
+  const snap = await getDocs(query(collection(db, 'lb_inboundPOs'), where('shiftDate', '==', shiftDate)));
+  ipoAllPOs = {};
+  snap.forEach(d => { ipoAllPOs[d.id] = { id: d.id, ...d.data() }; });
+ } catch(e) {
+  console.error('IPO load error:', e);
+ }
+
+ ipoRenderCards();
+ const keys = Object.keys(ipoAllPOs);
+ if (keys.length) {
+  ipoSelectPO(keys[0]);
+ } else {
+  const det = document.getElementById('ipo-detail');
+  const emp = document.getElementById('ipo-empty');
+  if (det) det.style.display = 'none';
+  if (emp) emp.style.display = '';
+ }
+};
+
+window.ipoHandleUpload = async function(input) {
+ const file = input.files[0];
+ if (!file) return;
+ input.value = '';
+
+ const uploadLbl = document.querySelector('label[for="ipo-upload-input"]');
+ const origTxt = uploadLbl ? uploadLbl.innerHTML : '';
+ if (uploadLbl) uploadLbl.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Parsing…';
+
+ try {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+
+  // Row 0: "Warehouse: LAS1<BR>PO Number: CPOLT0012LAS1<BR>"
+  const headerCell = String((rows[0] && rows[0][0]) || '');
+  const poMatch   = headerCell.match(/PO\s*Number[:\s]+([^\s<\n]+)/i);
+  const whMatch   = headerCell.match(/Warehouse[:\s]+([^\s<\n]+)/i);
+  const poNumber  = poMatch ? poMatch[1].trim() : ('PO-' + Date.now());
+  const warehouse = whMatch ? whMatch[1].trim() : 'LAS1';
+
+  // Row 1 = headers, rows 2+ = data
+  const headers = rows[1] || [];
+  const descIdx = headers.findIndex(h => /description/i.test(h));
+  const expIdx  = headers.findIndex(h => /qty.?expected/i.test(h));
+  const recvIdx = headers.findIndex(h => /qty.?received/i.test(h));
+  const lineIdx = headers.findIndex(h => /line.?number/i.test(h));
+  const itemIdx = headers.findIndex(h => /item.?number/i.test(h));
+  const typeIdx = headers.findIndex(h => /inventory.?type/i.test(h));
+
+  const typeMap = {};
+  const lines   = [];
+
+  for (let i = 2; i < rows.length; i++) {
+   const row  = rows[i];
+   const desc = String(row[descIdx] || '').trim();
+   if (!desc) continue;
+   const exp  = parseInt(row[expIdx])  || 0;
+   const recv = parseInt(row[recvIdx]) || 0;
+   lines.push({
+    lineNumber:    String(row[lineIdx] || '').trim(),
+    itemNumber:    String(row[itemIdx] || '').trim(),
+    description:   desc,
+    inventoryType: String(row[typeIdx] || '').trim(),
+    qtyExpected:   exp,
+    qtyReceived:   recv,
+   });
+   if (!typeMap[desc]) typeMap[desc] = { name: desc, expected: 0, received: 0 };
+   typeMap[desc].expected += exp;
+   typeMap[desc].received += recv;
+  }
+
+  const types         = Object.values(typeMap).sort((a,b) => b.expected - a.expected);
+  const totalExpected = types.reduce((s,t) => s + t.expected, 0);
+  const totalReceived = types.reduce((s,t) => s + t.received, 0);
+
+  const actorName = typeof _getActorName === 'function' ? await _getActorName() : (currentUser?.displayName || currentUser?.email || 'Unknown');
+  const shiftDate = (typeof window.lb_currentShiftDate === 'string' && window.lb_currentShiftDate)
+   ? window.lb_currentShiftDate
+   : new Date().toISOString().slice(0,10);
+
+  const poData = {
+   poNumber, warehouse, shiftDate,
+   uploadedAt: new Date().toISOString(),
+   uploadedBy: actorName,
+   totalExpected, totalReceived,
+   types, lines,
+  };
+
+  if (uploadLbl) uploadLbl.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+  await setDoc(doc(db, 'lb_inboundPOs', poNumber), poData);
+  ipoAllPOs[poNumber] = { id: poNumber, ...poData };
+
+  ipoRenderCards();
+  document.getElementById('ipo-empty').style.display = 'none';
+  ipoSelectPO(poNumber);
+ } catch(err) {
+  alert('Error parsing PO file: ' + err.message);
+ } finally {
+  if (uploadLbl) uploadLbl.innerHTML = origTxt;
+ }
+};
+
+function ipoRenderCards() {
+ const container = document.getElementById('ipo-cards-row');
+ if (!container) return;
+ const pos = Object.values(ipoAllPOs).sort((a,b) => a.poNumber.localeCompare(b.poNumber));
+
+ container.innerHTML = pos.map(po => {
+  const pct = po.totalExpected > 0 ? Math.round(po.totalReceived / po.totalExpected * 100) : 0;
+  const isSelected = po.poNumber === ipoSelectedPO;
+  let badge, bClr;
+  if (pct === 100)       { badge = 'Complete';    bClr = '#059669'; }
+  else if (pct === 0)    { badge = 'Pending';     bClr = '#d97706'; }
+  else                   { badge = 'In progress'; bClr = '#2563eb'; }
+  const barClr = pct === 100 ? '#059669' : '#2a78d6';
+  return `<div onclick="ipoSelectPO('${po.poNumber.replace(/'/g,"\\'")}')"\n   style="cursor:pointer;min-width:170px;max-width:220px;flex:1;padding:12px 14px;border-radius:12px;border:${isSelected?'2px solid #2a78d6':'1px solid #cbd5e1'};background:${isSelected?'#f0f7ff':'#fff'};transition:border-color .15s,background .15s">
+   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+    <div style="font-size:12px;font-weight:700;color:var(--navy)">${escapeHtml(po.poNumber)}</div>
+    <span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${bClr}18;color:${bClr};font-weight:600">${badge}</span>
+   </div>
+   <div style="font-size:11px;color:#64748b;margin-bottom:8px">${escapeHtml(po.warehouse)}</div>
+   <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-bottom:4px">
+    <div style="height:100%;width:${pct}%;background:${barClr};border-radius:3px;transition:width .3s"></div>
+   </div>
+   <div style="font-size:11px;color:#64748b">${po.totalReceived.toLocaleString()} / ${po.totalExpected.toLocaleString()} units &nbsp;·&nbsp; ${pct}%</div>
+  </div>`;
+ }).join('') + `
+  <label for="ipo-upload-input" style="cursor:pointer;min-width:130px;max-width:160px;flex:1;padding:14px;border-radius:12px;border:1.5px dashed #94a3b8;background:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px">
+   <i class="fas fa-upload" style="font-size:18px;color:#94a3b8"></i>
+   <span style="font-size:11px;color:#94a3b8">Upload PO</span>
+  </label>`;
+}
+
+window.ipoSelectPO = function(poNumber) {
+ ipoSelectedPO = poNumber;
+ ipoRenderCards(); // re-render to update selected highlight
+
+ const po = ipoAllPOs[poNumber];
+ if (!po) return;
+
+ document.getElementById('ipo-detail').style.display = '';
+ document.getElementById('ipo-empty').style.display  = 'none';
+
+ // Stat cards
+ const pct = po.totalExpected > 0 ? Math.round(po.totalReceived / po.totalExpected * 100) : 0;
+ const rem = po.totalExpected - po.totalReceived;
+ document.getElementById('ipo-stats-row').innerHTML = [
+  ['Total Units',  po.totalExpected.toLocaleString(), 'on PO',          ''],
+  ['Received',     po.totalReceived.toLocaleString(), 'units',          po.totalReceived > 0 ? '#059669' : ''],
+  ['Remaining',    rem.toLocaleString(),              'to receive',     rem === 0 ? '#059669' : ''],
+  ['Item Types',   po.types.length,                  'types on PO',    ''],
+  ['Progress',     pct + '%',                        'complete',       pct === 100 ? '#059669' : '#2563eb'],
+ ].map(([lbl, val, sub, clr]) => `
+  <div style="background:#f8fafc;border-radius:8px;padding:10px 14px">
+   <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">${lbl}</div>
+   <div style="font-size:20px;font-weight:800;color:${clr||'var(--navy)'};line-height:1.1">${val}</div>
+   <div style="font-size:10px;color:#64748b;margin-top:1px">${sub}</div>
+  </div>`).join('');
+
+ // Overall progress bar
+ const pctClr = pct === 100 ? '#059669' : '#2a78d6';
+ document.getElementById('ipo-overall-prog').innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+   <span style="font-size:12px;font-weight:600;color:var(--navy)">Overall PO Progress</span>
+   <span style="font-size:12px;color:#64748b">${po.totalReceived.toLocaleString()} / ${po.totalExpected.toLocaleString()} units &nbsp;·&nbsp; <strong style="color:${pctClr}">${pct}%</strong></span>
+  </div>
+  <div style="height:10px;background:#e2e8f0;border-radius:5px;overflow:hidden">
+   <div style="height:100%;width:${pct}%;background:${pctClr};border-radius:5px;transition:width .4s"></div>
+  </div>
+  <div style="font-size:11px;color:#94a3b8;margin-top:5px">
+   ${po.poNumber} &nbsp;·&nbsp; ${po.warehouse} &nbsp;·&nbsp;
+   Uploaded ${po.uploadedAt ? new Date(po.uploadedAt).toLocaleString() : '—'} by ${escapeHtml(po.uploadedBy || '—')}
+  </div>`;
+
+ ipoSetView(ipoViewMode);
+};
+
+window.ipoSetView = function(mode) {
+ ipoViewMode = mode;
+ const btnP = document.getElementById('ipo-vbtn-progress');
+ const btnW = document.getElementById('ipo-vbtn-weight');
+ const panP = document.getElementById('ipo-view-progress');
+ const panW = document.getElementById('ipo-view-weight');
+
+ if (btnP) { btnP.style.background = mode === 'progress' ? '#2a78d6' : '#fff'; btnP.style.color = mode === 'progress' ? '#fff' : '#64748b'; btnP.style.borderColor = mode === 'progress' ? '#2a78d6' : '#cbd5e1'; }
+ if (btnW) { btnW.style.background = mode === 'weight'   ? '#2a78d6' : '#fff'; btnW.style.color = mode === 'weight'   ? '#fff' : '#64748b'; btnW.style.borderColor = mode === 'weight'   ? '#2a78d6' : '#cbd5e1'; }
+ if (panP) panP.style.display = mode === 'progress' ? '' : 'none';
+ if (panW) panW.style.display = mode === 'weight'   ? '' : 'none';
+
+ const po = ipoAllPOs[ipoSelectedPO];
+ if (!po) return;
+ if (mode === 'progress') ipoRenderProgress(po);
+ else ipoRenderWeight(po);
+};
+
+function ipoRenderProgress(po) {
+ // Sort most urgent (lowest % received) first
+ const sorted = [...po.types].sort((a,b) => {
+  const pa = a.expected > 0 ? a.received / a.expected : 1;
+  const pb = b.expected > 0 ? b.received / b.expected : 1;
+  return pa - pb;
+ });
+
+ const container = document.getElementById('ipo-view-progress');
+ container.innerHTML = `
+  <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">By Progress — most urgent first</div>
+  <div style="display:flex;align-items:center;gap:6px;padding-bottom:6px;border-bottom:1px solid #e2e8f0;margin-bottom:2px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">
+   <span style="width:10px;flex-shrink:0"></span>
+   <span style="min-width:200px;flex-shrink:0">Item Type</span>
+   <span style="flex:1">Progress</span>
+   <span style="min-width:120px;text-align:right">Received</span>
+   <span style="min-width:46px;text-align:right">Done</span>
+   <span style="min-width:84px;text-align:center">Status</span>
+  </div>` + sorted.map((t, i) => {
+  const pct = t.expected > 0 ? Math.round(t.received / t.expected * 100) : 0;
+  const color = IPO_COLORS[i % IPO_COLORS.length];
+  let badge, bgC, txtC;
+  if      (pct === 100) { badge = 'Complete';    bgC = '#d1fae5'; txtC = '#059669'; }
+  else if (pct === 0)   { badge = 'Not started'; bgC = '#f1f5f9'; txtC = '#64748b'; }
+  else if (pct < 30)    { badge = 'Behind';      bgC = '#fee2e2'; txtC = '#dc2626'; }
+  else if (pct < 70)    { badge = 'In progress'; bgC = '#dbeafe'; txtC = '#2563eb'; }
+  else                  { badge = 'Almost done'; bgC = '#ecfdf5'; txtC = '#059669'; }
+  return `<div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:.5px solid #e2e8f0">
+   <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></span>
+   <span style="min-width:200px;flex-shrink:0;font-size:12px;font-weight:500;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
+   <div style="flex:1;height:10px;background:#e2e8f0;border-radius:5px;overflow:hidden">
+    <div style="height:100%;width:${pct}%;background:${color};border-radius:5px"></div>
+   </div>
+   <span style="min-width:120px;text-align:right;font-size:11px;color:#64748b">${t.received.toLocaleString()} / ${t.expected.toLocaleString()}</span>
+   <span style="min-width:46px;text-align:right;font-size:12px;font-weight:700;color:${pct===100?'#059669':pct>0?'#2563eb':'#94a3b8'}">${pct}%</span>
+   <span style="min-width:84px;text-align:center;font-size:10px;padding:2px 7px;border-radius:4px;background:${bgC};color:${txtC};font-weight:600;white-space:nowrap">${badge}</span>
+  </div>`;
+ }).join('');
+}
+
+function ipoRenderWeight(po) {
+ const sorted = [...po.types].sort((a,b) => b.expected - a.expected);
+ const total  = po.totalExpected || 1;
+ const max    = sorted[0]?.expected || 1;
+
+ // Composition stacked bar
+ const compBar = sorted.map((t,i) => {
+  const w = (t.expected / total * 100).toFixed(2);
+  return `<div title="${escapeHtml(t.name)}: ${Math.round(parseFloat(w))}%" style="height:100%;width:${w}%;background:${IPO_COLORS[i%IPO_COLORS.length]}"></div>`;
+ }).join('');
+
+ // Legend (top 8)
+ const legend = sorted.slice(0,8).map((t,i) => {
+  const w = Math.round(t.expected / total * 100);
+  const short = t.name.replace(/^Replacement\s*[-–]\s*/i,'').replace(/^Repl\.\s*[-–]\s*/i,'');
+  return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#64748b;white-space:nowrap">
+   <span style="width:10px;height:10px;border-radius:2px;background:${IPO_COLORS[i%IPO_COLORS.length]};flex-shrink:0"></span>
+   ${escapeHtml(short)} <strong style="color:var(--navy)">${w}%</strong>
+  </span>`;
+ }).join('');
+
+ const container = document.getElementById('ipo-view-weight');
+ container.innerHTML = `
+  <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">By Weight — planning composition</div>
+  <div style="font-size:11px;color:#64748b;margin-bottom:5px">PO composition at a glance</div>
+  <div style="height:22px;border-radius:7px;overflow:hidden;display:flex;margin-bottom:7px">${compBar}</div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">${legend}</div>
+  <div style="display:flex;align-items:center;gap:6px;padding-bottom:6px;border-bottom:1px solid #e2e8f0;margin-bottom:2px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">
+   <span style="width:10px;flex-shrink:0"></span>
+   <span style="min-width:200px;flex-shrink:0">Item Type</span>
+   <span style="flex:1">Share of PO</span>
+   <span style="min-width:52px;text-align:right">Weight</span>
+   <span style="min-width:100px;text-align:right">Units (Exp.)</span>
+   <span style="min-width:46px;text-align:right">Recv'd</span>
+  </div>` + sorted.map((t,i) => {
+  const wPct   = (t.expected / total * 100).toFixed(1);
+  const barW   = Math.round(t.expected / max * 100);
+  const donePct = t.expected > 0 ? Math.round(t.received / t.expected * 100) : 0;
+  const color  = IPO_COLORS[i % IPO_COLORS.length];
+  return `<div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:.5px solid #e2e8f0">
+   <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></span>
+   <span style="min-width:200px;flex-shrink:0;font-size:12px;font-weight:500;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
+   <div style="flex:1;height:14px;background:#e2e8f0;border-radius:5px;overflow:hidden">
+    <div style="height:100%;width:${barW}%;background:${color};opacity:.75;border-radius:5px"></div>
+   </div>
+   <span style="min-width:52px;text-align:right;font-size:13px;font-weight:700;color:${color}">${wPct}%</span>
+   <span style="min-width:100px;text-align:right;font-size:11px;color:#64748b">${t.expected.toLocaleString()} units</span>
+   <span style="min-width:46px;text-align:right;font-size:12px;font-weight:700;color:${donePct===100?'#059669':donePct>0?'#2563eb':'#94a3b8'}">${donePct}%</span>
+  </div>`;
+ }).join('');
+}
+
 // ─── HR Records ───────────────────────────────────────────────────────
 window.loadHRRecords = async () => {
  showView('hrrecords');
@@ -13118,6 +13427,9 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <a class="nav-link" data-view="production" onclick="event.preventDefault(); showView('production')">
  <i class="fas fa-industry"></i><span>Production</span>
  </a>
+ <a class="nav-link" data-view="inboundPOs" onclick="loadInboundPOs()">
+ <i class="fas fa-boxes"></i><span>Inbound POs</span>
+ </a>
  <a class="nav-link" data-view="shiftCulture" onclick="event.preventDefault(); showView('shiftCulture')">
  <i class="fas fa-fire"></i><span>Shift Culture</span>
  </a>
@@ -14331,6 +14643,50 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  </div>
  </div>
  <div id="turnoverContent"></div>
+ </div>
+
+ <!-- INBOUND POs VIEW -->
+ <div id="inboundPOsView" class="view d-none">
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+   <div>
+    <h1 class="page-title"><i class="fas fa-boxes me-2" style="color:var(--orange)"></i>Inbound POs</h1>
+    <div class="text-muted small mt-1" id="ipo-shift-label"></div>
+   </div>
+   <div class="d-flex gap-2 align-items-center">
+    <label class="btn btn-sm btn-orange mb-0" for="ipo-upload-input" style="cursor:pointer"><i class="fas fa-upload me-1"></i>Upload PO</label>
+    <input type="file" id="ipo-upload-input" accept=".xlsx,.xls" style="display:none" onchange="ipoHandleUpload(this)">
+   </div>
+  </div>
+
+  <!-- PO cards row + upload tile -->
+  <div id="ipo-cards-row" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px"></div>
+
+  <!-- Empty state -->
+  <div id="ipo-empty" class="admin-card text-center py-5" style="display:none">
+   <i class="fas fa-box-open fa-3x mb-3" style="color:var(--orange);opacity:.6"></i>
+   <div class="fw-bold mb-1">No POs uploaded yet</div>
+   <div class="text-muted small mb-3">Upload a PO Excel file to get started</div>
+   <label class="btn btn-orange" for="ipo-upload-input" style="cursor:pointer"><i class="fas fa-upload me-1"></i>Upload PO</label>
+  </div>
+
+  <!-- Selected PO detail panel -->
+  <div id="ipo-detail" style="display:none">
+   <!-- Stat cards -->
+   <div id="ipo-stats-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px"></div>
+
+   <!-- Overall progress bar -->
+   <div class="admin-card" style="padding:14px 16px;margin-bottom:10px" id="ipo-overall-prog"></div>
+
+   <!-- View toggle -->
+   <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+    <span style="font-size:12px;color:#64748b;font-weight:600">View:</span>
+    <button id="ipo-vbtn-progress" onclick="ipoSetView('progress')" style="font-size:12px;padding:4px 14px;border-radius:6px;border:1.5px solid #2a78d6;background:#2a78d6;color:#fff;cursor:pointer;font-weight:600">By Progress</button>
+    <button id="ipo-vbtn-weight" onclick="ipoSetView('weight')" style="font-size:12px;padding:4px 14px;border-radius:6px;border:1.5px solid #cbd5e1;background:#fff;color:#64748b;cursor:pointer;font-weight:600">By Weight</button>
+   </div>
+
+   <div id="ipo-view-progress" class="admin-card" style="padding:14px 16px"></div>
+   <div id="ipo-view-weight" class="admin-card" style="padding:14px 16px;display:none"></div>
+  </div>
  </div>
 
  <!-- COVERAGE VIEW -->
