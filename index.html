@@ -8226,6 +8226,7 @@ let ipoAllPOs = {};       // keyed by poNumber
 let ipoSelectedPO = null;
 let ipoViewMode = 'progress';
 let ipoEditingPO = null;
+let ipoProgressSort = 'most'; // 'most' = most received first, 'least' = least received first
 
 const IPO_COLORS = [
  '#2a78d6','#eb6834','#1baf7a','#eda100','#9b59b6','#16a085',
@@ -8501,17 +8502,28 @@ window.ipoSetView = function(mode) {
  else ipoRenderWeight(po);
 };
 
+window.ipoToggleProgressSort = function() {
+ ipoProgressSort = ipoProgressSort === 'most' ? 'least' : 'most';
+ const po = ipoAllPOs[ipoSelectedPO];
+ if (po) ipoRenderProgress(po);
+};
+
 function ipoRenderProgress(po) {
- // Sort most urgent (lowest % received) first
  const sorted = [...po.types].sort((a,b) => {
-  const pa = a.expected > 0 ? a.received / a.expected : 1;
-  const pb = b.expected > 0 ? b.received / b.expected : 1;
-  return pa - pb;
+  const pa = a.expected > 0 ? a.received / a.expected : (ipoProgressSort === 'most' ? -1 : 2);
+  const pb = b.expected > 0 ? b.received / b.expected : (ipoProgressSort === 'most' ? -1 : 2);
+  return ipoProgressSort === 'most' ? pb - pa : pa - pb;
  });
+
+ const sortLabel = ipoProgressSort === 'most' ? 'Most received first' : 'Least received first';
+ const toggleLabel = ipoProgressSort === 'most' ? 'Show least first' : 'Show most first';
 
  const container = document.getElementById('ipo-view-progress');
  container.innerHTML = `
-  <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">By Progress — most urgent first</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+   <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.07em">${sortLabel}</div>
+   <button onclick="ipoToggleProgressSort()" style="font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid #cbd5e1;background:#f8fafc;color:#475569;cursor:pointer;font-weight:500">${toggleLabel}</button>
+  </div>
   <div style="display:flex;align-items:center;gap:6px;padding-bottom:6px;border-bottom:1px solid #e2e8f0;margin-bottom:2px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">
    <span style="width:10px;flex-shrink:0"></span>
    <span style="min-width:200px;flex-shrink:0">Item Type</span>
