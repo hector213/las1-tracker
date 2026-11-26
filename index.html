@@ -8225,6 +8225,7 @@ window.exportAttPointsLog = async function() {
 let ipoAllPOs = {};       // keyed by poNumber
 let ipoSelectedPO = null;
 let ipoViewMode = 'progress';
+let ipoEditingPO = null;
 
 const IPO_COLORS = [
  '#2a78d6','#eb6834','#1baf7a','#eda100','#9b59b6','#16a085',
@@ -8357,17 +8358,44 @@ function ipoRenderCards() {
  container.innerHTML = pos.map(po => {
   const pct = po.totalExpected > 0 ? Math.round(po.totalReceived / po.totalExpected * 100) : 0;
   const isSelected = po.poNumber === ipoSelectedPO;
+  const isEditing  = po.poNumber === ipoEditingPO;
   let badge, bClr;
-  if (pct === 100)       { badge = 'Complete';    bClr = '#059669'; }
-  else if (pct === 0)    { badge = 'Pending';     bClr = '#d97706'; }
-  else                   { badge = 'In progress'; bClr = '#2563eb'; }
+  if (pct === 100)    { badge = 'Complete';    bClr = '#059669'; }
+  else if (pct === 0) { badge = 'Pending';     bClr = '#d97706'; }
+  else                { badge = 'In progress'; bClr = '#2563eb'; }
   const barClr = pct === 100 ? '#059669' : '#2a78d6';
-  return `<div onclick="ipoSelectPO('${po.poNumber.replace(/'/g,"\\'")}')"\n   style="cursor:pointer;min-width:170px;max-width:220px;flex:1;padding:12px 14px;border-radius:12px;border:${isSelected?'2px solid #2a78d6':'1px solid #cbd5e1'};background:${isSelected?'#f0f7ff':'#fff'};transition:border-color .15s,background .15s">
+  const pn = po.poNumber.replace(/'/g,"\\'");
+
+  if (isEditing) {
+   return `<div style="min-width:200px;max-width:240px;flex:1;padding:12px 14px;border-radius:12px;border:2px solid #f97316;background:#fff">
+    <div style="font-size:11px;font-weight:700;color:#1e293b;margin-bottom:8px">${escapeHtml(po.poNumber)}</div>
+    <div style="margin-bottom:6px">
+     <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Dock Door</div>
+     <input id="ipo-edit-dock" type="text" value="${escapeHtml(po.dockDoor||'')}" placeholder="e.g. D-14" style="width:100%;font-size:12px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:5px;outline:none">
+    </div>
+    <div style="margin-bottom:8px">
+     <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Container #</div>
+     <input id="ipo-edit-container" type="text" value="${escapeHtml(po.containerNumber||'')}" placeholder="e.g. ABCU1234567" style="width:100%;font-size:12px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:5px;outline:none">
+    </div>
+    <div style="display:flex;gap:5px">
+     <button onclick="ipoSaveMeta('${pn}',event)" style="flex:1;font-size:11px;padding:4px;border-radius:5px;border:none;background:#2a78d6;color:#fff;cursor:pointer;font-weight:600">Save</button>
+     <button onclick="ipoCancelEdit(event)" style="font-size:11px;padding:4px 8px;border-radius:5px;border:1px solid #cbd5e1;background:#fff;color:#64748b;cursor:pointer">Cancel</button>
+    </div>
+   </div>`;
+  }
+
+  const metaLine = [po.dockDoor ? `<i class="fas fa-door-open" style="font-size:9px"></i> ${escapeHtml(po.dockDoor)}` : '', po.containerNumber ? `<i class="fas fa-box" style="font-size:9px"></i> ${escapeHtml(po.containerNumber)}` : ''].filter(Boolean).join(' &nbsp;·&nbsp; ');
+
+  return `<div onclick="ipoSelectPO('${pn}')" style="cursor:pointer;min-width:170px;max-width:220px;flex:1;padding:12px 14px;border-radius:12px;border:${isSelected?'2px solid #2a78d6':'1px solid #cbd5e1'};background:${isSelected?'#f0f7ff':'#fff'};transition:border-color .15s,background .15s;position:relative">
    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
-    <div style="font-size:12px;font-weight:700;color:var(--navy)">${escapeHtml(po.poNumber)}</div>
-    <span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${bClr}18;color:${bClr};font-weight:600">${badge}</span>
+    <div style="font-size:12px;font-weight:700;color:#1e293b">${escapeHtml(po.poNumber)}</div>
+    <div style="display:flex;align-items:center;gap:4px">
+     <span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${bClr}18;color:${bClr};font-weight:600">${badge}</span>
+     <button onclick="ipoOpenEdit('${pn}',event)" title="Edit dock door &amp; container" style="background:none;border:none;cursor:pointer;padding:1px 3px;border-radius:3px;color:#94a3b8;font-size:10px;line-height:1" onmouseover="this.style.color='#64748b'" onmouseout="this.style.color='#94a3b8'"><i class="fas fa-pencil-alt"></i></button>
+    </div>
    </div>
-   <div style="font-size:11px;color:#64748b;margin-bottom:8px">${escapeHtml(po.warehouse)}</div>
+   <div style="font-size:11px;color:#64748b;margin-bottom:${metaLine?'3px':'8px'}">${escapeHtml(po.warehouse)}</div>
+   ${metaLine ? `<div style="font-size:10px;color:#2a78d6;margin-bottom:7px">${metaLine}</div>` : ''}
    <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-bottom:4px">
     <div style="height:100%;width:${pct}%;background:${barClr};border-radius:3px;transition:width .3s"></div>
    </div>
@@ -8379,6 +8407,37 @@ function ipoRenderCards() {
    <span style="font-size:11px;color:#94a3b8">Upload PO</span>
   </label>`;
 }
+
+window.ipoOpenEdit = function(poNumber, e) {
+ e.stopPropagation();
+ ipoEditingPO = poNumber;
+ ipoRenderCards();
+ // focus first input after render
+ setTimeout(() => { const el = document.getElementById('ipo-edit-dock'); if (el) el.focus(); }, 50);
+};
+
+window.ipoCancelEdit = function(e) {
+ e && e.stopPropagation();
+ ipoEditingPO = null;
+ ipoRenderCards();
+};
+
+window.ipoSaveMeta = async function(poNumber, e) {
+ e && e.stopPropagation();
+ const dockDoor       = (document.getElementById('ipo-edit-dock')?.value || '').trim();
+ const containerNumber = (document.getElementById('ipo-edit-container')?.value || '').trim();
+ try {
+  await updateDoc(doc(db, 'lb_inboundPOs', poNumber), { dockDoor, containerNumber });
+  if (ipoAllPOs[poNumber]) {
+   ipoAllPOs[poNumber].dockDoor = dockDoor;
+   ipoAllPOs[poNumber].containerNumber = containerNumber;
+  }
+ } catch(err) {
+  alert('Save failed: ' + err.message);
+ }
+ ipoEditingPO = null;
+ ipoRenderCards();
+};
 
 window.ipoSelectPO = function(poNumber) {
  ipoSelectedPO = poNumber;
@@ -15808,7 +15867,7 @@ body { background:#f4f6fb; font-family:'Segoe UI',sans-serif; margin:0; }
  <section id="lb-inbound-pos-view" class="hidden">
  <div class="panel" style="margin:1.5rem;max-width:none">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-   <h2 style="margin:0;color:var(--hero-text)">Inbound POs <span style="font-size:13px;font-weight:400;color:var(--hero-muted)" id="ipo-shift-label"></span></h2>
+   <h2 style="margin:0;color:#1e293b;font-size:1.25rem">Inbound POs <span style="font-size:13px;font-weight:400;color:#64748b" id="ipo-shift-label"></span></h2>
    <label for="ipo-upload-input" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:6px;background:var(--orange);color:#fff;font-size:12px;font-weight:600"><i class="fas fa-sync-alt"></i> Update PO</label>
    <input type="file" id="ipo-upload-input" accept=".xlsx,.xls" style="display:none" onchange="ipoHandleUpload(this)">
   </div>
